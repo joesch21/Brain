@@ -1,0 +1,75 @@
+{% extends "_layout.html" %}
+{% block title %}Build — CodeCrafter{% endblock %}
+{% block content %}
+<h1 class="cc-h1">Build</h1>
+<div class="cc-two-column">
+  <div class="col">
+    <form method="post" enctype="multipart/form-data">
+      <label for="summary">Summary</label>
+      <textarea id="summary" name="summary" rows="6" placeholder="Describe what to build…"></textarea>
+
+      <div style="display:flex;gap:1rem;align-items:center;margin:.5rem 0 1rem;">
+        <label><input type="checkbox" name="gen_tests"> Generate tests</label>
+        <label><input type="checkbox" name="package_outputs"> Package to /outputs</label>
+      </div>
+
+      <label for="file">Optional file (zip/patch)</label>
+      <input id="file" type="file" name="file">
+    </form>
+
+    <div class="cc-card" style="margin-top:1rem;">
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+        <button class="cc-btn cc-btn--primary" type="button" data-action="plan">Plan</button>
+        <button class="cc-btn" type="button" data-action="scaffold">Scaffolding</button>
+        <button class="cc-btn" type="button" data-action="tests">Tests</button>
+        <button class="cc-btn" type="button" data-action="package">Package</button>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <section class="cc-card">
+      <h2>Artifacts</h2>
+      <div class="cc-artifacts">
+        <table>
+          <thead><tr><th>File</th><th>Size</th></tr></thead>
+          <tbody id="artifacts-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+async function call(endpoint, formData){
+  const res = await fetch(endpoint, { method: 'POST', body: formData });
+  return res.json();
+}
+function refreshArtifacts(){
+  fetch('/api/artifacts').then(r=>r.json()).then(data=>{
+    const tbody = document.querySelector('#artifacts-tbody');
+    if(!tbody) return;
+    tbody.innerHTML = data.files.map(f=>
+      `<tr><td><a href="/outputs/${f.name}" target="_blank">${f.name}</a></td><td>${f.size}</td></tr>`
+    ).join('');
+  });
+}
+document.querySelectorAll('[data-action]').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    const action = btn.getAttribute('data-action');
+    const form = document.querySelector('form');
+    const fd = new FormData(form);
+    const map = {
+      plan:'/api/build/plan',
+      scaffold:'/api/build/scaffold',
+      tests:'/api/build/tests',
+      package:'/api/build/package'
+    };
+    if(!map[action]) return;
+    const out = await call(map[action], fd);
+    if(window.Toast) Toast.show('info', `${action}: ${out.status}`);
+    refreshArtifacts();
+  });
+});
+refreshArtifacts();
+</script>
+{% endblock %}

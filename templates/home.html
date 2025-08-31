@@ -1,0 +1,31 @@
+{% extends "_layout.html" %}
+{% block title %}Home — CodeCrafter{% endblock %}
+{% block content %}
+<h1 class="cc-h1">Welcome</h1>
+<div class="cc-grid cc-grid-3">
+  <div class="cc-card">
+    <div class="cc-card-icon" aria-hidden="true">🧱</div>
+    <h2>Build</h2>
+    <p>Plan → Scaffold → Test → Package</p>
+    <div class="cc-card-actions">
+      <a href="{{ url_for('build') }}" class="cc-btn cc-btn--primary">Start</a>
+    </div>
+  </div>
+  <div class="cc-card">
+    <div class="cc-card-icon" aria-hidden="true">🩹</div>
+    <h2>Fix</h2>
+    <p>Submit error & snippet, get a patch</p>
+    <div class="cc-card-actions">
+      <a href="{{ url_for('fix') }}" class="cc-btn cc-btn--primary">Start</a>
+    </div>
+  </div>
+  <div class="cc-card">
+    <div class="cc-card-icon" aria-hidden="true">🔎</div>
+    <h2>Know</h2>
+    <p>Ask questions, get sourced answers</p>
+    <div class="cc-card-actions">
+      <a href="{{ url_for('know') }}" class="cc-btn cc-btn--primary">Start</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

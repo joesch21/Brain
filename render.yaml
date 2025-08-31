@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: code-crafter2
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 2 --threads 8 --bind 0.0.0.0:$PORT
+    autoDeploy: true
+    healthCheckPath: /healthz
+    envVars:
+      - key: FLASK_SECRET_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL_BUILD
+        sync: false
+      - key: OPENAI_MODEL_FIX
+        sync: false
+      - key: OPENAI_MODEL_KNOW
+        sync: false
+      - key: OPENAI_EMBED_MODEL
+        sync: false
+      - key: TASKMEMORY_DB
+        value: /opt/render/project/src/taskmemory.db

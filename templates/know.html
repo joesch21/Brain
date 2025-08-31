@@ -1,0 +1,29 @@
+{% extends "_layout.html" %}
+{% block title %}Know — CodeCrafter{% endblock %}
+{% block content %}
+<h1 class="cc-h1">Know</h1>
+<form method="post">
+  <label for="question">Question</label>
+  <textarea id="question" name="question" rows="4" placeholder="Ask something about the project…"></textarea>
+  <div style="margin-top:.5rem;">
+    <button id="ask-btn" class="cc-btn cc-btn--primary" type="button">Ask</button>
+  </div>
+</form>
+
+<div class="cc-card" style="margin-top:1.5rem;">
+  <h2>Answer</h2>
+  <div id="answer-body" class="cc-body">(answer appears here)</div>
+  <h3>Sources</h3>
+  <ul id="answer-sources"></ul>
+</div>
+
+<script>
+document.getElementById('ask-btn').addEventListener('click', async ()=>{
+  const fd = new FormData(document.querySelector('form'));
+  const r = await fetch('/api/know', { method:'POST', body:fd });
+  const j = await r.json();
+  document.getElementById('answer-body').textContent = j.answer;
+  document.getElementById('answer-sources').innerHTML = j.sources.map(s=>`<li>${s}</li>`).join('');
+});
+</script>
+{% endblock %}

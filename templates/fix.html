@@ -1,0 +1,50 @@
+{% extends "_layout.html" %}
+{% block title %}Fix — CodeCrafter{% endblock %}
+{% block content %}
+<h1 class="cc-h1">Fix</h1>
+<div class="cc-two-column">
+  <div class="col">
+    <form method="post" enctype="multipart/form-data">
+      <label for="error">Error</label>
+      <textarea id="error" name="error" rows="4" placeholder="Paste error logs…"></textarea>
+
+      <label for="snippet">Code snippet (optional)</label>
+      <textarea id="snippet" name="snippet" rows="6" placeholder="Paste the relevant code…"></textarea>
+
+      <label for="criteria">Acceptance criteria (optional)</label>
+      <textarea id="criteria" name="criteria" rows="4" placeholder="Define what 'good' looks like…"></textarea>
+    </form>
+    <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+      <button id="gen-fix" class="cc-btn cc-btn--primary" type="button">Generate Fix</button>
+      <button id="apply-fix" class="cc-btn" type="button">Apply Patch</button>
+    </div>
+    <p><a class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Open in Machine Room</a></p>
+  </div>
+
+  <div class="col">
+    <section class="cc-card">
+      <h2>Fix Report</h2>
+      <pre class="cc-diff" id="fix-diff" aria-label="Unified diff output"></pre>
+      <h3>Risk Notes</h3>
+      <pre id="fix-risk"></pre>
+    </section>
+  </div>
+</div>
+
+<script>
+document.getElementById('gen-fix').addEventListener('click', async ()=>{
+  const fd = new FormData(document.querySelector('form'));
+  const r = await fetch('/api/fix', { method:'POST', body:fd });
+  const j = await r.json();
+  document.getElementById('fix-diff').textContent = j.diff;
+  document.getElementById('fix-risk').textContent = j.risk_notes;
+});
+document.getElementById('apply-fix').addEventListener('click', async ()=>{
+  const diff = document.getElementById('fix-diff').textContent;
+  const fd = new FormData(); fd.append('diff', diff);
+  const r = await fetch('/api/fix/apply', { method:'POST', body:fd });
+  const j = await r.json();
+  if(window.Toast) Toast.show(j.applied ? 'success':'error', j.applied ? 'Patch applied' : 'Patch failed');
+});
+</script>
+{% endblock %}

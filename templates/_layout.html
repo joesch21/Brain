@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{% block title %}CodeCrafter{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/cc-ui.css') }}">
+</head>
+<body class="cc-bg">
+  <a class="sr-only" href="#main">Skip to content</a>
+  <header class="cc-toolbar" role="banner">
+    <div class="cc-toolbar__left">
+      <span class="cc-app-icon" aria-hidden="true"></span>
+      <span class="cc-app-name">CodeCrafter</span>
+    </div>
+    <button class="cc-toolbar__toggle" aria-expanded="false" aria-controls="nav">Menu</button>
+    <nav id="nav" class="cc-toolbar__nav" aria-label="Primary">
+      <a class="cc-nav-link" href="{{ url_for('build') }}">Build</a>
+      <a class="cc-nav-link" href="{{ url_for('fix') }}">Fix</a>
+      <a class="cc-nav-link" href="{{ url_for('know') }}">Know</a>
+      <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Machine Room</span>
+      <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Jobs</span>
+      <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Settings</span>
+    </nav>
+    <div class="cc-toolbar__right" aria-live="polite">
+      {% if job %}<span class="cc-pill cc-pill--running">Job: {{ job.id }}</span>{% endif %}
+    </div>
+  </header>
+
+  <main id="main" class="cc-container" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="cc-footer">
+    <small>&copy; CodeCrafter</small>
+  </footer>
+
+  <div id="toast-container" class="cc-toast-container" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='js/cc-ui.js') }}"></script>
+</body>
+</html>

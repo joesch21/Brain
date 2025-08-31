@@ -1,0 +1,82 @@
+:root{
+  --bg:#0c0d10; --surface:#111317; --elev:#16191f;
+  --text:#e8eaf0; --muted:#a8b0bf; --line:#242833;
+  --accent:#4ade80; --accent-ink:#06381d;
+  --danger:#ef4444; --danger-ink:#3b0a0a; --warning:#fde047; --warning-ink:#3b2f07;
+  --radius:14px; --shadow:0 8px 24px rgba(0,0,0,.25);
+  --pad:clamp(12px,2.2vw,20px);
+  --focus: 0 0 0 2px rgba(74,222,128,.8);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif}
+
+/* A11y */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+:focus{outline:none} :focus-visible{box-shadow:var(--focus);border-radius:8px}
+
+/* Layout */
+.cc-container{max-width:1100px;margin:0 auto;padding:var(--pad)}
+.cc-footer{padding:var(--pad);color:var(--muted);border-top:1px solid var(--line)}
+
+/* Toolbar */
+.cc-toolbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:1rem;padding:var(--pad);background:var(--surface);border-bottom:1px solid var(--line)}
+.cc-app-icon{width:12px;height:12px;border-radius:4px;background:var(--accent);display:inline-block;margin-right:.5rem}
+.cc-app-name{font-weight:600}
+.cc-toolbar__nav{display:flex;gap:1rem}
+.cc-toolbar__toggle{display:none}
+.cc-toolbar__right{margin-left:auto}
+.cc-nav-link{color:var(--text);opacity:.9;text-decoration:none}
+.cc-nav-link:hover,.cc-nav-link:focus{opacity:1;text-decoration:underline}
+.cc-nav-link--disabled{opacity:.4;pointer-events:none}
+
+/* Responsive nav */
+@media (max-width:768px){
+  .cc-toolbar{flex-wrap:wrap}
+  .cc-toolbar__toggle{display:inline-flex;padding:.5rem .75rem;border:1px solid var(--line);background:transparent;color:var(--text);border-radius:10px}
+  .cc-toolbar__nav{display:none;width:100%}
+  .cc-toolbar__nav.open{display:flex;flex-direction:column}
+}
+
+/* Cards / Buttons / Pills */
+.cc-card{background:var(--elev);border:1px solid var(--line);border-radius:var(--radius);padding:var(--pad);box-shadow:var(--shadow)}
+.cc-card-icon{font-size:28px}
+.cc-card-actions{margin-top:.5rem}
+.cc-btn{height:44px;min-width:44px;padding:.5rem 1rem;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--text);cursor:pointer}
+.cc-btn:focus-visible{box-shadow:var(--focus)}
+.cc-btn--primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.cc-pill{display:inline-flex;align-items:center;height:28px;padding:0 .6rem;border-radius:999px;background:var(--line);color:var(--muted);}
+
+/* Grid/Columns */
+.cc-grid{display:grid;gap:var(--pad)}
+.cc-grid-3{grid-template-columns:repeat(1,1fr)}
+@media(min-width:900px){.cc-grid-3{grid-template-columns:repeat(3,1fr)}}
+.cc-two-column{display:flex;flex-direction:column;gap:var(--pad)}
+@media(min-width:900px){.cc-two-column{flex-direction:row}.cc-two-column>.col{flex:1}}
+
+/* Forms */
+label{display:block;margin:.5rem 0 .25rem;color:var(--muted)}
+input[type="text"],input[type="file"],textarea{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:.6rem}
+textarea{resize:vertical}
+
+/* Artifacts */
+.cc-artifacts table{width:100%;border-collapse:collapse}
+.cc-artifacts th,.cc-artifacts td{border-bottom:1px solid var(--line);padding:.5rem;text-align:left}
+
+/* Diff */
+.cc-diff{background:#0b0c0f;border:1px solid var(--line);border-radius:12px;padding:12px;overflow:auto}
+.cc-diff .add{background-color:rgba(74,222,128,.18)}
+.cc-diff .del{background-color:rgba(239,68,68,.18)}
+.cc-diff .ctx{color:var(--muted)}
+
+/* Toasts */
+.cc-toast-container{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px}
+.cc-toast{padding:.6rem .8rem;border-radius:10px;border:1px solid var(--line);background:var(--elev)}
+.cc-toast--success{background:rgba(74,222,128,.15)}
+.cc-toast--error{background:rgba(239,68,68,.15)}
+.cc-toast--info{background:rgba(255,255,255,.06)}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  *{transition:none !important; animation:none !important}
+}
