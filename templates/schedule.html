@@ -1,27 +1,29 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Schedule – Office Manager</title>
-    <style>
-      body { background:#121212; color:#eee; font-family:sans-serif; margin:0; padding:2rem; }
-      nav { margin-bottom:1rem; }
-      nav a { margin-right:1rem; color:#a5d6a7; text-decoration:none; }
-      table { width:100%; border-collapse:collapse; margin-top:1rem; }
-      th, td { padding:0.5rem 1rem; border-bottom:1px solid #333; }
-      th { background:#004d40; color:#a5d6a7; text-align:left; }
-      tr:hover { background:#1e1e1e; }
-    </style>
-  </head>
-  <body>
-    <nav>
-      <a href="/">Home</a>
-      <a href="/roster">Roster</a>
-      <a href="/schedule">Schedule</a>
-      <a href="/maintenance">Maintenance</a>
-    </nav>
+{% extends "_layout.html" %}
+{% block title %}Schedule — Office Manager{% endblock %}
+{% block content %}
+<style>
+  .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); }
+  .card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+  .card-header h1 { margin: 0; font-size: 1.5rem; }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); border: none; border-radius: 12px; padding: 0.6rem 1rem; font-weight: 600; text-decoration: none; }
+  .btn-primary:hover, .btn-primary:focus { filter: brightness(1.05); }
+  .schedule-table { width: 100%; border-collapse: collapse; }
+  .schedule-table th, .schedule-table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
+  .schedule-table th { color: var(--muted); font-weight: 600; }
+  .link-small { color: var(--accent); text-decoration: none; font-size: 0.95rem; }
+  .link-small:hover, .link-small:focus { text-decoration: underline; }
+  .link-danger { color: var(--danger); }
+  .actions { display: flex; gap: 0.5rem; align-items: center; }
+</style>
+
+<section class="card">
+  <div class="card-header">
     <h1>Flight Schedule</h1>
-    <table>
+    <a href="{{ url_for('flight_create') }}" class="btn-primary">+ New Flight</a>
+  </div>
+
+  <div class="table-wrapper">
+    <table class="schedule-table">
       <thead>
         <tr>
           <th>Flight</th>
@@ -30,20 +32,30 @@
           <th>Bay</th>
           <th>Fuel (tonnes)</th>
           <th>Status</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        {% for flight in flights %}
+        {% for f in flights %}
         <tr>
-          <td>{{ flight.flight_number }}</td>
-          <td>{{ flight.airline }}</td>
-          <td>{{ flight.eta }}</td>
-          <td>{{ flight.bay or "-" }}</td>
-          <td>{{ flight.fuel_tonnes or "-" }}</td>
-          <td>{{ flight.status }}</td>
+          <td>{{ f.flight_number }}</td>
+          <td>{{ f.airline }}</td>
+          <td>{{ f.eta }}</td>
+          <td>{{ f.bay or "-" }}</td>
+          <td>{{ f.fuel_tonnes or "-" }}</td>
+          <td>{{ f.status }}</td>
+          <td>
+            <div class="actions">
+              <a href="{{ url_for('flight_edit', flight_id=f.id) }}" class="link-small">Edit</a>
+              <form action="{{ url_for('flight_delete', flight_id=f.id) }}" method="post" style="display:inline;" onsubmit="return confirm('Delete this flight?');">
+                <button type="submit" class="link-small link-danger" style="background:none;border:none;padding:0;cursor:pointer;">Delete</button>
+              </form>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-  </body>
-</html>
+  </div>
+</section>
+{% endblock %}

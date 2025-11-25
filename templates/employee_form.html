@@ -1,0 +1,52 @@
+{% extends "_layout.html" %}
+{% block title %}{% if employee %}Edit{% else %}New{% endif %} Employee{% endblock %}
+{% block content %}
+<style>
+  .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); max-width: 720px; margin: 0 auto; }
+  .card h1 { margin-top: 0; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+  .form-grid label { color: var(--muted); font-weight: 600; }
+  .form-grid input[type="text"] { width: 100%; padding: 0.6rem 0.75rem; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+  .checkbox-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; }
+  .checkbox-row input[type="checkbox"] { width: 18px; height: 18px; }
+  .form-actions { display: flex; gap: 0.75rem; margin-top: 1rem; align-items: center; }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); border: none; border-radius: 12px; padding: 0.7rem 1.1rem; font-weight: 700; cursor: pointer; text-decoration: none; }
+  .btn-secondary { border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 0.65rem 1rem; text-decoration: none; }
+</style>
+
+<section class="card">
+  <h1>{% if employee %}Edit{% else %}New{% endif %} Employee</h1>
+
+  <form method="post" class="form-grid">
+    <label>
+      Name
+      <input type="text" name="name" required value="{{ employee.name if employee else '' }}" />
+    </label>
+
+    <label>
+      Role
+      <input type="text" name="role" required value="{{ employee.role if employee else '' }}" />
+    </label>
+
+    <label>
+      Shift
+      <input type="text" name="shift" placeholder="Day / Night" required value="{{ employee.shift if employee else '' }}" />
+    </label>
+
+    <label>
+      Base
+      <input type="text" name="base" placeholder="SYD" value="{{ employee.base if employee and employee.base else '' }}" />
+    </label>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="active" {% if not employee or employee.active %}checked{% endif %} />
+      Active
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">{% if employee %}Save Changes{% else %}Create Employee{% endif %}</button>
+      <a href="{{ url_for('roster_page') }}" class="btn-secondary">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
