@@ -25,15 +25,21 @@
       <thead>
         <tr>
           <th>Flight</th>
+          <th>Airline</th>
           <th>ETA</th>
+          <th>Bay</th>
+          <th>Fuel (tonnes)</th>
           <th>Status</th>
         </tr>
       </thead>
       <tbody>
         {% for flight in flights %}
         <tr>
-          <td>{{ flight.flight }}</td>
+          <td>{{ flight.flight_number }}</td>
+          <td>{{ flight.airline }}</td>
           <td>{{ flight.eta }}</td>
+          <td>{{ flight.bay or "-" }}</td>
+          <td>{{ flight.fuel_tonnes or "-" }}</td>
           <td>{{ flight.status }}</td>
         </tr>
         {% endfor %}
