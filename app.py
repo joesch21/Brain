@@ -1,19 +1,9 @@
 import os
 from zipfile import ZipFile, ZIP_DEFLATED
+
 from flask import Flask, render_template, request, jsonify, send_from_directory
-# ----- Office Manager Stub Data -----
-# These in-memory lists represent basic roster, flight schedule and truck maintenance data.
-# In a real application, replace them with a database or API calls.
-ROSTER = [
-    {"name": "Alice", "role": "Refueler", "shift": "Morning"},
-    {"name": "Bob", "role": "Driver", "shift": "Afternoon"},
-    {"name": "Carol", "role": "Supervisor", "shift": "Night"},
-]
-FLIGHTS = [
-    {"flight": "QF123", "eta": "2025-12-01 09:00", "status": "Scheduled"},
-    {"flight": "VA456", "eta": "2025-12-01 10:30", "status": "Delayed"},
-    {"flight": "CX789", "eta": "2025-12-01 12:15", "status": "Scheduled"},
-]
+from flask_sqlalchemy import SQLAlchemy
+
 TRUCKS = [
     {"id": "Truck-1", "next_maintenance": "2025-12-05", "status": "OK"},
     {"id": "Truck-2", "next_maintenance": "2025-12-03", "status": "Due"},
@@ -30,6 +20,35 @@ from services.knowledge import KnowledgeService
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-not-secret")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+    "DATABASE_URL", "sqlite:///cc_office.db"
+)
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
+
+
+class Employee(db.Model):
+    __tablename__ = "employees"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    role = db.Column(db.String(80), nullable=False)
+    shift = db.Column(db.String(40), nullable=False)
+    base = db.Column(db.String(40), nullable=True)
+    active = db.Column(db.Boolean, default=True)
+
+
+class Flight(db.Model):
+    __tablename__ = "flights"
+
+    id = db.Column(db.Integer, primary_key=True)
+    flight_number = db.Column(db.String(20), nullable=False)
+    airline = db.Column(db.String(80), nullable=False)
+    eta = db.Column(db.DateTime, nullable=False)
+    bay = db.Column(db.String(20), nullable=True)
+    fuel_tonnes = db.Column(db.Float, nullable=True)
+    status = db.Column(db.String(40), default="Scheduled")
 
 BASE_DIR = os.path.dirname(__file__)
 app.config["UPLOAD_FOLDER"] = os.path.join(BASE_DIR, "uploads")
@@ -63,18 +82,23 @@ def know():
 def roster_page():
     """
     Roster page showing personnel assignments.
-    One sentence explanation: renders roster.html with the current roster data.
+    Now backed by the Employee table instead of in-memory data.
     """
-    return render_template("roster.html", roster=ROSTER)
+    employees = (
+        Employee.query.filter_by(active=True)
+        .order_by(Employee.shift, Employee.name)
+        .all()
+    )
+    return render_template("roster.html", roster=employees)
 
 
 @app.route("/schedule")
 def schedule_page():
     """
-    Flight schedule page listing upcoming flights.
-    One sentence explanation: renders schedule.html with flight schedule data.
+    Flight schedule page, now backed by the Flight table.
     """
-    return render_template("schedule.html", flights=FLIGHTS)
+    flights = Flight.query.order_by(Flight.eta).all()
+    return render_template("schedule.html", flights=flights)
 
 
 @app.route("/maintenance")
