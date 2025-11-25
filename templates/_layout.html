@@ -28,11 +28,25 @@
       <a class="cc-nav-link" href="{{ url_for('roster_page') }}">Roster</a>
       <a class="cc-nav-link" href="{{ url_for('schedule_page') }}">Schedule</a>
       <a class="cc-nav-link" href="{{ url_for('maintenance_page') }}">Maintenance</a>
-      <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Machine Room</span>
+      {% set current_role = get_current_role() %}
+      {% if current_role == 'supervisor' %}
+        <a class="cc-nav-link" href="{{ url_for('machine_room') }}">Machine Room</a>
+      {% else %}
+        <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true" title="Supervisor role required">Machine Room</span>
+      {% endif %}
       <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Jobs</span>
       <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Settings</span>
     </nav>
     <div class="cc-toolbar__right" aria-live="polite">
+      <form method="post" action="{{ url_for('set_role') }}" class="role-switcher">
+        <label>
+          Role:
+          <select name="role" onchange="this.form.submit()">
+            <option value="operator" {% if current_role == 'operator' %}selected{% endif %}>Operator</option>
+            <option value="supervisor" {% if current_role == 'supervisor' %}selected{% endif %}>Supervisor</option>
+          </select>
+        </label>
+      </form>
       {% if job %}<span class="cc-pill cc-pill--running">Job: {{ job.id }}</span>{% endif %}
     </div>
   </header>
@@ -55,6 +69,9 @@
   </footer>
 
   <div id="toast-container" class="cc-toast-container" aria-live="polite"></div>
+  <script>
+    window.CURRENT_ROLE = "{{ get_current_role() }}";
+  </script>
   <script src="{{ url_for('static', filename='js/voice.js') }}"></script>
   <script src="{{ url_for('static', filename='js/cc-ui.js') }}"></script>
 </body>

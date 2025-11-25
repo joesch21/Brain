@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Machine Room – DB Overview</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cc-ui.css') }}" />
+    <style>
+      body { background: var(--bg); color: var(--text); }
+      .topbar { display: flex; justify-content: space-between; align-items: center; padding: var(--pad); background: var(--surface); border-bottom: 1px solid var(--line); }
+      .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); margin-bottom: var(--pad); }
+      .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--pad); }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--line); text-align: left; }
+      th { color: var(--muted); font-weight: 600; }
+      .metric-number { font-size: 2rem; font-weight: 700; margin: 0.3rem 0 0; }
+      .metric h2 { margin: 0; }
+      .db-uri code { background: #0c1118; padding: 0.35rem 0.45rem; border-radius: 10px; border: 1px solid var(--line); display: inline-block; }
+      .cc-main { max-width: 1100px; margin: 0 auto; padding: var(--pad); }
+      .link-small { color: var(--accent); text-decoration: none; }
+      .link-small:hover, .link-small:focus { text-decoration: underline; }
+    </style>
+  </head>
+  <body class="cc-body">
+    <header class="topbar">
+      <div class="brand">Machine Room</div>
+      <a href="{{ url_for('home') }}" class="link-small">Back to dashboard</a>
+    </header>
+
+    <main class="cc-main">
+      <section class="card">
+        <h1>Database Status</h1>
+        <p>Backend: <strong>{{ db_type }}</strong></p>
+        <p class="db-uri">
+          Connection URI:
+          <code>
+            {{ db_uri.split('@')[-1] if 'postgres' in db_uri else db_uri }}
+          </code>
+        </p>
+
+        <div class="grid-2">
+          <div class="metric">
+            <h2>Employees</h2>
+            <p class="metric-number">{{ employee_count }}</p>
+          </div>
+          <div class="metric">
+            <h2>Flights</h2>
+            <p class="metric-number">{{ flight_count }}</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Recent Employees</h2>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Role</th><th>Shift</th><th>Base</th></tr>
+          </thead>
+          <tbody>
+            {% for emp in recent_employees %}
+            <tr>
+              <td>{{ emp.name }}</td>
+              <td>{{ emp.role }}</td>
+              <td>{{ emp.shift }}</td>
+              <td>{{ emp.base or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Recent Flights</h2>
+        <table>
+          <thead>
+            <tr><th>Flight</th><th>Airline</th><th>ETA</th><th>Bay</th></tr>
+          </thead>
+          <tbody>
+            {% for f in recent_flights %}
+            <tr>
+              <td>{{ f.flight_number }}</td>
+              <td>{{ f.airline }}</td>
+              <td>{{ f.eta }}</td>
+              <td>{{ f.bay or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>

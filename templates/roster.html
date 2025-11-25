@@ -14,6 +14,7 @@
   .link-small { color: var(--accent); text-decoration: none; font-size: 0.95rem; }
   .link-small:hover, .link-small:focus { text-decoration: underline; }
   .link-danger { color: var(--danger); }
+  .link-disabled { color: var(--muted); font-size: 0.95rem; }
   .actions { display: flex; gap: 0.5rem; align-items: center; }
   .status-pill { display: inline-flex; align-items: center; padding: 0.25rem 0.6rem; border-radius: 999px; background: var(--line); color: var(--text); font-size: 0.9rem; }
 </style>
@@ -21,7 +22,10 @@
 <section class="card">
   <div class="card-header">
     <h1>Crew Roster</h1>
-    <a href="{{ url_for('employee_create') }}" class="btn-primary">+ New Employee</a>
+    {% set current_role = get_current_role() %}
+    {% if current_role == 'supervisor' %}
+      <a href="{{ url_for('employee_create') }}" class="btn-primary">+ New Employee</a>
+    {% endif %}
   </div>
 
   <div class="table-wrapper">
@@ -46,6 +50,7 @@
           <td>
             <span class="status-pill">{{ "Active" if emp.active else "Inactive" }}</span>
           </td>
+          {% if current_role == 'supervisor' %}
           <td>
             <div class="actions">
               <a href="{{ url_for('employee_edit', employee_id=emp.id) }}" class="link-small">Edit</a>
@@ -54,6 +59,9 @@
               </form>
             </div>
           </td>
+          {% else %}
+          <td><span class="link-disabled">View only</span></td>
+          {% endif %}
         </tr>
         {% endfor %}
       </tbody>

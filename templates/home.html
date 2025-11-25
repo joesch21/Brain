@@ -33,11 +33,42 @@
     transform: translateY(-1px);
     box-shadow: 0 0 0 6px rgba(0, 184, 148, 0.25);
   }
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .role-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #c7d2d9;
+    font-size: 0.95rem;
+  }
+  .role-switcher select {
+    background: #0c1118;
+    color: #e0f2f1;
+    border: 1px solid #233044;
+    border-radius: 8px;
+    padding: 0.35rem 0.5rem;
+  }
 </style>
 
 <header class="topbar">
   <div class="brand">CodeCrafter Office</div>
-  <button id="voice-command-btn" class="voice-btn" title="Voice control">🎙</button>
+  <div class="topbar-actions">
+    <form method="post" action="{{ url_for('set_role') }}" class="role-switcher">
+      <label>
+        Role:
+        {% set current_role = get_current_role() %}
+        <select name="role" onchange="this.form.submit()">
+          <option value="operator" {% if current_role == 'operator' %}selected{% endif %}>Operator</option>
+          <option value="supervisor" {% if current_role == 'supervisor' %}selected{% endif %}>Supervisor</option>
+        </select>
+      </label>
+    </form>
+    <button id="voice-command-btn" class="voice-btn" title="Voice control">🎙</button>
+  </div>
 </header>
 
 <h1 class="cc-h1">Welcome</h1>
@@ -88,6 +119,19 @@
     <p>Check truck service readiness</p>
     <div class="cc-card-actions">
       <a href="{{ url_for('maintenance_page') }}" class="cc-btn cc-btn--primary">Open</a>
+    </div>
+  </div>
+  <div class="cc-card">
+    <div class="cc-card-icon" aria-hidden="true">🖥️</div>
+    <h2>Machine Room</h2>
+    <p>DB &amp; system overview (supervisors only).</p>
+    <div class="cc-card-actions">
+      {% set current_role = get_current_role() %}
+      {% if current_role == 'supervisor' %}
+        <a href="{{ url_for('machine_room') }}" class="cc-btn cc-btn--primary">Open</a>
+      {% else %}
+        <a href="{{ url_for('machine_room') }}" class="cc-btn cc-btn--primary" aria-disabled="true">Requires Supervisor</a>
+      {% endif %}
     </div>
   </div>
 </div>

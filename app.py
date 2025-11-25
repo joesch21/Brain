@@ -1,15 +1,18 @@
 import os
 from datetime import datetime
+from functools import wraps
 from zipfile import ZipFile, ZIP_DEFLATED
 
 from flask import (
     Flask,
+    abort,
     flash,
     jsonify,
     redirect,
     render_template,
     request,
     send_from_directory,
+    session,
     url_for,
 )
 from flask_sqlalchemy import SQLAlchemy
@@ -34,6 +37,16 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
     "DATABASE_URL", "sqlite:///cc_office.db"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+SUPPORTED_ROLES = ("operator", "supervisor")
+
+
+def get_current_role():
+    role = session.get("role", "operator")
+    if role not in SUPPORTED_ROLES:
+        role = "operator"
+    return role
+
 
 db = SQLAlchemy(app)
 
@@ -60,6 +73,22 @@ class Flight(db.Model):
     fuel_tonnes = db.Column(db.Float, nullable=True)
     status = db.Column(db.String(40), default="Scheduled")
 
+
+def requires_supervisor(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if get_current_role() != "supervisor":
+            flash("Supervisor role required for this action.", "error")
+            return redirect(url_for("home"))
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
+@app.context_processor
+def inject_role():
+    return {"get_current_role": get_current_role}
+
 BASE_DIR = os.path.dirname(__file__)
 app.config["UPLOAD_FOLDER"] = os.path.join(BASE_DIR, "uploads")
 app.config["OUTPUTS_DIR"]  = os.path.join(BASE_DIR, "outputs")
@@ -74,6 +103,22 @@ knower = KnowledgeService(outputs_dir=app.config["OUTPUTS_DIR"])
 @app.route("/")
 def home():
     return render_template("home.html", job=None)
+
+
+@app.route("/set-role", methods=["POST"])
+def set_role():
+    """
+    Set the current UI role (operator/supervisor) in the session.
+    This is a simple internal control, not a secure login system.
+    """
+
+    role = request.form.get("role", "operator")
+    if role not in SUPPORTED_ROLES:
+        flash("Invalid role selected.", "error")
+    else:
+        session["role"] = role
+        flash(f"Role set to {role}.", "success")
+    return redirect(request.referrer or url_for("home"))
 
 @app.route("/build", methods=["GET", "POST"])
 def build():
@@ -103,6 +148,7 @@ def roster_page():
 
 
 @app.route("/employees/new", methods=["GET", "POST"])
+@requires_supervisor
 def employee_create():
     """
     Create a new employee (crew member).
@@ -135,6 +181,7 @@ def employee_create():
 
 
 @app.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
+@requires_supervisor
 def employee_edit(employee_id):
     """
     Edit an existing employee.
@@ -164,6 +211,7 @@ def employee_edit(employee_id):
 
 
 @app.route("/employees/<int:employee_id>/delete", methods=["POST"])
+@requires_supervisor
 def employee_delete(employee_id):
     """
     Soft delete or hard delete an employee.
@@ -186,6 +234,7 @@ def schedule_page():
 
 
 @app.route("/flights/new", methods=["GET", "POST"])
+@requires_supervisor
 def flight_create():
     """
     Create a new scheduled flight.
@@ -224,6 +273,7 @@ def flight_create():
 
 
 @app.route("/flights/<int:flight_id>/edit", methods=["GET", "POST"])
+@requires_supervisor
 def flight_edit(flight_id):
     """
     Edit an existing flight entry.
@@ -261,6 +311,7 @@ def flight_edit(flight_id):
 
 
 @app.route("/flights/<int:flight_id>/delete", methods=["POST"])
+@requires_supervisor
 def flight_delete(flight_id):
     """
     Delete a flight entry.
@@ -279,6 +330,39 @@ def maintenance_page():
     One sentence explanation: renders maintenance.html with truck maintenance data.
     """
     return render_template("maintenance.html", trucks=TRUCKS)
+
+
+@app.route("/machine-room")
+@requires_supervisor
+def machine_room():
+    """
+    Supervisor-only view with database and system overview.
+    Shows table counts and a small sample of records.
+    """
+
+    uri = app.config["SQLALCHEMY_DATABASE_URI"]
+    if uri.startswith("postgres"):
+        db_type = "PostgreSQL"
+    elif uri.startswith("sqlite"):
+        db_type = "SQLite"
+    else:
+        db_type = "Unknown"
+
+    employee_count = Employee.query.count()
+    flight_count = Flight.query.count()
+
+    recent_employees = Employee.query.order_by(Employee.id.desc()).limit(5).all()
+    recent_flights = Flight.query.order_by(Flight.eta.desc()).limit(5).all()
+
+    return render_template(
+        "machine_room.html",
+        db_type=db_type,
+        db_uri=uri,
+        employee_count=employee_count,
+        flight_count=flight_count,
+        recent_employees=recent_employees,
+        recent_flights=recent_flights,
+    )
 
 # ----- API: Build -----
 @app.route("/api/build/plan", methods=["POST"])
