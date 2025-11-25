@@ -69,6 +69,9 @@
     if (t.includes("fix")) {
       return { type: "nav", target: "/fix" };
     }
+    if (t.includes("machine room") || t.includes("machine-room")) {
+      return { type: "nav", target: "/machine-room" };
+    }
     if (t.includes("know") || t.includes("knowledge")) {
       // Anything after the word "know" becomes the question, if present.
       const m = t.split("know").pop().trim();
@@ -121,6 +124,16 @@
         speak("You need supervisor role to create new records.");
         return;
       }
+      if (
+        (cmd.target === "/machine-room" || cmd.target === "/machine_room") &&
+        window.CURRENT_ROLE &&
+        window.CURRENT_ROLE !== "supervisor"
+      ) {
+        speak(
+          "That action needs supervisor access. You can still view the roster and schedule."
+        );
+        return;
+      }
       speak(`Opening ${cmd.target.replace("/", "")}.`);
       window.location.href = cmd.target;
       return;
@@ -160,6 +173,129 @@
     }
   }
 
+  // Conversational flow state
+  let pendingCommand = null;
+  let pendingRawInput = null;
+
+  // Turn a parsed command into a natural sentence for reflection.
+  function summarizeCommandForSpeech(cmd, raw) {
+    if (!cmd) return raw;
+
+    if (cmd.type === "nav") {
+      switch (cmd.target) {
+        case "/roster":
+          return "to open the roster page";
+        case "/schedule":
+          return "to open the flight schedule";
+        case "/maintenance":
+          return "to open the truck maintenance page";
+        case "/build":
+          return "to open the build workspace";
+        case "/fix":
+          return "to open the fix workspace";
+        case "/know":
+          return "to open the Know page";
+        case "/machine-room":
+        case "/machine_room":
+          return "to open the machine room overview";
+        default:
+          return `to go to ${cmd.target}`;
+      }
+    }
+
+    if (cmd.type === "know") {
+      if (cmd.question && cmd.question.trim()) {
+        return `to ask Know: “${cmd.question}”`;
+      }
+      return "to ask Know a question";
+    }
+
+    return raw;
+  }
+
+  // Step 2: handle the initial user request after greeting.
+  function handleUserRequest(transcript) {
+    pendingRawInput = transcript;
+
+    const cmd = interpretCommand(transcript);
+    if (!cmd) {
+      speak(
+        `I heard: “${transcript}”, but I'm not sure what to do with that. ` +
+          "You can ask me to open roster, schedule, build, fix, Know, or machine room."
+      );
+      // Offer another try
+      setTimeout(() => {
+        speak("What can I help you with today?");
+        listenOnce(handleUserRequest);
+      }, 700);
+      return;
+    }
+
+    pendingCommand = cmd;
+    const summary = summarizeCommandForSpeech(cmd, transcript);
+
+    speak(`You want ${summary}. Is that correct?`);
+    // Now wait for yes/no confirmation
+    listenOnce(handleConfirmation);
+  }
+
+  // Step 3: confirmation yes/no
+  function handleConfirmation(transcript) {
+    const t = transcript.toLowerCase();
+    console.log("[voice] confirmation heard:", t);
+
+    if (!pendingCommand) {
+      // No pending command; restart flow
+      speak("Let's start again. What can I help you with today?");
+      listenOnce(handleUserRequest);
+      return;
+    }
+
+    const positive =
+      t.startsWith("yes") ||
+      t.includes("correct") ||
+      t.includes("that's right") ||
+      t.includes("that is right");
+
+    const negative =
+      t.startsWith("no") ||
+      t.includes("not quite") ||
+      t.includes("that's wrong");
+
+    if (positive) {
+      speak("Okay, I'll do that.");
+      // Execute the command
+      runCommand(pendingCommand);
+      pendingCommand = null;
+      pendingRawInput = null;
+      return;
+    }
+
+    if (negative) {
+      speak("No problem. Let's try again. What can I help you with today?");
+      pendingCommand = null;
+      pendingRawInput = null;
+      listenOnce(handleUserRequest);
+      return;
+    }
+
+    // Ambiguous response: treat as “no” and re-prompt
+    speak("I'm not sure I understood. Let's try again. What can I help you with today?");
+    pendingCommand = null;
+    pendingRawInput = null;
+    listenOnce(handleUserRequest);
+  }
+
+  // Entry point for the conversational assistant
+  function startAssistantFlow() {
+    if (!SpeechRecognition) {
+      alert("Your browser doesn't support voice recognition yet.");
+      return;
+    }
+    speak("What can I help you with today?");
+    listenOnce(handleUserRequest);
+  }
+
   // Public: start command mode (used by global mic)
   function startCommandListening() {
     listenOnce((transcript) => {
@@ -185,5 +321,6 @@
     speak,
     startCommandListening,
     startDictation,
+    startAssistantFlow,
   };
 })();

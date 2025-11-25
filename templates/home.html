@@ -33,6 +33,16 @@
     transform: translateY(-1px);
     box-shadow: 0 0 0 6px rgba(0, 184, 148, 0.25);
   }
+  .voice-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.15rem;
+  }
+  .voice-hint {
+    font-size: 0.85rem;
+    color: #8abbb5;
+  }
   .topbar-actions {
     display: flex;
     align-items: center;
@@ -60,7 +70,10 @@
         <a href="{{ url_for('login') }}" class="link-small">Login</a>
       {% endif %}
     </div>
-    <button id="voice-command-btn" class="voice-btn" title="Voice control">🎙</button>
+    <div class="voice-cta">
+      <button id="voice-command-btn" class="voice-btn" title="Talk to CodeCrafter">🎙</button>
+      <div class="voice-hint">Try saying “open roster” or “ask Know about today’s flights”.</div>
+    </div>
   </div>
 </header>
 
@@ -132,10 +145,10 @@
 
 <script>
   const voiceBtn = document.getElementById("voice-command-btn");
-  if (voiceBtn) {
+  if (voiceBtn && window.voice) {
     voiceBtn.addEventListener("click", () => {
-      if (window.voice && window.voice.startCommandListening) {
-        window.voice.startCommandListening();
+      if (window.voice.startAssistantFlow) {
+        window.voice.startAssistantFlow();
       }
     });
   }
