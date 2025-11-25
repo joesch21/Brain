@@ -1,11 +1,16 @@
 from datetime import datetime, timedelta
 
-from app import app, db, Employee, Flight
+from app import User, app, db, Employee, Flight
 
 
 def seed():
     with app.app_context():
         db.create_all()
+
+        if not User.query.filter_by(username="supervisor").first():
+            sup = User(username="supervisor", role="supervisor")
+            sup.set_password("CHANGE_ME_SUPERVISOR")
+            db.session.add(sup)
 
         if not Employee.query.first():
             crew = [

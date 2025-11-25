@@ -38,35 +38,28 @@
     align-items: center;
     gap: 0.75rem;
   }
-  .role-switcher {
-    display: inline-flex;
+  .user-status {
+    display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.5rem;
     color: #c7d2d9;
-    font-size: 0.95rem;
   }
-  .role-switcher select {
-    background: #0c1118;
-    color: #e0f2f1;
-    border: 1px solid #233044;
-    border-radius: 8px;
-    padding: 0.35rem 0.5rem;
+  .user-status a {
+    color: #7de2d1;
   }
 </style>
 
 <header class="topbar">
   <div class="brand">CodeCrafter Office</div>
   <div class="topbar-actions">
-    <form method="post" action="{{ url_for('set_role') }}" class="role-switcher">
-      <label>
-        Role:
-        {% set current_role = get_current_role() %}
-        <select name="role" onchange="this.form.submit()">
-          <option value="operator" {% if current_role == 'operator' %}selected{% endif %}>Operator</option>
-          <option value="supervisor" {% if current_role == 'supervisor' %}selected{% endif %}>Supervisor</option>
-        </select>
-      </label>
-    </form>
+    <div class="user-status">
+      {% if current_user %}
+        <span>Signed in as {{ current_user.username }} ({{ get_current_role() }})</span>
+        <a href="{{ url_for('logout') }}" class="link-small">Logout</a>
+      {% else %}
+        <a href="{{ url_for('login') }}" class="link-small">Login</a>
+      {% endif %}
+    </div>
     <button id="voice-command-btn" class="voice-btn" title="Voice control">🎙</button>
   </div>
 </header>
@@ -125,6 +118,7 @@
     <div class="cc-card-icon" aria-hidden="true">🖥️</div>
     <h2>Machine Room</h2>
     <p>DB &amp; system overview (supervisors only).</p>
+    <span class="cc-pill">Requires supervisor login</span>
     <div class="cc-card-actions">
       {% set current_role = get_current_role() %}
       {% if current_role == 'supervisor' %}
