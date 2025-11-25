@@ -29,6 +29,8 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui, -a
 .cc-nav-link{color:var(--text);opacity:.9;text-decoration:none}
 .cc-nav-link:hover,.cc-nav-link:focus{opacity:1;text-decoration:underline}
 .cc-nav-link--disabled{opacity:.4;pointer-events:none}
+.role-switcher{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);font-size:.95rem;margin-right:.5rem}
+.role-switcher select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:.35rem .5rem}
 
 /* Responsive nav */
 @media (max-width:768px){

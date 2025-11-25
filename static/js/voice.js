@@ -78,6 +78,26 @@
       };
     }
 
+    // --- NEW: create employee commands ---
+    if (
+      t.includes("add new employee") ||
+      t.includes("create employee") ||
+      t.includes("new crew") ||
+      t.includes("add crew")
+    ) {
+      return { type: "nav", target: "/employees/new" };
+    }
+
+    // --- NEW: create flight commands ---
+    if (
+      t.includes("add new flight") ||
+      t.includes("create flight") ||
+      t.includes("schedule a flight") ||
+      t.includes("schedule new flight")
+    ) {
+      return { type: "nav", target: "/flights/new" };
+    }
+
     // Fallback: if on /know right now, treat it as a question
     if (window.location.pathname.startsWith("/know")) {
       return { type: "know", question: raw };
@@ -93,6 +113,14 @@
     }
 
     if (cmd.type === "nav") {
+      if (
+        (cmd.target === "/employees/new" || cmd.target === "/flights/new") &&
+        window.CURRENT_ROLE &&
+        window.CURRENT_ROLE !== "supervisor"
+      ) {
+        speak("You need supervisor role to create new records.");
+        return;
+      }
       speak(`Opening ${cmd.target.replace("/", "")}.`);
       window.location.href = cmd.target;
       return;

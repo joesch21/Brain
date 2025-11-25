@@ -13,13 +13,17 @@
   .link-small { color: var(--accent); text-decoration: none; font-size: 0.95rem; }
   .link-small:hover, .link-small:focus { text-decoration: underline; }
   .link-danger { color: var(--danger); }
+  .link-disabled { color: var(--muted); font-size: 0.95rem; }
   .actions { display: flex; gap: 0.5rem; align-items: center; }
 </style>
 
 <section class="card">
   <div class="card-header">
     <h1>Flight Schedule</h1>
-    <a href="{{ url_for('flight_create') }}" class="btn-primary">+ New Flight</a>
+    {% set current_role = get_current_role() %}
+    {% if current_role == 'supervisor' %}
+      <a href="{{ url_for('flight_create') }}" class="btn-primary">+ New Flight</a>
+    {% endif %}
   </div>
 
   <div class="table-wrapper">
@@ -44,6 +48,7 @@
           <td>{{ f.bay or "-" }}</td>
           <td>{{ f.fuel_tonnes or "-" }}</td>
           <td>{{ f.status }}</td>
+          {% if current_role == 'supervisor' %}
           <td>
             <div class="actions">
               <a href="{{ url_for('flight_edit', flight_id=f.id) }}" class="link-small">Edit</a>
@@ -52,6 +57,9 @@
               </form>
             </div>
           </td>
+          {% else %}
+          <td><span class="link-disabled">View only</span></td>
+          {% endif %}
         </tr>
         {% endfor %}
       </tbody>
