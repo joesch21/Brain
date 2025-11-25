@@ -6,7 +6,7 @@
   <label for="question-input">Question</label>
   <div style="display:flex; gap:0.5rem; align-items:flex-start;">
     <input id="question-input" name="question" type="text" class="cc-input" placeholder="Ask something about the project…" required style="flex:1;" />
-    <button type="button" class="cc-btn" aria-label="Speak question" onclick="voice.startListening()">🎤</button>
+    <button type="button" class="cc-btn" aria-label="Speak question" onclick="window.voice.startDictation()">🎤</button>
     <button id="ask-btn" class="cc-btn cc-btn--primary" type="submit">Ask</button>
   </div>
 </form>
@@ -29,6 +29,11 @@ form.addEventListener('submit', async (event)=>{
   document.getElementById('answer-sources').innerHTML = j.sources.map(s=>`<li>${s}</li>`).join('');
   if (j.answer) voice.speak(j.answer);
 });
+const urlParams = new URLSearchParams(window.location.search);
+const presetQuestion = urlParams.get('q');
+if (presetQuestion) {
+  document.getElementById('question-input').value = presetQuestion;
+  form.dispatchEvent(new Event('submit', { cancelable: true }));
+}
 </script>
-<script src="{{ url_for('static', filename='js/voice.js') }}"></script>
 {% endblock %}

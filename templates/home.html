@@ -1,6 +1,45 @@
 {% extends "_layout.html" %}
 {% block title %}Home — CodeCrafter{% endblock %}
 {% block content %}
+<style>
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    background: #050608;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: -1.25rem -1.25rem 1.5rem -1.25rem;
+  }
+  .topbar .brand {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #e0f2f1;
+  }
+  .voice-btn {
+    background: #00b894;
+    border: none;
+    border-radius: 999px;
+    padding: 0.6rem 1.1rem;
+    font-size: 1rem;
+    color: #021316;
+    cursor: pointer;
+    box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.6);
+    transition: box-shadow 0.2s ease, transform 0.1s ease;
+  }
+  .voice-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 6px rgba(0, 184, 148, 0.25);
+  }
+</style>
+
+<header class="topbar">
+  <div class="brand">CodeCrafter Office</div>
+  <button id="voice-command-btn" class="voice-btn" title="Voice control">🎙</button>
+</header>
+
 <h1 class="cc-h1">Welcome</h1>
 <div class="cc-grid cc-grid-3">
   <div class="cc-card">
@@ -52,4 +91,15 @@
     </div>
   </div>
 </div>
+
+<script>
+  const voiceBtn = document.getElementById("voice-command-btn");
+  if (voiceBtn) {
+    voiceBtn.addEventListener("click", () => {
+      if (window.voice && window.voice.startCommandListening) {
+        window.voice.startCommandListening();
+      }
+    });
+  }
+</script>
 {% endblock %}
