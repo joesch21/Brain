@@ -1,6 +1,25 @@
 import os
 from zipfile import ZipFile, ZIP_DEFLATED
 from flask import Flask, render_template, request, jsonify, send_from_directory
+# ----- Office Manager Stub Data -----
+# These in-memory lists represent basic roster, flight schedule and truck maintenance data.
+# In a real application, replace them with a database or API calls.
+ROSTER = [
+    {"name": "Alice", "role": "Refueler", "shift": "Morning"},
+    {"name": "Bob", "role": "Driver", "shift": "Afternoon"},
+    {"name": "Carol", "role": "Supervisor", "shift": "Night"},
+]
+FLIGHTS = [
+    {"flight": "QF123", "eta": "2025-12-01 09:00", "status": "Scheduled"},
+    {"flight": "VA456", "eta": "2025-12-01 10:30", "status": "Delayed"},
+    {"flight": "CX789", "eta": "2025-12-01 12:15", "status": "Scheduled"},
+]
+TRUCKS = [
+    {"id": "Truck-1", "next_maintenance": "2025-12-05", "status": "OK"},
+    {"id": "Truck-2", "next_maintenance": "2025-12-03", "status": "Due"},
+    {"id": "Truck-3", "next_maintenance": "2025-12-10", "status": "OK"},
+]
+
 from dotenv import load_dotenv
 
 load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
@@ -38,6 +57,33 @@ def fix():
 @app.route("/know", methods=["GET", "POST"])
 def know():
     return render_template("know.html", answer=None)
+
+# ----- Pages: Office Manager -----
+@app.route("/roster")
+def roster_page():
+    """
+    Roster page showing personnel assignments.
+    One sentence explanation: renders roster.html with the current roster data.
+    """
+    return render_template("roster.html", roster=ROSTER)
+
+
+@app.route("/schedule")
+def schedule_page():
+    """
+    Flight schedule page listing upcoming flights.
+    One sentence explanation: renders schedule.html with flight schedule data.
+    """
+    return render_template("schedule.html", flights=FLIGHTS)
+
+
+@app.route("/maintenance")
+def maintenance_page():
+    """
+    Truck maintenance page showing upcoming service dates.
+    One sentence explanation: renders maintenance.html with truck maintenance data.
+    """
+    return render_template("maintenance.html", trucks=TRUCKS)
 
 # ----- API: Build -----
 @app.route("/api/build/plan", methods=["POST"])

@@ -27,5 +27,29 @@
       <a href="{{ url_for('know') }}" class="cc-btn cc-btn--primary">Start</a>
     </div>
   </div>
+  <div class="cc-card">
+    <div class="cc-card-icon" aria-hidden="true">👥</div>
+    <h2>Roster</h2>
+    <p>View crew roles and shift coverage</p>
+    <div class="cc-card-actions">
+      <a href="{{ url_for('roster_page') }}" class="cc-btn cc-btn--primary">Open</a>
+    </div>
+  </div>
+  <div class="cc-card">
+    <div class="cc-card-icon" aria-hidden="true">✈️</div>
+    <h2>Schedule</h2>
+    <p>Review upcoming flight arrivals</p>
+    <div class="cc-card-actions">
+      <a href="{{ url_for('schedule_page') }}" class="cc-btn cc-btn--primary">Open</a>
+    </div>
+  </div>
+  <div class="cc-card">
+    <div class="cc-card-icon" aria-hidden="true">🛠️</div>
+    <h2>Maintenance</h2>
+    <p>Check truck service readiness</p>
+    <div class="cc-card-actions">
+      <a href="{{ url_for('maintenance_page') }}" class="cc-btn cc-btn--primary">Open</a>
+    </div>
+  </div>
 </div>
 {% endblock %}
