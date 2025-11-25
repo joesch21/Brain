@@ -86,6 +86,32 @@
           </tbody>
         </table>
       </section>
+
+      <section class="card">
+        <h2>Recent Changes (Audit Log)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Entity</th>
+              <th>Action</th>
+              <th>Actor Role</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in recent_audit %}
+            <tr>
+              <td>{{ entry.timestamp }}</td>
+              <td>{{ entry.entity_type }} #{{ entry.entity_id or "?" }}</td>
+              <td>{{ entry.action }}</td>
+              <td>{{ entry.actor_role or "-" }}</td>
+              <td>{{ entry.description or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
     </main>
   </body>
 </html>

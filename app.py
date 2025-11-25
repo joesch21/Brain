@@ -74,6 +74,20 @@ class Flight(db.Model):
     status = db.Column(db.String(40), default="Scheduled")
 
 
+class AuditLog(db.Model):
+    __tablename__ = "audit_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    entity_type = db.Column(db.String(40), nullable=False)
+    entity_id = db.Column(db.Integer, nullable=True)
+    action = db.Column(db.String(20), nullable=False)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    description = db.Column(db.Text, nullable=True)
+
+    actor_role = db.Column(db.String(40), nullable=True)
+    actor_name = db.Column(db.String(80), nullable=True)
+
+
 def requires_supervisor(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -83,6 +97,22 @@ def requires_supervisor(f):
         return f(*args, **kwargs)
 
     return wrapper
+
+
+def log_audit(entity_type, entity_id, action, description=None):
+    """
+    Record a simple audit event in the AuditLog table.
+    """
+    role = get_current_role()
+    entry = AuditLog(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+        description=description,
+        actor_role=role,
+        actor_name=None,
+    )
+    db.session.add(entry)
 
 
 @app.context_processor
@@ -173,6 +203,13 @@ def employee_create():
                 active=active,
             )
             db.session.add(emp)
+            db.session.flush()
+            log_audit(
+                entity_type="Employee",
+                entity_id=emp.id,
+                action="create",
+                description=f"Created employee {emp.name} role={emp.role} shift={emp.shift} base={emp.base}",
+            )
             db.session.commit()
             flash("Employee created.", "success")
             return redirect(url_for("roster_page"))
@@ -198,11 +235,20 @@ def employee_edit(employee_id):
         if not name or not role or not shift:
             flash("Name, role and shift are required.", "error")
         else:
+            before = f"{emp.name} role={emp.role} shift={emp.shift} base={emp.base} active={emp.active}"
             emp.name = name
             emp.role = role
             emp.shift = shift
             emp.base = base or None
             emp.active = active
+            after = f"{emp.name} role={emp.role} shift={emp.shift} base={emp.base} active={emp.active}"
+            db.session.flush()
+            log_audit(
+                entity_type="Employee",
+                entity_id=emp.id,
+                action="update",
+                description=f"Employee {employee_id} changed: {before} -> {after}",
+            )
             db.session.commit()
             flash("Employee updated.", "success")
             return redirect(url_for("roster_page"))
@@ -218,6 +264,13 @@ def employee_delete(employee_id):
     For now: hard delete.
     """
     emp = Employee.query.get_or_404(employee_id)
+    summary = f"{emp.name} role={emp.role} shift={emp.shift} base={emp.base} active={emp.active}"
+    log_audit(
+        entity_type="Employee",
+        entity_id=emp.id,
+        action="delete",
+        description=f"Deleted employee {employee_id}: {summary}",
+    )
     db.session.delete(emp)
     db.session.commit()
     flash("Employee deleted.", "success")
@@ -265,6 +318,13 @@ def flight_create():
                     status=status,
                 )
                 db.session.add(f)
+                db.session.flush()
+                log_audit(
+                    entity_type="Flight",
+                    entity_id=f.id,
+                    action="create",
+                    description=f"Created flight {f.flight_number} {f.airline} eta={f.eta} bay={f.bay} fuel={f.fuel_tonnes}",
+                )
                 db.session.commit()
                 flash("Flight created.", "success")
                 return redirect(url_for("schedule_page"))
@@ -296,12 +356,21 @@ def flight_edit(flight_id):
             except ValueError:
                 flash("Invalid ETA format.", "error")
             else:
+                before = f"{f.flight_number} {f.airline} eta={f.eta} bay={f.bay} fuel={f.fuel_tonnes} status={f.status}"
                 f.flight_number = flight_number
                 f.airline = airline
                 f.eta = eta
                 f.bay = bay or None
                 f.fuel_tonnes = float(fuel_tonnes_str) if fuel_tonnes_str else None
                 f.status = status
+                after = f"{f.flight_number} {f.airline} eta={f.eta} bay={f.bay} fuel={f.fuel_tonnes} status={f.status}"
+                db.session.flush()
+                log_audit(
+                    entity_type="Flight",
+                    entity_id=f.id,
+                    action="update",
+                    description=f"Flight {flight_id} changed: {before} -> {after}",
+                )
                 db.session.commit()
                 flash("Flight updated.", "success")
                 return redirect(url_for("schedule_page"))
@@ -317,6 +386,13 @@ def flight_delete(flight_id):
     Delete a flight entry.
     """
     f = Flight.query.get_or_404(flight_id)
+    summary = f"{f.flight_number} {f.airline} eta={f.eta} bay={f.bay} fuel={f.fuel_tonnes} status={f.status}"
+    log_audit(
+        entity_type="Flight",
+        entity_id=f.id,
+        action="delete",
+        description=f"Deleted flight {flight_id}: {summary}",
+    )
     db.session.delete(f)
     db.session.commit()
     flash("Flight deleted.", "success")
@@ -353,6 +429,11 @@ def machine_room():
 
     recent_employees = Employee.query.order_by(Employee.id.desc()).limit(5).all()
     recent_flights = Flight.query.order_by(Flight.eta.desc()).limit(5).all()
+    recent_audit = (
+        AuditLog.query.order_by(AuditLog.timestamp.desc())
+        .limit(20)
+        .all()
+    )
 
     return render_template(
         "machine_room.html",
@@ -362,6 +443,7 @@ def machine_room():
         flight_count=flight_count,
         recent_employees=recent_employees,
         recent_flights=recent_flights,
+        recent_audit=recent_audit,
     )
 
 # ----- API: Build -----
