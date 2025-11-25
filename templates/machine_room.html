@@ -95,6 +95,7 @@
               <th>When</th>
               <th>Entity</th>
               <th>Action</th>
+              <th>Actor</th>
               <th>Actor Role</th>
               <th>Description</th>
             </tr>
@@ -105,6 +106,7 @@
               <td>{{ entry.timestamp }}</td>
               <td>{{ entry.entity_type }} #{{ entry.entity_id or "?" }}</td>
               <td>{{ entry.action }}</td>
+              <td>{{ entry.actor_name or "-" }}</td>
               <td>{{ entry.actor_role or "-" }}</td>
               <td>{{ entry.description or "-" }}</td>
             </tr>

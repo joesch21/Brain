@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Login – Office Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cc-ui.css') }}" />
+  </head>
+  <body class="cc-body">
+    <header class="topbar">
+      <div class="brand">Office Manager – Login</div>
+      <a href="{{ url_for('home') }}" class="link-small">Back to dashboard</a>
+    </header>
+
+    <main class="cc-main">
+      <section class="card">
+        <h1>Sign in</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-container">
+              {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="post" class="form-grid">
+          <label>
+            Username
+            <input type="text" name="username" required />
+          </label>
+
+          <label>
+            Password
+            <input type="password" name="password" required />
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Login</button>
+            <a href="{{ url_for('home') }}" class="btn-secondary">Cancel</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

@@ -16,6 +16,7 @@ from flask import (
     url_for,
 )
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import check_password_hash, generate_password_hash
 
 TRUCKS = [
     {"id": "Truck-1", "next_maintenance": "2025-12-05", "status": "OK"},
@@ -39,13 +40,6 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 SUPPORTED_ROLES = ("operator", "supervisor")
-
-
-def get_current_role():
-    role = session.get("role", "operator")
-    if role not in SUPPORTED_ROLES:
-        role = "operator"
-    return role
 
 
 db = SQLAlchemy(app)
@@ -88,6 +82,39 @@ class AuditLog(db.Model):
     actor_name = db.Column(db.String(80), nullable=True)
 
 
+class User(db.Model):
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(40), nullable=False, default="operator")
+
+    def set_password(self, password: str):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        return check_password_hash(self.password_hash, password)
+
+
+def get_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    return User.query.get(user_id)
+
+
+def get_current_role():
+    user = get_current_user()
+    if user:
+        role = user.role
+    else:
+        role = "operator"
+    if role not in SUPPORTED_ROLES:
+        role = "operator"
+    return role
+
+
 def requires_supervisor(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -103,21 +130,27 @@ def log_audit(entity_type, entity_id, action, description=None):
     """
     Record a simple audit event in the AuditLog table.
     """
-    role = get_current_role()
+    user = get_current_user()
+    role = user.role if user else get_current_role()
+    if role not in SUPPORTED_ROLES:
+        role = "operator"
     entry = AuditLog(
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,
         description=description,
         actor_role=role,
-        actor_name=None,
+        actor_name=user.username if user else None,
     )
     db.session.add(entry)
 
 
 @app.context_processor
 def inject_role():
-    return {"get_current_role": get_current_role}
+    return {
+        "get_current_role": get_current_role,
+        "current_user": get_current_user(),
+    }
 
 BASE_DIR = os.path.dirname(__file__)
 app.config["UPLOAD_FOLDER"] = os.path.join(BASE_DIR, "uploads")
@@ -135,20 +168,34 @@ def home():
     return render_template("home.html", job=None)
 
 
-@app.route("/set-role", methods=["POST"])
-def set_role():
+@app.route("/login", methods=["GET", "POST"])
+def login():
     """
-    Set the current UI role (operator/supervisor) in the session.
-    This is a simple internal control, not a secure login system.
+    Simple login: username + password.
     """
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
 
-    role = request.form.get("role", "operator")
-    if role not in SUPPORTED_ROLES:
-        flash("Invalid role selected.", "error")
-    else:
-        session["role"] = role
-        flash(f"Role set to {role}.", "success")
-    return redirect(request.referrer or url_for("home"))
+        user = User.query.filter_by(username=username).first()
+        if not user or not user.check_password(password):
+            flash("Invalid username or password.", "error")
+        else:
+            session["user_id"] = user.id
+            flash(f"Welcome, {user.username}.", "success")
+            return redirect(url_for("home"))
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    """
+    Clear login session.
+    """
+    session.pop("user_id", None)
+    flash("Logged out.", "success")
+    return redirect(url_for("home"))
 
 @app.route("/build", methods=["GET", "POST"])
 def build():
