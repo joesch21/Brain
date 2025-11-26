@@ -1,77 +1,29 @@
 {% extends "_layout.html" %}
-{% block title %}Settings — User & Roles{% endblock %}
+{% block title %}Settings — Configuration{% endblock %}
 {% block content %}
-<h1>Settings</h1>
+<main class="cc-panel">
+  <h1>Settings</h1>
 
-<section class="cc-card">
-  <h2>Admin – User & Roles</h2>
-  <p class="text-muted">
-    Create Supervisor and Refueller accounts for your refuelling office.
-  </p>
+  <section class="cc-card">
+    <h2>Models</h2>
+    <ul>
+      <li>Build model: {{ settings.openai_model_build }}</li>
+      <li>Fix model: {{ settings.openai_model_fix }}</li>
+      <li>Know model: {{ settings.openai_model_know }}</li>
+      <li>Embedding model: {{ settings.embed_model }}</li>
+    </ul>
+  </section>
 
-  <form method="post" class="user-create-form">
-    <div class="cc-field-row">
-      <label for="username">Username</label>
-      <input
-        id="username"
-        name="username"
-        type="text"
-        placeholder="e.g. jane.supervisor"
-        required
-      >
-    </div>
+  <section class="cc-card">
+    <h2>Database</h2>
+    <p>Type: {{ settings.db_type }}</p>
+    <p>URI (preview): {{ settings.db_uri_preview }}</p>
+    <p class="cc-text-muted">Full credentials are never shown in the UI.</p>
+  </section>
 
-    <div class="cc-field-row">
-      <label for="password">Password</label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        placeholder="Set an initial password"
-        required
-      >
-    </div>
-
-    <div class="cc-field-row">
-      <label for="role">Role</label>
-      <select id="role" name="role">
-        <option value="supervisor">Supervisor</option>
-        <option value="refueler">Refueller</option>
-        <option value="viewer">Viewer (read-only)</option>
-        <option value="admin">Admin</option>
-      </select>
-    </div>
-
-    <button type="submit" class="cc-btn cc-btn--primary">Create user</button>
-  </form>
-</section>
-
-<section class="cc-card" style="margin-top: 1.5rem;">
-  <h2>Existing users</h2>
-
-  {% if users %}
-    <table class="cc-table">
-      <thead>
-        <tr>
-          <th>Username</th>
-          <th>Role</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for u in users %}
-        <tr>
-          <td>{{ u.username }}</td>
-          <td>{{ u.role }}</td>
-          <td>
-            <a href="{{ url_for('settings_user_edit', user_id=u.id) }}">Edit</a>
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p>No users found yet. Create a supervisor or refueller above.</p>
-  {% endif %}
-</section>
+  <section class="cc-card">
+    <h2>Preferences (coming soon)</h2>
+    <p>Voice selection and per-user preferences will be configured here.</p>
+  </section>
+</main>
 {% endblock %}

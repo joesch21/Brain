@@ -202,6 +202,16 @@ def requires_supervisor(f):
     return require_role("supervisor")(f)
 
 
+def detect_db_type(uri: str) -> str:
+    if not uri:
+        return "Unknown"
+    if uri.startswith("postgres"):
+        return "PostgreSQL"
+    if uri.startswith("sqlite"):
+        return "SQLite"
+    return "Unknown"
+
+
 def log_audit(entity_type, entity_id, action, description=None):
     """
     Record a simple audit event in the AuditLog table.
@@ -394,68 +404,6 @@ def admin_users_edit(user_id):
         return redirect(url_for("admin_users"))
 
     return render_template("admin_users_form.html", mode="edit", user=user)
-
-
-@app.route("/settings", methods=["GET", "POST"])
-@require_role("admin")
-def settings():
-    # List users for display
-    users = User.query.order_by(User.username.asc()).all()
-
-    if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
-        password = request.form.get("password") or ""
-        role = (request.form.get("role") or "refueler").strip()
-
-        allowed_roles = ("admin", "supervisor", "refueler", "viewer")
-        if role not in allowed_roles:
-            flash("Invalid role selected.", "danger")
-            return render_template("settings.html", users=users)
-
-        if not username or not password:
-            flash("Username and password are required.", "danger")
-            return render_template("settings.html", users=users)
-
-        existing = User.query.filter_by(username=username).first()
-        if existing:
-            flash("Username already exists.", "danger")
-            return render_template("settings.html", users=users)
-
-        user = User(username=username, role=role)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-
-        flash(f"User {username} created with role {role}.", "success")
-        users = User.query.order_by(User.username.asc()).all()
-
-    return render_template("settings.html", users=users)
-
-
-@app.route("/settings/users/<int:user_id>", methods=["GET", "POST"])
-@require_role("admin")
-def settings_user_edit(user_id):
-    user = User.query.get_or_404(user_id)
-
-    if request.method == "POST":
-        new_role = (request.form.get("role") or user.role).strip()
-        new_password = request.form.get("password") or ""
-
-        allowed_roles = ("admin", "supervisor", "refueler", "viewer")
-        if new_role not in allowed_roles:
-            flash("Invalid role.", "danger")
-            return render_template("settings_user_edit.html", user=user)
-
-        user.role = new_role
-
-        if new_password:
-            user.set_password(new_password)
-
-        db.session.commit()
-        flash(f"User {user.username} updated.", "success")
-        return redirect(url_for("settings"))
-
-    return render_template("settings_user_edit.html", user=user)
 
 @app.route("/build", methods=["GET", "POST"])
 def build():
@@ -919,12 +867,7 @@ def machine_room():
     """
 
     uri = app.config["SQLALCHEMY_DATABASE_URI"]
-    if uri.startswith("postgres"):
-        db_type = "PostgreSQL"
-    elif uri.startswith("sqlite"):
-        db_type = "SQLite"
-    else:
-        db_type = "Unknown"
+    db_type = detect_db_type(uri)
 
     employee_count = Employee.query.count()
     flight_count = Flight.query.count()
@@ -951,6 +894,29 @@ def machine_room():
         recent_flights=recent_flights,
         recent_audit=recent_audit,
     )
+
+
+@app.route("/settings")
+@require_role("supervisor", "admin")
+def settings_page():
+    """
+    Settings page showing current model and database configuration.
+    One sentence explanation: renders settings.html with safe DB and model info.
+    """
+
+    uri = app.config["SQLALCHEMY_DATABASE_URI"]
+    db_type = detect_db_type(uri)
+
+    settings = {
+        "db_type": db_type,
+        "db_uri_preview": (uri[:60] + "…") if uri else "",
+        "openai_model_build": os.getenv("OPENAI_MODEL_BUILD", "gpt-4o-mini"),
+        "openai_model_fix": os.getenv("OPENAI_MODEL_FIX", "gpt-4o-mini"),
+        "openai_model_know": os.getenv("OPENAI_MODEL_KNOW", "gpt-4o-mini"),
+        "embed_model": os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small"),
+    }
+
+    return render_template("settings.html", settings=settings)
 
 # ----- API: Build -----
 @app.route("/api/build/plan", methods=["POST"])
