@@ -486,11 +486,11 @@ def roster_page():
     """
     Roster page showing current employees and their shifts.
     """
-    entries = (
+    roster_entries = (
         RosterEntry.query.order_by(RosterEntry.date.asc(), RosterEntry.shift_start.asc())
         .all()
     )
-    return render_template("roster.html", roster_entries=entries)
+    return render_template("roster.html", roster_entries=roster_entries)
 
 
 @app.route("/employees/new", methods=["GET", "POST"])
