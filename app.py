@@ -431,6 +431,32 @@ def settings():
 
     return render_template("settings.html", users=users)
 
+
+@app.route("/settings/users/<int:user_id>", methods=["GET", "POST"])
+@require_role("admin")
+def settings_user_edit(user_id):
+    user = User.query.get_or_404(user_id)
+
+    if request.method == "POST":
+        new_role = (request.form.get("role") or user.role).strip()
+        new_password = request.form.get("password") or ""
+
+        allowed_roles = ("admin", "supervisor", "refueler", "viewer")
+        if new_role not in allowed_roles:
+            flash("Invalid role.", "danger")
+            return render_template("settings_user_edit.html", user=user)
+
+        user.role = new_role
+
+        if new_password:
+            user.set_password(new_password)
+
+        db.session.commit()
+        flash(f"User {user.username} updated.", "success")
+        return redirect(url_for("settings"))
+
+    return render_template("settings_user_edit.html", user=user)
+
 @app.route("/build", methods=["GET", "POST"])
 def build():
     return render_template("build.html", job=None, steps=[])
