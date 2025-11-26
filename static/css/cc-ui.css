@@ -82,3 +82,11 @@ textarea{resize:vertical}
 @media (prefers-reduced-motion: reduce){
   *{transition:none !important; animation:none !important}
 }
+
+.voice-transcript {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #8a9ba8;
+  font-family: monospace;
+  opacity: 0.9;
+}
