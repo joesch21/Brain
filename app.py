@@ -1084,6 +1084,33 @@ def settings_page():
 
     return render_template("settings.html", settings=settings)
 
+
+@app.route("/admin/dev-seed", methods=["POST"])
+@require_role("supervisor", "admin")
+def admin_dev_seed():
+    """
+    Dev-only endpoint to initialize and seed demo data for office views.
+
+    Safe to run multiple times: seed scripts check for existing rows
+    before inserting, and use db.create_all() under the hood.
+    """
+    import importlib
+
+    try:
+        # Import here to avoid circular imports at module load time
+        seed_db = importlib.import_module("seed_db")
+        office_seed = importlib.import_module("scripts.seed_office_data")
+
+        # These functions already wrap their work in app.app_context()
+        seed_db.seed()
+        office_seed.seed_office_data()
+
+        flash("Dev database seeded successfully.", "success")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Error seeding dev data: {exc}", "danger")
+
+    return redirect(url_for("settings_page"))
+
 # ----- API: Build -----
 @app.route("/api/build/plan", methods=["POST"])
 def api_build_plan():
