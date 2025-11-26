@@ -2,6 +2,7 @@
   "project": {
     "name": "The Brain",
     "status": "operational",
+    "repo": "https://github.com/your-org/the-brain",
     "purpose": "Flask-based control center for Build, Fix, and Know flows with an office manager demo dataset.",
     "primary_user_flows": [
       "Build: plan and generate implementation tasks via the Build orchestrator",
@@ -25,6 +26,12 @@
     }
   },
   "work_order_audit": {
+    "in_progress_or_partially_implemented": [
+      {
+        "id": "CWO-MR-SUMMARY-01",
+        "title": "Surface project summary JSON in Machine Room"
+      }
+    ],
     "completed_or_legacy": [
       {
         "id": "CWO-BUILD-01",
@@ -42,5 +49,8 @@
         "status": "complete"
       }
     ]
-  }
+  },
+  "notes": [
+    "Machine Room is the canonical place to inspect TheBrain/project_summary.json metadata for supervisors."
+  ]
 }
