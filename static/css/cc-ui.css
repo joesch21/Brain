@@ -107,6 +107,30 @@ textarea{resize:vertical}
   padding-left: 1.25rem;
 }
 
+.voice-btn {
+  font-size: 1rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid #3aa76d;
+  background: #111;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.voice-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.voice-hint {
+  font-size: 0.9rem;
+  color: #8a9ba8;
+}
+
 .voice-hero-hint {
   font-size: 0.9rem;
   color: #8a9ba8;
