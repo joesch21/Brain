@@ -90,3 +90,66 @@ textarea{resize:vertical}
   font-family: monospace;
   opacity: 0.9;
 }
+
+.voice-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.voice-hero-text h1 {
+  margin-bottom: 0.5rem;
+}
+
+.voice-hero-text ul {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.voice-hero-hint {
+  font-size: 0.9rem;
+  color: #8a9ba8;
+}
+
+.voice-hero-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.voice-btn-large {
+  font-size: 1.8rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 999px;
+  border: 1px solid #3aa76d;
+  background: #111;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-btn-large.is-listening {
+  box-shadow: 0 0 0 4px rgba(58, 167, 109, 0.2);
+  animation: pulse-glow 1.2s infinite ease-in-out;
+}
+
+.voice-status-label {
+  font-size: 0.85rem;
+  color: #8a9ba8;
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 0 4px rgba(58, 167, 109, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(58, 167, 109, 0.1);
+  }
+  100% {
+    box-shadow: 0 0 0 4px rgba(58, 167, 109, 0.4);
+  }
+}

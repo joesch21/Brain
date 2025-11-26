@@ -45,18 +45,92 @@
     window.speechSynthesis.speak(utterance);
   }
 
+  function setListeningState(isListening) {
+    const heroBtn = document.getElementById("voice-hero-button");
+    if (heroBtn) {
+      heroBtn.classList.toggle("is-listening", isListening);
+    }
+
+    const headerBtn = document.getElementById("voice-command-btn");
+    if (headerBtn) {
+      headerBtn.classList.toggle("is-listening", isListening);
+    }
+
+    const label = window.voiceStatusLabel || document.getElementById("voice-status-label");
+    if (label) {
+      label.textContent = isListening ? "Listening..." : "Ready to listen";
+    }
+  }
+
   // Interpret raw speech into a command.
   function interpretCommand(raw) {
     const t = raw.toLowerCase();
 
-    // Navigation intents (extend later as needed)
-    if (t.includes("build")) return { type: "nav", target: "/build" };
-    if (t.includes("fix")) return { type: "nav", target: "/fix" };
-    if (t.includes("home")) return { type: "nav", target: "/" };
-    if (t.includes("know")) {
+    // NAVIGATION: home
+    if (t.includes("home") || t.includes("dashboard")) {
+      return { type: "nav", target: "/" };
+    }
+
+    // NAVIGATION: roster / staff / employees
+    if (
+      t.includes("roster") ||
+      t.includes("staff") ||
+      t.includes("employees") ||
+      t.includes("team")
+    ) {
+      return { type: "nav", target: "/roster" };
+    }
+
+    // NAVIGATION: schedule / flights
+    if (
+      t.includes("schedule") ||
+      t.includes("flights") ||
+      t.includes("flight board") ||
+      t.includes("today's flights") ||
+      t.includes("todays flights")
+    ) {
+      return { type: "nav", target: "/schedule" };
+    }
+
+    // NAVIGATION: maintenance / trucks
+    if (
+      t.includes("maintenance") ||
+      t.includes("truck maintenance") ||
+      t.includes("trucks")
+    ) {
+      return { type: "nav", target: "/maintenance" };
+    }
+
+    // NAVIGATION: machine room / logs / recent changes
+    if (
+      t.includes("machine room") ||
+      t.includes("machine-room") ||
+      t.includes("logs") ||
+      t.includes("activity") ||
+      t.includes("recent changes")
+    ) {
+      return { type: "nav", target: "/machine-room" };
+    }
+
+    // NAVIGATION: build / fix
+    if (t.includes("build")) {
+      return { type: "nav", target: "/build" };
+    }
+    if (t.includes("fix") || t.includes("debug")) {
+      return { type: "nav", target: "/fix" };
+    }
+
+    // KNOWLEDGE / STATUS QUERIES
+    if (t.includes("know") || t.includes("knowledge")) {
       const idx = t.indexOf("know");
-      const q = raw.slice(idx + "know".length).trim() || raw;
-      return { type: "know", question: q };
+      const q = idx >= 0 ? raw.slice(idx + "know".length).trim() : raw;
+      return { type: "know", question: q || raw };
+    }
+
+    if (t.includes("status of") || t.startsWith("what's the status")) {
+      const idx = t.indexOf("status of");
+      const q = idx >= 0 ? raw.slice(idx + "status of".length).trim() : raw;
+      return { type: "know", question: q || raw };
     }
 
     // If on /know and no keyword, treat the entire utterance as the question.
@@ -76,14 +150,38 @@
       }
       speak(
         "I heard you, but I'm not sure what to do with that. " +
-          "You can say things like: ask Know about today's flights, " +
-          "or open build, or open fix."
+          "Try saying: open roster, show me today’s flights, open machine room, " +
+          "or ask Know about truck maintenance."
       );
       return;
     }
 
     if (cmd.type === "nav") {
-      speak("Okay, opening that for you.");
+      let label = "that page";
+      switch (cmd.target) {
+        case "/":
+          label = "the dashboard";
+          break;
+        case "/roster":
+          label = "the roster";
+          break;
+        case "/schedule":
+          label = "the flight schedule";
+          break;
+        case "/maintenance":
+          label = "the maintenance page";
+          break;
+        case "/machine-room":
+          label = "the machine room";
+          break;
+        case "/build":
+          label = "the build workspace";
+          break;
+        case "/fix":
+          label = "the fix workspace";
+          break;
+      }
+      speak(`Okay, opening ${label}.`);
       window.location.href = cmd.target;
       return;
     }
@@ -144,7 +242,10 @@
 
     speak("What can I help you with today?");
 
+    setListeningState(true);
+
     rec.onresult = (event) => {
+      setListeningState(false);
       const transcript = event.results[0][0].transcript.trim();
       console.log("[voice] heard:", transcript);
 
@@ -172,6 +273,11 @@
 
     rec.onerror = (event) => {
       console.error("[voice] error:", event.error);
+      setListeningState(false);
+    };
+
+    rec.onend = () => {
+      setListeningState(false);
     };
 
     rec.start();

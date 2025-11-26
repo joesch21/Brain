@@ -77,6 +77,38 @@
   </div>
 </header>
 
+<section class="cc-card voice-hero">
+  <div class="voice-hero-text">
+    <h1>Ops Assistant</h1>
+    <p>
+      Press the mic and talk to your refuelling office.
+      Try saying:
+    </p>
+    <ul>
+      <li>“Open roster”</li>
+      <li>“Show me today’s flights”</li>
+      <li>“Open machine room”</li>
+      <li>“Ask Know about truck maintenance”</li>
+    </ul>
+    <p class="voice-hero-hint">
+      I’ll repeat back what I heard and confirm before I do anything.
+    </p>
+  </div>
+  <div class="voice-hero-action">
+    <button
+      type="button"
+      id="voice-hero-button"
+      class="voice-btn voice-btn-large"
+      title="Talk to Ops Assistant"
+    >
+      🎙
+    </button>
+    <div id="voice-status-label" class="voice-status-label">
+      Ready to listen
+    </div>
+  </div>
+</section>
+
 <h1 class="cc-h1">Welcome</h1>
 <div class="cc-grid cc-grid-3">
   <div class="cc-card">
@@ -144,13 +176,22 @@
 </div>
 
 <script>
-  const voiceBtn = document.getElementById("voice-command-btn");
-  if (voiceBtn) {
-    voiceBtn.addEventListener("click", () => {
-      if (window.voice) {
+  (function () {
+    const heroBtn = document.getElementById("voice-hero-button");
+    if (heroBtn && window.voice) {
+      heroBtn.addEventListener("click", () => {
         window.voice.startListening();
-      }
-    });
-  }
+      });
+    }
+
+    const voiceBtn = document.getElementById("voice-command-btn");
+    if (voiceBtn && window.voice) {
+      voiceBtn.addEventListener("click", () => {
+        window.voice.startListening();
+      });
+    }
+
+    window.voiceStatusLabel = document.getElementById("voice-status-label");
+  })();
 </script>
 {% endblock %}
