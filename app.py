@@ -35,6 +35,7 @@ from services.knowledge import KnowledgeService
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-me")
 raw_uri = os.getenv("DATABASE_URL", "sqlite:///cc_office.db")
+app.config["SUPERVISOR_KEY"] = os.getenv("SUPERVISOR_KEY")
 
 # Normalize old-style postgres scheme for SQLAlchemy
 if raw_uri.startswith("postgres://"):
@@ -124,12 +125,12 @@ def require_role(*roles):
     def decorator(view_func):
         @wraps(view_func)
         def wrapper(*args, **kwargs):
-            user = get_current_user()
-            if not user:
+            role = get_current_role()
+            if not role:
                 flash("Please log in to access this page.", "info")
                 return redirect(url_for("login", next=request.path))
 
-            if roles and user.role not in roles:
+            if roles and role not in roles:
                 flash("You do not have permission to access this page.", "error")
                 return redirect(url_for("home"))
 
@@ -192,23 +193,43 @@ def login():
     """
     next_url = request.args.get("next") or url_for("home")
 
-    if get_current_user():
+    if get_current_role():
         flash("You are already logged in.", "info")
         return redirect(next_url)
 
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
         next_url = request.form.get("next") or next_url
 
-        user = User.query.filter_by(username=username).first()
-        if not user or not user.check_password(password):
-            flash("Invalid username or password.", "error")
-        else:
+        supervisor_key_input = (request.form.get("supervisor_key") or "").strip()
+        configured_key = app.config.get("SUPERVISOR_KEY")
+
+        if supervisor_key_input:
+            if configured_key and supervisor_key_input == configured_key:
+                session["user_id"] = None
+                session["role"] = "supervisor"
+                session["display_name"] = "Supervisor (key)"
+                flash("Supervisor access granted.", "success")
+                return redirect(next_url)
+            flash("Invalid supervisor key.", "error")
+            return render_template("login.html", next_url=next_url)
+
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+
+        if username and password:
+            user = User.query.filter_by(username=username).first()
+            if not user or not user.check_password(password):
+                flash("Invalid username or password.", "error")
+                return render_template("login.html", next_url=next_url)
+
             session["user_id"] = user.id
             session["role"] = user.role
+            session["display_name"] = user.username
             flash(f"Logged in as {user.username} ({user.role}).", "success")
             return redirect(next_url)
+
+        flash("Please enter a valid supervisor key or username/password.", "error")
+        return render_template("login.html", next_url=next_url)
 
     return render_template("login.html", next_url=next_url)
 

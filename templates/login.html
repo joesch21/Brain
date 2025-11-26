@@ -12,7 +12,7 @@
     </header>
 
     <main class="cc-main">
-      <section class="card">
+      <section class="card login-card">
         <h1>Sign in</h1>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -25,23 +25,40 @@
           {% endif %}
         {% endwith %}
 
-        <form method="post" class="form-grid">
+        <form method="post" class="login-form">
           <input type="hidden" name="next" value="{{ next_url }}" />
-          <label>
-            Username
-            <input type="text" name="username" required />
-          </label>
 
-          <label>
-            Password
-            <input type="password" name="password" required />
-          </label>
+          <div class="card login-card">
+            <h2>Supervisor access</h2>
+            <p class="hint">
+              Enter the supervisor access code to unlock editing and Machine Room tools.
+            </p>
+            <label for="supervisor_key">Supervisor key</label>
+            <input
+              id="supervisor_key"
+              name="supervisor_key"
+              type="password"
+              autocomplete="off"
+              placeholder="••••••••"
+            />
+            <button type="submit" class="btn-primary">Login as supervisor</button>
+          </div>
 
-          <div class="form-actions">
-            <button type="submit" class="btn-primary">Login</button>
-            <a href="{{ url_for('home') }}" class="btn-secondary">Cancel</a>
+          <div class="card login-card">
+            <h2>Staff account (optional)</h2>
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" autocomplete="username" />
+
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" />
+
+            <button type="submit" class="btn-secondary">Login</button>
           </div>
         </form>
+
+        <div class="form-actions" style="margin-top: 1rem;">
+          <a href="{{ url_for('home') }}" class="btn-secondary">Back to dashboard</a>
+        </div>
       </section>
     </main>
   </body>
