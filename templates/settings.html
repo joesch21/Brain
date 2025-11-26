@@ -55,6 +55,7 @@
         <tr>
           <th>Username</th>
           <th>Role</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -62,6 +63,9 @@
         <tr>
           <td>{{ u.username }}</td>
           <td>{{ u.role }}</td>
+          <td>
+            <a href="{{ url_for('settings_user_edit', user_id=u.id) }}">Edit</a>
+          </td>
         </tr>
       {% endfor %}
       </tbody>

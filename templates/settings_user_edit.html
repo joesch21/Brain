@@ -1,0 +1,45 @@
+{% extends "_layout.html" %}
+{% block title %}Edit User — Settings{% endblock %}
+{% block content %}
+<h1>Edit user</h1>
+
+<section class="cc-card">
+  <form method="post" class="user-edit-form">
+    <div class="cc-field-row">
+      <label>Username</label>
+      <input type="text" value="{{ user.username }}" readonly>
+      <p class="text-muted">Username cannot be changed.</p>
+    </div>
+
+    <div class="cc-field-row">
+      <label for="role">Role</label>
+      <select id="role" name="role">
+        {% set current_role = user.role %}
+        {% for r in ['admin', 'supervisor', 'refueler', 'viewer'] %}
+          <option value="{{ r }}" {% if r == current_role %}selected{% endif %}>
+            {{ r|capitalize }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="cc-field-row">
+      <label for="password">New password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        placeholder="Leave blank to keep existing password"
+      >
+      <p class="text-muted">
+        If you set a new password, the old one will stop working.
+      </p>
+    </div>
+
+    <div class="cc-field-row" style="display: flex; gap: 0.5rem; align-items: center;">
+      <button type="submit" class="cc-btn cc-btn--primary">Save changes</button>
+      <a href="{{ url_for('settings') }}" class="cc-btn cc-btn--ghost">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
