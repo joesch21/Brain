@@ -28,7 +28,7 @@
       <a class="cc-nav-link" href="{{ url_for('roster_page') }}">Roster</a>
       <a class="cc-nav-link" href="{{ url_for('schedule_page') }}">Schedule</a>
       <a class="cc-nav-link" href="{{ url_for('maintenance_page') }}">Maintenance</a>
-      {% set current_role = get_current_role() %}
+      {% set current_role = current_role or get_current_role() %}
       {% if current_role == 'supervisor' %}
         <a class="cc-nav-link" href="{{ url_for('machine_room') }}">Machine Room</a>
       {% else %}
@@ -50,7 +50,7 @@
       <div class="user-status">
         {% if current_user %}
           <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">
-            Signed in as {{ current_user.username }} ({{ get_current_role() }})
+            Signed in as {{ current_user.username }} ({{ current_role or 'unknown' }})
           </span>
           <a class="cc-nav-link" href="{{ url_for('logout') }}">Logout</a>
         {% else %}
@@ -80,7 +80,7 @@
 
   <div id="toast-container" class="cc-toast-container" aria-live="polite"></div>
   <script>
-    window.CURRENT_ROLE = "{{ get_current_role() }}";
+    window.CURRENT_ROLE = "{{ current_role or 'guest' }}";
   </script>
   <script src="{{ url_for('static', filename='js/voice.js') }}"></script>
   <script src="{{ url_for('static', filename='js/cc-ui.js') }}"></script>
