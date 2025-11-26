@@ -79,6 +79,16 @@
     }
   }
 
+  function getCurrentRole() {
+    return (window.CURRENT_ROLE || "").toLowerCase();
+  }
+
+  function hasRoleAccess(allowedRoles) {
+    if (!allowedRoles || !allowedRoles.length) return true;
+    const role = getCurrentRole();
+    return allowedRoles.includes(role);
+  }
+
   // Text-to-speech for friendly responses.
   function speak(text) {
     if (!window.speechSynthesis) return;
@@ -189,6 +199,39 @@
       return { type: "know", question: raw };
     }
 
+    // RESTRICTED ACTIONS: require supervisor/admin
+
+    // Add flight
+    if (
+      t.includes("add flight") ||
+      t.includes("create flight") ||
+      t.includes("new flight")
+    ) {
+      return {
+        type: "action",
+        action: "add_flight",
+        restricted: true,
+        allowedRoles: ["admin", "supervisor"],
+      };
+    }
+
+    // Delete flight
+    if (t.includes("delete flight")) {
+      let flightId = null;
+      const match = t.match(/delete flight\s+(\d+)/);
+      if (match && match[1]) {
+        flightId = match[1];
+      }
+
+      return {
+        type: "action",
+        action: "delete_flight",
+        restricted: true,
+        allowedRoles: ["admin", "supervisor"],
+        flightId,
+      };
+    }
+
     return null;
   }
 
@@ -203,6 +246,15 @@
         "I heard you, but I'm not sure what to do with that. " +
           "Try saying: open roster, show me today’s flights, open machine room, " +
           "or ask Know about truck maintenance."
+      );
+      return;
+    }
+
+    // Early permission gate for restricted commands
+    if (cmd.restricted && !hasRoleAccess(cmd.allowedRoles)) {
+      speak(
+        "You don't have permission to do that. " +
+          "Please ask a supervisor or admin."
       );
       return;
     }
@@ -284,6 +336,39 @@
 
       return;
     }
+
+    if (cmd.type === "action") {
+      handleActionCommand(cmd, raw);
+      return;
+    }
+  }
+
+  function handleActionCommand(cmd, raw) {
+    if (cmd.action === "add_flight") {
+      speak("Opening the new flight form.");
+      window.location.href = "/flights/new";
+      return;
+    }
+
+    if (cmd.action === "delete_flight") {
+      if (!cmd.flightId) {
+        speak(
+          "I heard you want to delete a flight, but I didn't catch which one. " +
+            "Please say delete flight followed by the flight number."
+        );
+        return;
+      }
+
+      speak(
+        `Okay, I'll open the delete confirmation for flight ${cmd.flightId}.`
+      );
+      window.location.href = `/flights/${encodeURIComponent(
+        cmd.flightId
+      )}/confirm-delete`;
+      return;
+    }
+
+    speak("I heard an action, but I'm not sure how to handle it yet.");
   }
 
   // One-shot assistant flow: greet, listen, interpret, act.

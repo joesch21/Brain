@@ -568,6 +568,39 @@ def flight_edit(flight_id):
     return render_template("flight_form.html", flight=f, eta_value=eta_value)
 
 
+def delete_flight_record(flight: Flight):
+    summary = (
+        f"{flight.flight_number} {flight.airline} "
+        f"eta={flight.eta} bay={flight.bay} "
+        f"fuel={flight.fuel_tonnes} status={flight.status}"
+    )
+    log_audit(
+        entity_type="Flight",
+        entity_id=flight.id,
+        action="delete",
+        description=f"Deleted flight {flight.id}: {summary}",
+    )
+    db.session.delete(flight)
+    db.session.commit()
+    return summary
+
+
+@app.route("/flights/<int:flight_id>/confirm-delete", methods=["GET", "POST"])
+@require_role("supervisor", "admin")
+def flight_confirm_delete(flight_id):
+    """
+    Confirmation flow for deleting a flight.
+    """
+    f = Flight.query.get_or_404(flight_id)
+
+    if request.method == "POST":
+        delete_flight_record(f)
+        flash("Flight deleted.", "success")
+        return redirect(url_for("schedule_page"))
+
+    return render_template("flight_confirm_delete.html", flight=f)
+
+
 @app.route("/flights/<int:flight_id>/delete", methods=["POST"])
 @requires_supervisor
 def flight_delete(flight_id):
@@ -575,15 +608,7 @@ def flight_delete(flight_id):
     Delete a flight entry.
     """
     f = Flight.query.get_or_404(flight_id)
-    summary = f"{f.flight_number} {f.airline} eta={f.eta} bay={f.bay} fuel={f.fuel_tonnes} status={f.status}"
-    log_audit(
-        entity_type="Flight",
-        entity_id=f.id,
-        action="delete",
-        description=f"Deleted flight {flight_id}: {summary}",
-    )
-    db.session.delete(f)
-    db.session.commit()
+    summary = delete_flight_record(f)
     flash("Flight deleted.", "success")
     return redirect(url_for("schedule_page"))
 
