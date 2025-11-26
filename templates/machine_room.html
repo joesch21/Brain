@@ -9,6 +9,7 @@
       .topbar { display: flex; justify-content: space-between; align-items: center; padding: var(--pad); background: var(--surface); border-bottom: 1px solid var(--line); }
       .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); margin-bottom: var(--pad); }
       .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--pad); }
+      .overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--pad); }
       table { width: 100%; border-collapse: collapse; }
       th, td { padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--line); text-align: left; }
       th { color: var(--muted); font-weight: 600; }
@@ -18,6 +19,8 @@
       .cc-main { max-width: 1100px; margin: 0 auto; padding: var(--pad); }
       .link-small { color: var(--accent); text-decoration: none; }
       .link-small:hover, .link-small:focus { text-decoration: underline; }
+      .section-label { color: var(--muted); font-size: 0.9rem; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 0.3rem; display: block; }
+      .muted { color: var(--muted); }
     </style>
   </head>
   <body class="cc-body">
@@ -27,6 +30,85 @@
     </header>
 
     <main class="cc-main">
+      <section class="card">
+        <h1>System Overview &amp; Audit</h1>
+        {% if not project_summary %}
+          <p class="muted">Project summary not available; check TheBrain/project_summary.json.</p>
+        {% else %}
+          {% set project = project_summary.get('project', {}) %}
+          {% set primary_flows = project_summary.get('primary_user_flows', []) %}
+          {% set stack = project_summary.get('stack', {}) %}
+          {% set work_orders = project_summary.get('work_orders', {}) %}
+
+          <div class="overview-grid">
+            <div>
+              <span class="section-label">Project</span>
+              <h2 style="margin: 0">{{ project.get('name', 'Unknown Project') }}</h2>
+              <p style="margin: 0.2rem 0 0.4rem;">Status: <strong>{{ project.get('status', 'Unknown') }}</strong></p>
+              <p>{{ project.get('purpose', 'No purpose documented.') }}</p>
+              {% if project.get('notes') %}
+              <p class="muted" style="margin: 0.2rem 0 0;">{{ project.get('notes') }}</p>
+              {% endif %}
+            </div>
+
+            <div>
+              <span class="section-label">Primary Flows</span>
+              {% if primary_flows %}
+              <ul>
+                {% for flow in primary_flows %}
+                <li>{{ flow }}</li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <p class="muted">No flows documented.</p>
+              {% endif %}
+            </div>
+
+            <div>
+              <span class="section-label">Stack</span>
+              {% set backend = stack.get('backend', {}) %}
+              <p style="margin: 0 0 0.4rem;">
+                {{ backend.get('framework', 'Unknown framework') }} on {{ backend.get('language', 'Unknown language') }}<br />
+                Database: {{ backend.get('database', 'Not documented') }}
+              </p>
+              {% if backend.get('services') %}
+                <ul>
+                  {% for svc in backend.get('services', []) %}
+                    <li>{{ svc }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+
+            <div>
+              <span class="section-label">Work Orders</span>
+              {% set completed = work_orders.get('completed_or_legacy', []) %}
+              {% set planned = work_orders.get('planned_next', []) %}
+              <p style="margin: 0 0 0.2rem;"><strong>Completed/Legacy:</strong></p>
+              {% if completed %}
+                <ul>
+                  {% for item in completed %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="muted">No completed items recorded.</p>
+              {% endif %}
+              <p style="margin: 0 0 0.2rem;"><strong>Planned Next:</strong></p>
+              {% if planned %}
+                <ul>
+                  {% for item in planned %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="muted">No upcoming work noted.</p>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      </section>
+
       <section class="card">
         <h1>Database Status</h1>
         <p>Backend: <strong>{{ db_type }}</strong></p>

@@ -1,0 +1,60 @@
+{
+  "project": {
+    "name": "The Brain",
+    "status": "operational",
+    "purpose": "Flask-based control center that powers Build, Fix, and Know flows alongside an office manager demo dataset.",
+    "owner": "Supervisor and admin operators",
+    "live_urls": [
+      "http://localhost:5000"
+    ],
+    "repository": "internal",
+    "notes": "Machine Room provides a supervisory view into database health and recent activity."
+  },
+  "primary_user_flows": [
+    "Build: plan and generate implementation tasks through the Build orchestrator",
+    "Fix: review and apply automated fixes via the Fix service",
+    "Know: answer operational questions using the Knowledge service",
+    "Office manager views: roster, schedule, and maintenance dashboards",
+    "Machine Room: supervisor overview of database metrics and audit history"
+  ],
+  "stack": {
+    "backend": {
+      "language": "Python 3",
+      "framework": "Flask",
+      "database": "SQLAlchemy with SQLite or PostgreSQL via DATABASE_URL",
+      "services": [
+        "BuildOrchestrator (services/orchestrator.py)",
+        "FixService (services/fixer.py)",
+        "KnowledgeService (services/knowledge.py)",
+        "ImportService for CSV and JSON uploads"
+      ]
+    },
+    "frontend": {
+      "templates": [
+        "templates/home.html",
+        "templates/machine_room.html",
+        "templates/schedule.html",
+        "templates/maintenance.html"
+      ],
+      "styling": "Dark, green-accent UI in static/css/cc-ui.css"
+    },
+    "operations": {
+      "processes": [
+        "Procfile web: gunicorn app:app"
+      ],
+      "environment": "Configured via .env; compatible with Render/Heroku style deployments"
+    }
+  },
+  "work_orders": {
+    "completed_or_legacy": [
+      "Build/Fix/Know flows wired to orchestrator, fixer, and knowledge services",
+      "Machine Room reporting for employees, flights, maintenance, and audit logs",
+      "CSV/JSON import pipeline for roster and flight data"
+    ],
+    "planned_next": [
+      "Extend knowledge ingestion and embedding refresh cadence",
+      "Surface project summary in Machine Room for supervisory audit (this task)",
+      "Harden authentication and supervisor tooling"
+    ]
+  }
+}

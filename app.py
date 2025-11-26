@@ -3,6 +3,7 @@ import json
 import datetime as dt
 from datetime import datetime
 from functools import wraps
+from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
 from flask import (
@@ -48,6 +49,33 @@ ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
 
 
 db = SQLAlchemy(app)
+
+
+_SUMMARY_PATH = Path(__file__).resolve().parent / "TheBrain" / "project_summary.json"
+_project_summary_cache = None
+
+
+def load_project_summary():
+    """Load a cached project summary for Machine Room display."""
+
+    global _project_summary_cache
+
+    if _project_summary_cache is not None:
+        return _project_summary_cache
+
+    try:
+        with _SUMMARY_PATH.open("r", encoding="utf-8") as summary_file:
+            _project_summary_cache = json.load(summary_file)
+            return _project_summary_cache
+    except FileNotFoundError:
+        app.logger.warning("Project summary file missing at %s", _SUMMARY_PATH)
+    except json.JSONDecodeError as exc:
+        app.logger.warning("Invalid JSON in project summary: %s", exc)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning("Could not load project summary: %s", exc)
+
+    _project_summary_cache = None
+    return None
 
 
 class Employee(db.Model):
@@ -870,6 +898,8 @@ def machine_room():
     uri = app.config["SQLALCHEMY_DATABASE_URI"]
     db_type = detect_db_type(uri)
 
+    project_summary = load_project_summary()
+
     employee_count = Employee.query.count()
     flight_count = Flight.query.count()
     maintenance_count = MaintenanceItem.query.count()
@@ -902,6 +932,7 @@ def machine_room():
         flight_count=flight_count,
         maintenance_count=maintenance_count,
         audit_count=audit_count,
+        project_summary=project_summary,
         recent_employees=recent_employees,
         recent_flights=recent_flights,
         recent_maintenance=recent_maintenance,
