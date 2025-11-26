@@ -28,25 +28,23 @@
     <table class="roster-table">
       <thead>
         <tr>
-          <th>Date</th>
           <th>Name</th>
           <th>Role</th>
-          <th>Shift Start</th>
-          <th>Shift End</th>
-          <th>Truck</th>
-          <th>Notes</th>
+          <th>Shift</th>
+          <th>Base</th>
+          <th>Status</th>
         </tr>
       </thead>
       <tbody>
-        {% for emp in roster %}
+        {% for emp in employees %}
         <tr>
-          <td>{{ emp.date }}</td>
-          <td>{{ emp.employee_name }}</td>
-          <td>{{ emp.role or '-' }}</td>
-          <td>{{ emp.shift_start or '-' }}</td>
-          <td>{{ emp.shift_end or '-' }}</td>
-          <td>{{ emp.truck or '-' }}</td>
-          <td>{{ emp.notes or '-' }}</td>
+          <td>{{ emp.name }}</td>
+          <td>{{ emp.role }}</td>
+          <td>{{ emp.shift }}</td>
+          <td>{{ emp.base or '-' }}</td>
+          <td>
+            <span class="status-pill">{{ 'Active' if emp.active else 'Inactive' }}</span>
+          </td>
         </tr>
         {% endfor %}
       </tbody>

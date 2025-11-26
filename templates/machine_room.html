@@ -8,7 +8,7 @@
       body { background: var(--bg); color: var(--text); }
       .topbar { display: flex; justify-content: space-between; align-items: center; padding: var(--pad); background: var(--surface); border-bottom: 1px solid var(--line); }
       .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); margin-bottom: var(--pad); }
-      .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--pad); }
+      .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--pad); }
       table { width: 100%; border-collapse: collapse; }
       th, td { padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--line); text-align: left; }
       th { color: var(--muted); font-weight: 600; }
@@ -37,7 +37,7 @@
           </code>
         </p>
 
-        <div class="grid-2">
+        <div class="metrics-grid">
           <div class="metric">
             <h2>Employees</h2>
             <p class="metric-number">{{ employee_count }}</p>
@@ -45,6 +45,14 @@
           <div class="metric">
             <h2>Flights</h2>
             <p class="metric-number">{{ flight_count }}</p>
+          </div>
+          <div class="metric">
+            <h2>Maintenance</h2>
+            <p class="metric-number">{{ maintenance_count }}</p>
+          </div>
+          <div class="metric">
+            <h2>Audit Log</h2>
+            <p class="metric-number">{{ audit_count }}</p>
           </div>
         </div>
       </section>
@@ -82,6 +90,25 @@
               <td>{{ f.eta_local or '-' }}</td>
               <td>{{ f.origin or '-' }}</td>
               <td>{{ f.destination or '-' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Maintenance Items</h2>
+        <table>
+          <thead>
+            <tr><th>Item</th><th>Due Date</th><th>Status</th><th>Priority</th></tr>
+          </thead>
+          <tbody>
+            {% for item in recent_maintenance %}
+            <tr>
+              <td>{{ item.item_name }}</td>
+              <td>{{ item.due_date or '-' }}</td>
+              <td>{{ item.status }}</td>
+              <td>{{ item.priority or '-' }}</td>
             </tr>
             {% endfor %}
           </tbody>

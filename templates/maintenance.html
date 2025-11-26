@@ -1,43 +1,46 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Maintenance – Office Manager</title>
-    <style>
-      body { background:#121212; color:#eee; font-family:sans-serif; margin:0; padding:2rem; }
-      nav { margin-bottom:1rem; }
-      nav a { margin-right:1rem; color:#a5d6a7; text-decoration:none; }
-      table { width:100%; border-collapse:collapse; margin-top:1rem; }
-      th, td { padding:0.5rem 1rem; border-bottom:1px solid #333; }
-      th { background:#004d40; color:#a5d6a7; text-align:left; }
-      tr:hover { background:#1e1e1e; }
-    </style>
-  </head>
-  <body>
-    <nav>
-      <a href="/">Home</a>
-      <a href="/roster">Roster</a>
-      <a href="/schedule">Schedule</a>
-      <a href="/maintenance">Maintenance</a>
-    </nav>
-    <h1>Truck Maintenance</h1>
-    <table>
+{% extends "_layout.html" %}
+{% block title %}Maintenance — Office Manager{% endblock %}
+{% block content %}
+<style>
+  .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); }
+  .card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+  .card-header h1 { margin: 0; font-size: 1.5rem; }
+  .maintenance-table { width: 100%; border-collapse: collapse; }
+  .maintenance-table th, .maintenance-table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
+  .maintenance-table th { color: var(--muted); font-weight: 600; }
+  .status-pill { display: inline-flex; align-items: center; padding: 0.25rem 0.6rem; border-radius: 999px; background: var(--line); color: var(--text); font-size: 0.9rem; }
+</style>
+
+<section class="card">
+  <div class="card-header">
+    <h1>Maintenance Items</h1>
+  </div>
+
+  <p>Upcoming and open maintenance actions pulled directly from the connected database.</p>
+
+  <div class="table-wrapper">
+    <table class="maintenance-table">
       <thead>
         <tr>
-          <th>Truck ID</th>
-          <th>Next Maintenance</th>
+          <th>Item</th>
+          <th>Due Date</th>
           <th>Status</th>
+          <th>Priority</th>
+          <th>Notes</th>
         </tr>
       </thead>
       <tbody>
-        {% for truck in trucks %}
+        {% for item in maintenance_items %}
         <tr>
-          <td>{{ truck.id }}</td>
-          <td>{{ truck.next_maintenance }}</td>
-          <td>{{ truck.status }}</td>
+          <td>{{ item.item_name }}</td>
+          <td>{{ item.due_date or '-' }}</td>
+          <td><span class="status-pill">{{ item.status }}</span></td>
+          <td>{{ item.priority or '-' }}</td>
+          <td>{{ item.notes or '-' }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-  </body>
-</html>
+  </div>
+</section>
+{% endblock %}

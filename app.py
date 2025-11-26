@@ -20,12 +20,6 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
 
-TRUCKS = [
-    {"id": "Truck-1", "next_maintenance": "2025-12-05", "status": "OK"},
-    {"id": "Truck-2", "next_maintenance": "2025-12-03", "status": "Due"},
-    {"id": "Truck-3", "next_maintenance": "2025-12-10", "status": "OK"},
-]
-
 from dotenv import load_dotenv
 
 load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
@@ -80,6 +74,17 @@ class Flight(db.Model):
     tail_number = db.Column(db.String(32), nullable=True)
     truck_assignment = db.Column(db.String(64), nullable=True)
     status = db.Column(db.String(32), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+
+class MaintenanceItem(db.Model):
+    __tablename__ = "maintenance_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    item_name = db.Column(db.String(120), nullable=False)
+    due_date = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(40), nullable=False, default="Scheduled")
+    priority = db.Column(db.String(40), nullable=True)
     notes = db.Column(db.Text, nullable=True)
 
 
@@ -428,14 +433,10 @@ def know():
 @require_role("refueler", "supervisor")
 def roster_page():
     """
-    Roster page showing personnel assignments.
-    Now backed by the RosterEntry table instead of in-memory data.
+    Roster page showing current employees and their shifts.
     """
-    roster_entries = (
-        RosterEntry.query.order_by(RosterEntry.date.asc(), RosterEntry.shift_start.asc())
-        .all()
-    )
-    return render_template("roster.html", roster=roster_entries)
+    employees = Employee.query.order_by(Employee.name.asc()).all()
+    return render_template("roster.html", employees=employees)
 
 
 @app.route("/employees/new", methods=["GET", "POST"])
@@ -853,9 +854,9 @@ def admin_import_commit(batch_id):
 def maintenance_page():
     """
     Truck maintenance page showing upcoming service dates.
-    One sentence explanation: renders maintenance.html with truck maintenance data.
     """
-    return render_template("maintenance.html", trucks=TRUCKS)
+    items = MaintenanceItem.query.order_by(MaintenanceItem.due_date.asc()).all()
+    return render_template("maintenance.html", maintenance_items=items)
 
 
 @app.route("/machine-room")
@@ -871,10 +872,19 @@ def machine_room():
 
     employee_count = Employee.query.count()
     flight_count = Flight.query.count()
+    maintenance_count = MaintenanceItem.query.count()
+    audit_count = AuditLog.query.count()
 
     recent_employees = Employee.query.order_by(Employee.id.desc()).limit(5).all()
     recent_flights = (
         Flight.query.order_by(Flight.date.desc(), Flight.eta_local.desc())
+        .limit(5)
+        .all()
+    )
+    recent_maintenance = (
+        MaintenanceItem.query.order_by(
+            MaintenanceItem.due_date.is_(None), MaintenanceItem.due_date.asc()
+        )
         .limit(5)
         .all()
     )
@@ -890,8 +900,11 @@ def machine_room():
         db_uri=uri,
         employee_count=employee_count,
         flight_count=flight_count,
+        maintenance_count=maintenance_count,
+        audit_count=audit_count,
         recent_employees=recent_employees,
         recent_flights=recent_flights,
+        recent_maintenance=recent_maintenance,
         recent_audit=recent_audit,
     )
 
