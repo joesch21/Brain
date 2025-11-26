@@ -26,20 +26,21 @@
       <a class="cc-nav-link" href="{{ url_for('build') }}">Build</a>
       <a class="cc-nav-link" href="{{ url_for('fix') }}">Fix</a>
       <a class="cc-nav-link" href="{{ url_for('know') }}">Know</a>
-      {% if current_role in ['refueler', 'supervisor', 'admin'] %}
-        <a class="cc-nav-link" href="{{ url_for('roster_page') }}">Roster</a>
-        <a class="cc-nav-link" href="{{ url_for('schedule_page') }}">Schedule</a>
-        <a class="cc-nav-link" href="{{ url_for('maintenance_page') }}">Maintenance</a>
-      {% endif %}
+
+      <a class="cc-nav-link" href="{{ url_for('roster_page') }}">Roster</a>
+      <a class="cc-nav-link" href="{{ url_for('schedule_page') }}">Schedule</a>
+      <a class="cc-nav-link" href="{{ url_for('maintenance_page') }}">Maintenance</a>
+
       {% if current_role in ['supervisor', 'admin'] %}
         <a class="cc-nav-link" href="{{ url_for('admin_import_index') }}">Import</a>
       {% endif %}
+
       {% if current_role in ['supervisor', 'admin'] %}
         <a class="cc-nav-link" href="{{ url_for('machine_room') }}">Machine Room</a>
       {% else %}
         <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true" title="Supervisor role required">Machine Room</span>
       {% endif %}
-      <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Jobs</span>
+
       {% if current_role in ['supervisor', 'admin'] %}
         <a class="cc-nav-link" href="{{ url_for('settings_page') }}">Settings</a>
       {% endif %}
