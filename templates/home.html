@@ -145,10 +145,10 @@
 
 <script>
   const voiceBtn = document.getElementById("voice-command-btn");
-  if (voiceBtn && window.voice) {
+  if (voiceBtn) {
     voiceBtn.addEventListener("click", () => {
-      if (window.voice.startAssistantFlow) {
-        window.voice.startAssistantFlow();
+      if (window.voice) {
+        window.voice.startListening();
       }
     });
   }

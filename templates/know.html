@@ -3,11 +3,31 @@
 {% block content %}
 <h1 class="cc-h1">Know</h1>
 <form id="know-form" method="post" class="cc-form" action="/know">
-  <label for="know-question-input">Question</label>
+  <label for="question-input">Question</label>
   <div style="display:flex; gap:0.5rem; align-items:flex-start;">
-    <input id="know-question-input" name="question" type="text" class="cc-input" placeholder="Ask something about the project…" required style="flex:1;" value="{{ prefill_question or '' }}" />
-    <button type="button" class="cc-btn" aria-label="Speak question" onclick="window.voice.startDictation()">🎤</button>
+    <input
+      id="question-input"
+      type="text"
+      name="question"
+      class="cc-input"
+      placeholder="Ask something about the project…"
+      required
+      style="flex:1;"
+      value="{{ prefill_question or '' }}"
+    />
+    <button
+      type="button"
+      class="cc-btn"
+      id="know-voice-button"
+      title="Speak your question"
+      aria-label="Speak your question"
+    >
+      🎤
+    </button>
     <button id="ask-btn" class="cc-btn cc-btn--primary" type="submit">Ask</button>
+  </div>
+  <div id="know-voice-transcript" class="voice-transcript">
+    <!-- Voice transcript will appear here -->
   </div>
   <p class="voice-hint" style="margin-top:0.5rem; color:#9fbad2;">
     Tip: Tap the mic in the top bar and say “ask Know about today’s flights”.
@@ -23,7 +43,7 @@
 
 <script>
 const form = document.getElementById('know-form');
-const questionInput = document.getElementById('know-question-input');
+const questionInput = document.getElementById('question-input');
 
 form.addEventListener('submit', async (event)=>{
   event.preventDefault();
@@ -40,6 +60,15 @@ const presetQuestion = questionInput.value || urlParams.get('voice_q') || urlPar
 if (presetQuestion) {
   questionInput.value = presetQuestion;
   form.dispatchEvent(new Event('submit', { cancelable: true }));
+}
+
+const knowVoiceBtn = document.getElementById("know-voice-button");
+if (knowVoiceBtn) {
+  knowVoiceBtn.addEventListener("click", () => {
+    if (window.voice) {
+      window.voice.startListening();
+    }
+  });
 }
 </script>
 {% endblock %}
