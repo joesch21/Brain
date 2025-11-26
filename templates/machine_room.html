@@ -1,188 +1,93 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Machine Room – DB Overview</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/cc-ui.css') }}" />
-    <style>
-      body { background: var(--bg); color: var(--text); }
-      .topbar { display: flex; justify-content: space-between; align-items: center; padding: var(--pad); background: var(--surface); border-bottom: 1px solid var(--line); }
-      .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); margin-bottom: var(--pad); }
-      .cc-card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); margin-bottom: var(--pad); }
-      .cc-card-wide h2 { margin-top: 0; }
-      .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--pad); }
-      .overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--pad); }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--line); text-align: left; }
-      th { color: var(--muted); font-weight: 600; }
-      .metric-number { font-size: 2rem; font-weight: 700; margin: 0.3rem 0 0; }
-      .metric h2 { margin: 0; }
-      .db-uri code { background: #0c1118; padding: 0.35rem 0.45rem; border-radius: 10px; border: 1px solid var(--line); display: inline-block; }
-      .cc-main { max-width: 1100px; margin: 0 auto; padding: var(--pad); }
-      .link-small { color: var(--accent); text-decoration: none; }
-      .link-small:hover, .link-small:focus { text-decoration: underline; }
-      .section-label { color: var(--muted); font-size: 0.9rem; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 0.3rem; display: block; }
-      .muted { color: var(--muted); }
-    </style>
-  </head>
-  <body class="cc-body">
-    <header class="topbar">
-      <div class="brand">Machine Room</div>
-      <a href="{{ url_for('home') }}" class="link-small">Back to dashboard</a>
-    </header>
+{% extends "_layout.html" %}
+{% block title %}Machine Room — Office Manager{% endblock %}
+{% block content %}
+<style>
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+  .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+</style>
 
-    <main class="cc-main">
-      {# System Overview card at the top of Machine Room #}
-      <section class="cc-card cc-card-wide">
-        <h2>System Overview</h2>
+<h1 class="cc-h1">Machine Room</h1>
+<p class="muted">Quick system snapshot for supervisors and admins.</p>
 
-        {% if project_summary and project_summary.project %}
-          <p><strong>Name:</strong> {{ project_summary.project.name }}</p>
-          <p><strong>Status:</strong> {{ project_summary.project.status }}</p>
-          <p><strong>Purpose:</strong> {{ project_summary.project.purpose }}</p>
+<div class="grid" aria-label="Database overview">
+  <div class="card">
+    <h2>Database</h2>
+    <p><strong>Type:</strong> {{ db_type }}</p>
+    <p><strong>URI:</strong> {{ db_uri[:80] }}{% if db_uri|length > 80 %}…{% endif %}</p>
+  </div>
+  <div class="card">
+    <h2>Counts</h2>
+    <p><strong>Employees:</strong> {{ employee_count }}</p>
+    <p><strong>Flights:</strong> {{ flight_count }}</p>
+    <p><strong>Maintenance items:</strong> {{ maintenance_count }}</p>
+    <p><strong>Audit events:</strong> {{ audit_count }}</p>
+  </div>
+</div>
 
-          <h3>Primary Flows</h3>
-          <ul>
-            {% for flow in project_summary.project.primary_user_flows %}
-              <li>{{ flow }}</li>
-            {% endfor %}
-          </ul>
-
-          <h3>Stack (Backend)</h3>
-          <p><strong>Framework:</strong> {{ project_summary.stack.backend.framework }}</p>
-          <p><strong>Entry point:</strong> {{ project_summary.stack.backend.entry_point }}</p>
-
-          <h3>Work Orders</h3>
-          <ul>
-            {% for cwo in project_summary.work_order_audit.completed_or_legacy %}
-              <li>
-                <strong>{{ cwo.id }}:</strong> {{ cwo.title }} – {{ cwo.status }}
-              </li>
-            {% endfor %}
-          </ul>
-
+<div class="grid" style="margin-top: 1rem;" aria-label="Recent activity">
+  <div class="card">
+    <h3>Recent Employees</h3>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Role</th><th>Shift</th></tr>
+      </thead>
+      <tbody>
+        {% for emp in recent_employees %}
+          <tr>
+            <td>{{ emp.name }}</td>
+            <td>{{ emp.role }}</td>
+            <td>{{ emp.shift }}</td>
+          </tr>
         {% else %}
-          <p class="cc-text-muted">
-            Project summary is not available. Check <code>TheBrain/project_summary.json</code>.
-          </p>
-        {% endif %}
-      </section>
+          <tr><td colspan="3" class="muted">No employees yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
-      <section class="card">
-        <h1>Database Status</h1>
-        <p>Backend: <strong>{{ db_type }}</strong></p>
-        <p class="db-uri">
-          Connection URI:
-          <code>
-            {{ db_uri.split('@')[-1] if 'postgres' in db_uri else db_uri }}
-          </code>
-        </p>
+  <div class="card">
+    <h3>Recent Flights</h3>
+    <table>
+      <thead>
+        <tr><th>Flight</th><th>Date</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for flight in recent_flights %}
+          <tr>
+            <td>{{ flight.flight_number }}</td>
+            <td>{{ flight.date }}</td>
+            <td>{{ flight.status or 'Scheduled' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="muted">No flights yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
-        <div class="metrics-grid">
-          <div class="metric">
-            <h2>Employees</h2>
-            <p class="metric-number">{{ employee_count }}</p>
-          </div>
-          <div class="metric">
-            <h2>Flights</h2>
-            <p class="metric-number">{{ flight_count }}</p>
-          </div>
-          <div class="metric">
-            <h2>Maintenance</h2>
-            <p class="metric-number">{{ maintenance_count }}</p>
-          </div>
-          <div class="metric">
-            <h2>Audit Log</h2>
-            <p class="metric-number">{{ audit_count }}</p>
-          </div>
-        </div>
-      </section>
+  <div class="card">
+    <h3>Recent Audit</h3>
+    <table>
+      <thead>
+        <tr><th>When</th><th>Action</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in recent_audit %}
+          <tr>
+            <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M') if entry.timestamp else '' }}</td>
+            <td>{{ entry.action }}</td>
+            <td>{{ entry.description or '-' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="muted">No audit events yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 
-      <section class="card">
-        <h2>Recent Employees</h2>
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Role</th><th>Shift</th><th>Base</th></tr>
-          </thead>
-          <tbody>
-            {% for emp in recent_employees %}
-            <tr>
-              <td>{{ emp.name }}</td>
-              <td>{{ emp.role }}</td>
-              <td>{{ emp.shift }}</td>
-              <td>{{ emp.base or "-" }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
-
-      <section class="card">
-        <h2>Recent Flights</h2>
-        <table>
-          <thead>
-            <tr><th>Flight</th><th>Date</th><th>ETA</th><th>Origin</th><th>Destination</th></tr>
-          </thead>
-          <tbody>
-            {% for f in recent_flights %}
-            <tr>
-              <td>{{ f.flight_number }}</td>
-              <td>{{ f.date }}</td>
-              <td>{{ f.eta_local or '-' }}</td>
-              <td>{{ f.origin or '-' }}</td>
-              <td>{{ f.destination or '-' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
-
-      <section class="card">
-        <h2>Maintenance Items</h2>
-        <table>
-          <thead>
-            <tr><th>Item</th><th>Due Date</th><th>Status</th><th>Priority</th></tr>
-          </thead>
-          <tbody>
-            {% for item in recent_maintenance %}
-            <tr>
-              <td>{{ item.item_name }}</td>
-              <td>{{ item.due_date or '-' }}</td>
-              <td>{{ item.status }}</td>
-              <td>{{ item.priority or '-' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
-
-      <section class="card">
-        <h2>Recent Changes (Audit Log)</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Entity</th>
-              <th>Action</th>
-              <th>Actor</th>
-              <th>Actor Role</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for entry in recent_audit %}
-            <tr>
-              <td>{{ entry.timestamp }}</td>
-              <td>{{ entry.entity_type }} #{{ entry.entity_id or "?" }}</td>
-              <td>{{ entry.action }}</td>
-              <td>{{ entry.actor_name or "-" }}</td>
-              <td>{{ entry.actor_role or "-" }}</td>
-              <td>{{ entry.description or "-" }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </section>
-    </main>
-  </body>
-</html>
+{% endblock %}

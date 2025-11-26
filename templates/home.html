@@ -142,10 +142,10 @@
     <span class="cc-pill">Requires supervisor login</span>
     <div class="cc-card-actions">
       {% set current_role = get_current_role() %}
-      {% if current_role == 'supervisor' %}
+      {% if current_role in ['supervisor', 'admin'] %}
         <a href="{{ url_for('machine_room') }}" class="cc-btn cc-btn--primary">Open</a>
       {% else %}
-        <a href="{{ url_for('machine_room') }}" class="cc-btn cc-btn--primary" aria-disabled="true">Requires Supervisor</a>
+        <a href="{{ url_for('machine_room') }}" class="cc-btn cc-btn--primary" aria-disabled="true">Requires Supervisor or Admin</a>
       {% endif %}
     </div>
   </div>
