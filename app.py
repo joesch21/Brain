@@ -51,31 +51,33 @@ ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
 db = SQLAlchemy(app)
 
 
-_SUMMARY_PATH = Path(__file__).resolve().parent / "TheBrain" / "project_summary.json"
-_project_summary_cache = None
+_PROJECT_SUMMARY_CACHE = None
+_PROJECT_SUMMARY_PATH = Path(__file__).parent / "TheBrain" / "project_summary.json"
 
 
 def load_project_summary():
-    """Load a cached project summary for Machine Room display."""
+    """
+    Load and cache the project_summary.json file for Machine Room.
 
-    global _project_summary_cache
+    One sentence explanation: reads TheBrain/project_summary.json once and returns its parsed dict, or {} on error.
+    """
+    global _PROJECT_SUMMARY_CACHE
 
-    if _project_summary_cache is not None:
-        return _project_summary_cache
+    if _PROJECT_SUMMARY_CACHE is not None:
+        return _PROJECT_SUMMARY_CACHE
 
     try:
-        with _SUMMARY_PATH.open("r", encoding="utf-8") as summary_file:
-            _project_summary_cache = json.load(summary_file)
-            return _project_summary_cache
-    except FileNotFoundError:
-        app.logger.warning("Project summary file missing at %s", _SUMMARY_PATH)
-    except json.JSONDecodeError as exc:
-        app.logger.warning("Invalid JSON in project summary: %s", exc)
+        if _PROJECT_SUMMARY_PATH.exists():
+            with _PROJECT_SUMMARY_PATH.open("r", encoding="utf-8") as f:
+                _PROJECT_SUMMARY_CACHE = json.load(f)
+        else:
+            _PROJECT_SUMMARY_CACHE = {}
     except Exception as exc:  # noqa: BLE001
-        app.logger.warning("Could not load project summary: %s", exc)
+        # Log and fall back to empty summary; never break Machine Room.
+        print(f"[MachineRoom] Failed to load project_summary.json: {exc}")
+        _PROJECT_SUMMARY_CACHE = {}
 
-    _project_summary_cache = None
-    return None
+    return _PROJECT_SUMMARY_CACHE
 
 
 class Employee(db.Model):
