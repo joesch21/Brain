@@ -31,10 +31,13 @@
       <thead>
         <tr>
           <th>Flight</th>
-          <th>Airline</th>
+          <th>Date</th>
+          <th>Origin</th>
+          <th>Destination</th>
           <th>ETA</th>
-          <th>Bay</th>
-          <th>Fuel (tonnes)</th>
+          <th>ETD</th>
+          <th>Tail</th>
+          <th>Truck</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -43,10 +46,13 @@
         {% for f in flights %}
         <tr>
           <td>{{ f.flight_number }}</td>
-          <td>{{ f.airline }}</td>
-          <td>{{ f.eta }}</td>
-          <td>{{ f.bay or "-" }}</td>
-          <td>{{ f.fuel_tonnes or "-" }}</td>
+          <td>{{ f.date }}</td>
+          <td>{{ f.origin or "-" }}</td>
+          <td>{{ f.destination or "-" }}</td>
+          <td>{{ f.eta_local or "-" }}</td>
+          <td>{{ f.etd_local or "-" }}</td>
+          <td>{{ f.tail_number or "-" }}</td>
+          <td>{{ f.truck_assignment or "-" }}</td>
           <td>{{ f.status }}</td>
           {% if current_role in ['supervisor', 'admin'] %}
           <td>

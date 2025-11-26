@@ -1,0 +1,57 @@
+{% extends "_layout.html" %}
+{% block title %}Data Import{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Data Import</h1>
+  <form method="post" action="{{ url_for('admin_import_upload') }}" enctype="multipart/form-data" class="form-grid" style="gap: 1rem;">
+    <label>
+      Import type
+      <select id="import_type" name="import_type">
+        <option value="flights">Flights</option>
+        <option value="roster">Roster</option>
+      </select>
+    </label>
+
+    <label>
+      File (CSV, XLSX, PDF, image, email text)
+      <input id="file" name="file" type="file" required />
+    </label>
+
+    <button type="submit" class="btn-primary">Upload &amp; Parse</button>
+  </form>
+</section>
+
+<section class="card" style="margin-top: 1rem;">
+  <h2>Recent batches</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Type</th>
+        <th>Source</th>
+        <th>Created</th>
+        <th>Status</th>
+        <th>Rows</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for b in batches %}
+      <tr>
+        <td>{{ b.id }}</td>
+        <td>{{ b.import_type }}</td>
+        <td>{{ b.source_filename or '-' }}</td>
+        <td>{{ b.created_at }}</td>
+        <td>{{ b.status }}</td>
+        <td>{{ b.rows | length }}</td>
+        <td>
+          <a href="{{ url_for('admin_import_review', batch_id=b.id) }}">Review</a>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7">No batches yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

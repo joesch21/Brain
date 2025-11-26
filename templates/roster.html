@@ -22,46 +22,31 @@
 <section class="card">
   <div class="card-header">
     <h1>Crew Roster</h1>
-    {% set current_role = get_current_role() %}
-    {% if current_role == 'supervisor' %}
-      <a href="{{ url_for('employee_create') }}" class="btn-primary">+ New Employee</a>
-    {% endif %}
   </div>
 
   <div class="table-wrapper">
     <table class="roster-table">
       <thead>
         <tr>
+          <th>Date</th>
           <th>Name</th>
           <th>Role</th>
-          <th>Shift</th>
-          <th>Base</th>
-          <th>Status</th>
-          <th>Actions</th>
+          <th>Shift Start</th>
+          <th>Shift End</th>
+          <th>Truck</th>
+          <th>Notes</th>
         </tr>
       </thead>
       <tbody>
         {% for emp in roster %}
         <tr>
-          <td>{{ emp.name }}</td>
-          <td>{{ emp.role }}</td>
-          <td>{{ emp.shift }}</td>
-          <td>{{ emp.base or "-" }}</td>
-          <td>
-            <span class="status-pill">{{ "Active" if emp.active else "Inactive" }}</span>
-          </td>
-          {% if current_role == 'supervisor' %}
-          <td>
-            <div class="actions">
-              <a href="{{ url_for('employee_edit', employee_id=emp.id) }}" class="link-small">Edit</a>
-              <form action="{{ url_for('employee_delete', employee_id=emp.id) }}" method="post" style="display:inline;" onsubmit="return confirm('Delete this employee?');">
-                <button type="submit" class="link-small link-danger" style="background:none;border:none;padding:0;cursor:pointer;">Delete</button>
-              </form>
-            </div>
-          </td>
-          {% else %}
-          <td><span class="link-disabled">View only</span></td>
-          {% endif %}
+          <td>{{ emp.date }}</td>
+          <td>{{ emp.employee_name }}</td>
+          <td>{{ emp.role or '-' }}</td>
+          <td>{{ emp.shift_start or '-' }}</td>
+          <td>{{ emp.shift_end or '-' }}</td>
+          <td>{{ emp.truck or '-' }}</td>
+          <td>{{ emp.notes or '-' }}</td>
         </tr>
         {% endfor %}
       </tbody>

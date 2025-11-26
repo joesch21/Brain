@@ -72,15 +72,16 @@
         <h2>Recent Flights</h2>
         <table>
           <thead>
-            <tr><th>Flight</th><th>Airline</th><th>ETA</th><th>Bay</th></tr>
+            <tr><th>Flight</th><th>Date</th><th>ETA</th><th>Origin</th><th>Destination</th></tr>
           </thead>
           <tbody>
             {% for f in recent_flights %}
             <tr>
               <td>{{ f.flight_number }}</td>
-              <td>{{ f.airline }}</td>
-              <td>{{ f.eta }}</td>
-              <td>{{ f.bay or "-" }}</td>
+              <td>{{ f.date }}</td>
+              <td>{{ f.eta_local or '-' }}</td>
+              <td>{{ f.origin or '-' }}</td>
+              <td>{{ f.destination or '-' }}</td>
             </tr>
             {% endfor %}
           </tbody>

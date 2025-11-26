@@ -22,28 +22,48 @@
     </label>
 
     <label>
-      Airline
-      <input type="text" name="airline" required value="{{ flight.airline if flight else '' }}" />
+      Date
+      <input type="date" name="date" required value="{{ flight.date if flight else '' }}" />
+    </label>
+
+    <label>
+      Origin
+      <input type="text" name="origin" value="{{ flight.origin if flight else '' }}" />
+    </label>
+
+    <label>
+      Destination
+      <input type="text" name="destination" value="{{ flight.destination if flight else '' }}" />
     </label>
 
     <label>
       ETA (local)
-      <input type="datetime-local" name="eta" required value="{{ eta_value if flight else '' }}" />
+      <input type="time" name="eta_local" value="{{ eta_value if flight else '' }}" />
     </label>
 
     <label>
-      Bay
-      <input type="text" name="bay" value="{{ flight.bay if flight and flight.bay else '' }}" />
+      ETD (local)
+      <input type="time" name="etd_local" value="{{ etd_value if flight else '' }}" />
     </label>
 
     <label>
-      Fuel (tonnes)
-      <input type="number" step="0.1" min="0" name="fuel_tonnes" value="{{ flight.fuel_tonnes if flight and flight.fuel_tonnes is not none else '' }}" />
+      Tail number
+      <input type="text" name="tail_number" value="{{ flight.tail_number if flight else '' }}" />
+    </label>
+
+    <label>
+      Truck assignment
+      <input type="text" name="truck_assignment" value="{{ flight.truck_assignment if flight else '' }}" />
     </label>
 
     <label>
       Status
-      <input type="text" name="status" placeholder="Scheduled / Delayed / Completed" value="{{ flight.status if flight else 'Scheduled' }}" />
+      <input type="text" name="status" placeholder="planned / fueling / done / cancelled" value="{{ flight.status if flight else '' }}" />
+    </label>
+
+    <label>
+      Notes
+      <input type="text" name="notes" value="{{ flight.notes if flight else '' }}" />
     </label>
 
     <div class="form-actions">
