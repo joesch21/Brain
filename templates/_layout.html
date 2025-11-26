@@ -30,6 +30,9 @@
       <a class="cc-nav-link" href="{{ url_for('maintenance_page') }}">Maintenance</a>
       {% set current_role = current_role or get_current_role() %}
       {% if current_role in ['supervisor', 'admin'] %}
+        <a class="cc-nav-link" href="{{ url_for('admin_import_index') }}">Import</a>
+      {% endif %}
+      {% if current_role in ['supervisor', 'admin'] %}
         <a class="cc-nav-link" href="{{ url_for('machine_room') }}">Machine Room</a>
       {% else %}
         <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true" title="Supervisor role required">Machine Room</span>

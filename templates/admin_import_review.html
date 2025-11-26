@@ -1,0 +1,50 @@
+{% extends "_layout.html" %}
+{% block title %}Review Import Batch{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Review Import Batch #{{ batch.id }} ({{ batch.import_type }})</h1>
+  <p>Uploaded {{ batch.created_at }} by {{ batch.created_by or 'unknown' }} from {{ batch.source_filename or 'unknown file' }}.</p>
+
+  <form method="post">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Delete?</th>
+          <th>Row data (JSON)</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in batch.rows %}
+        <tr>
+          <td>
+            <input type="checkbox" name="row-{{ row.id }}-delete">
+          </td>
+          <td>
+            <textarea name="row-{{ row.id }}-data_json" rows="4" cols="60">{{ row.data | tojson(indent=2) }}</textarea>
+          </td>
+          <td>
+            {% if row.is_valid %}
+              <span class="badge badge-ok">valid</span>
+            {% else %}
+              <span class="badge badge-error">invalid</span>
+              <div class="error-text">{{ row.error }}</div>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <button type="submit" class="btn-primary">Save edits</button>
+  </form>
+
+  {% if batch.status == 'pending' %}
+    <form method="post" action="{{ url_for('admin_import_commit', batch_id=batch.id) }}" style="margin-top: 1rem;">
+      <button type="submit" class="btn-primary">Commit batch to {{ batch.import_type }}</button>
+    </form>
+  {% else %}
+    <p>Batch status: {{ batch.status }}</p>
+  {% endif %}
+</section>
+{% endblock %}

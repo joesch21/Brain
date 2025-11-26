@@ -1,4 +1,6 @@
 import os
+import json
+import datetime as dt
 from datetime import datetime
 from functools import wraps
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -31,6 +33,7 @@ load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
+from services.importer import ImportService
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-me")
@@ -67,12 +70,53 @@ class Flight(db.Model):
     __tablename__ = "flights"
 
     id = db.Column(db.Integer, primary_key=True)
-    flight_number = db.Column(db.String(20), nullable=False)
-    airline = db.Column(db.String(80), nullable=False)
-    eta = db.Column(db.DateTime, nullable=False)
-    bay = db.Column(db.String(20), nullable=True)
-    fuel_tonnes = db.Column(db.Float, nullable=True)
-    status = db.Column(db.String(40), default="Scheduled")
+    flight_number = db.Column(db.String(32), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    origin = db.Column(db.String(32), nullable=True)
+    destination = db.Column(db.String(32), nullable=True)
+    eta_local = db.Column(db.Time, nullable=True)
+    etd_local = db.Column(db.Time, nullable=True)
+    tail_number = db.Column(db.String(32), nullable=True)
+    truck_assignment = db.Column(db.String(64), nullable=True)
+    status = db.Column(db.String(32), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+
+class RosterEntry(db.Model):
+    __tablename__ = "roster_entries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    employee_name = db.Column(db.String(80), nullable=False)
+    role = db.Column(db.String(32), nullable=True)
+    shift_start = db.Column(db.Time, nullable=True)
+    shift_end = db.Column(db.Time, nullable=True)
+    truck = db.Column(db.String(32), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+
+class ImportBatch(db.Model):
+    __tablename__ = "import_batches"
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
+    created_by = db.Column(db.String(64), nullable=True)
+    import_type = db.Column(db.String(32), nullable=False)
+    source_filename = db.Column(db.String(255), nullable=True)
+    source_mime = db.Column(db.String(64), nullable=True)
+    status = db.Column(db.String(32), nullable=False, default="pending")
+
+
+class ImportRow(db.Model):
+    __tablename__ = "import_rows"
+
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey("import_batches.id"), nullable=False)
+    batch = db.relationship("ImportBatch", backref=db.backref("rows", lazy=True))
+
+    data = db.Column(db.JSON, nullable=False)
+    is_valid = db.Column(db.Boolean, nullable=False, default=True)
+    error = db.Column(db.Text, nullable=True)
 
 
 class AuditLog(db.Model):
@@ -174,6 +218,34 @@ def log_audit(entity_type, entity_id, action, description=None):
     db.session.add(entry)
 
 
+def _parse_date(val):
+    if not val:
+        return None
+    if isinstance(val, dt.date):
+        return val
+    s = str(val).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return dt.datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_time(val):
+    if not val:
+        return None
+    if isinstance(val, dt.time):
+        return val
+    s = str(val).strip()
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return dt.datetime.strptime(s, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
 @app.context_processor
 def inject_role():
     return {
@@ -192,6 +264,7 @@ os.makedirs(app.config["OUTPUTS_DIR"], exist_ok=True)
 orchestrator = BuildOrchestrator(outputs_dir=app.config["OUTPUTS_DIR"])
 fixer = FixService()
 knower = KnowledgeService(outputs_dir=app.config["OUTPUTS_DIR"])
+import_service = ImportService(db=db, ImportBatch=ImportBatch, ImportRow=ImportRow)
 
 # ----- Pages -----
 @app.route("/")
@@ -355,14 +428,13 @@ def know():
 def roster_page():
     """
     Roster page showing personnel assignments.
-    Now backed by the Employee table instead of in-memory data.
+    Now backed by the RosterEntry table instead of in-memory data.
     """
-    employees = (
-        Employee.query.filter_by(active=True)
-        .order_by(Employee.shift, Employee.name)
+    roster_entries = (
+        RosterEntry.query.order_by(RosterEntry.date.asc(), RosterEntry.shift_start.asc())
         .all()
     )
-    return render_template("roster.html", roster=employees)
+    return render_template("roster.html", roster=roster_entries)
 
 
 @app.route("/employees/new", methods=["GET", "POST"])
@@ -471,7 +543,7 @@ def schedule_page():
     """
     Flight schedule page, now backed by the Flight table.
     """
-    flights = Flight.query.order_by(Flight.eta).all()
+    flights = Flight.query.order_by(Flight.date.asc(), Flight.eta_local.asc()).all()
     return render_template("schedule.html", flights=flights)
 
 
@@ -483,28 +555,37 @@ def flight_create():
     """
     if request.method == "POST":
         flight_number = request.form.get("flight_number", "").strip()
-        airline = request.form.get("airline", "").strip()
-        eta_str = request.form.get("eta", "").strip()
-        bay = request.form.get("bay", "").strip()
-        fuel_tonnes_str = request.form.get("fuel_tonnes", "").strip()
-        status = request.form.get("status", "").strip() or "Scheduled"
+        date_str = request.form.get("date", "").strip()
+        origin = request.form.get("origin", "").strip()
+        destination = request.form.get("destination", "").strip()
+        eta_str = request.form.get("eta_local", "").strip()
+        etd_str = request.form.get("etd_local", "").strip()
+        tail_number = request.form.get("tail_number", "").strip()
+        truck_assignment = request.form.get("truck_assignment", "").strip()
+        status = request.form.get("status", "").strip() or None
+        notes = request.form.get("notes", "").strip()
 
-        if not flight_number or not airline or not eta_str:
-            flash("Flight number, airline and ETA are required.", "error")
+        if not flight_number or not date_str:
+            flash("Flight number and date are required.", "error")
         else:
-            try:
-                eta = datetime.fromisoformat(eta_str)
-            except ValueError:
-                flash("Invalid ETA format.", "error")
+            date_val = _parse_date(date_str)
+            eta_val = _parse_time(eta_str)
+            etd_val = _parse_time(etd_str)
+
+            if not date_val:
+                flash("Invalid date format.", "error")
             else:
-                fuel_tonnes = float(fuel_tonnes_str) if fuel_tonnes_str else None
                 f = Flight(
                     flight_number=flight_number,
-                    airline=airline,
-                    eta=eta,
-                    bay=bay or None,
-                    fuel_tonnes=fuel_tonnes,
+                    date=date_val,
+                    origin=origin or None,
+                    destination=destination or None,
+                    eta_local=eta_val,
+                    etd_local=etd_val,
+                    tail_number=tail_number or None,
+                    truck_assignment=truck_assignment or None,
                     status=status,
+                    notes=notes or None,
                 )
                 db.session.add(f)
                 db.session.flush()
@@ -512,7 +593,10 @@ def flight_create():
                     entity_type="Flight",
                     entity_id=f.id,
                     action="create",
-                    description=f"Created flight {f.flight_number} {f.airline} eta={f.eta} bay={f.bay} fuel={f.fuel_tonnes}",
+                    description=(
+                        f"Created flight {f.flight_number} date={f.date} "
+                        f"eta={f.eta_local} origin={f.origin} destination={f.destination}"
+                    ),
                 )
                 db.session.commit()
                 flash("Flight created.", "success")
@@ -531,28 +615,44 @@ def flight_edit(flight_id):
 
     if request.method == "POST":
         flight_number = request.form.get("flight_number", "").strip()
-        airline = request.form.get("airline", "").strip()
-        eta_str = request.form.get("eta", "").strip()
-        bay = request.form.get("bay", "").strip()
-        fuel_tonnes_str = request.form.get("fuel_tonnes", "").strip()
-        status = request.form.get("status", "").strip() or "Scheduled"
+        date_str = request.form.get("date", "").strip()
+        origin = request.form.get("origin", "").strip()
+        destination = request.form.get("destination", "").strip()
+        eta_str = request.form.get("eta_local", "").strip()
+        etd_str = request.form.get("etd_local", "").strip()
+        tail_number = request.form.get("tail_number", "").strip()
+        truck_assignment = request.form.get("truck_assignment", "").strip()
+        status = request.form.get("status", "").strip() or None
+        notes = request.form.get("notes", "").strip()
 
-        if not flight_number or not airline or not eta_str:
-            flash("Flight number, airline and ETA are required.", "error")
+        if not flight_number or not date_str:
+            flash("Flight number and date are required.", "error")
         else:
-            try:
-                eta = datetime.fromisoformat(eta_str)
-            except ValueError:
-                flash("Invalid ETA format.", "error")
+            date_val = _parse_date(date_str)
+            eta_val = _parse_time(eta_str)
+            etd_val = _parse_time(etd_str)
+
+            if not date_val:
+                flash("Invalid date format.", "error")
             else:
-                before = f"{f.flight_number} {f.airline} eta={f.eta} bay={f.bay} fuel={f.fuel_tonnes} status={f.status}"
+                before = (
+                    f"{f.flight_number} date={f.date} eta={f.eta_local} "
+                    f"origin={f.origin} destination={f.destination}"
+                )
                 f.flight_number = flight_number
-                f.airline = airline
-                f.eta = eta
-                f.bay = bay or None
-                f.fuel_tonnes = float(fuel_tonnes_str) if fuel_tonnes_str else None
+                f.date = date_val
+                f.origin = origin or None
+                f.destination = destination or None
+                f.eta_local = eta_val
+                f.etd_local = etd_val
+                f.tail_number = tail_number or None
+                f.truck_assignment = truck_assignment or None
                 f.status = status
-                after = f"{f.flight_number} {f.airline} eta={f.eta} bay={f.bay} fuel={f.fuel_tonnes} status={f.status}"
+                f.notes = notes or None
+                after = (
+                    f"{f.flight_number} date={f.date} eta={f.eta_local} "
+                    f"origin={f.origin} destination={f.destination}"
+                )
                 db.session.flush()
                 log_audit(
                     entity_type="Flight",
@@ -564,15 +664,20 @@ def flight_edit(flight_id):
                 flash("Flight updated.", "success")
                 return redirect(url_for("schedule_page"))
 
-    eta_value = f.eta.strftime("%Y-%m-%dT%H:%M")
-    return render_template("flight_form.html", flight=f, eta_value=eta_value)
+    eta_value = f.eta_local.strftime("%H:%M") if f.eta_local else ""
+    etd_value = f.etd_local.strftime("%H:%M") if f.etd_local else ""
+    return render_template(
+        "flight_form.html",
+        flight=f,
+        eta_value=eta_value,
+        etd_value=etd_value,
+    )
 
 
 def delete_flight_record(flight: Flight):
     summary = (
-        f"{flight.flight_number} {flight.airline} "
-        f"eta={flight.eta} bay={flight.bay} "
-        f"fuel={flight.fuel_tonnes} status={flight.status}"
+        f"{flight.flight_number} date={flight.date} "
+        f"eta={flight.eta_local} origin={flight.origin} destination={flight.destination} status={flight.status}"
     )
     log_audit(
         entity_type="Flight",
@@ -613,6 +718,136 @@ def flight_delete(flight_id):
     return redirect(url_for("schedule_page"))
 
 
+@app.route("/admin/import", methods=["GET"])
+@require_role("admin", "supervisor")
+def admin_import_index():
+    batches = ImportBatch.query.order_by(ImportBatch.created_at.desc()).limit(20).all()
+    return render_template("admin_import.html", batches=batches)
+
+
+@app.route("/admin/import/upload", methods=["POST"])
+@require_role("admin", "supervisor")
+def admin_import_upload():
+    import_type = request.form.get("import_type", "flights")
+    if import_type not in ("flights", "roster"):
+        flash("Invalid import type.", "danger")
+        return redirect(url_for("admin_import_index"))
+
+    file = request.files.get("file")
+    if not file or not file.filename:
+        flash("Please choose a file to upload.", "danger")
+        return redirect(url_for("admin_import_index"))
+
+    current_user_name = (session.get("display_name") or session.get("role") or "unknown")
+
+    batch = import_service.create_batch(
+        import_type=import_type,
+        source_filename=file.filename,
+        source_mime=file.mimetype,
+        created_by=current_user_name,
+    )
+
+    rows = import_service.parse_file_to_rows(import_type, file)
+
+    for row in rows:
+        db.session.add(
+            ImportRow(
+                batch_id=batch.id,
+                data=row.data,
+                is_valid=(row.error is None),
+                error=row.error,
+            )
+        )
+    db.session.commit()
+
+    flash(f"Imported {len(rows)} rows into batch #{batch.id} for review.", "success")
+    return redirect(url_for("admin_import_review", batch_id=batch.id))
+
+
+@app.route("/admin/import/<int:batch_id>/review", methods=["GET", "POST"])
+@require_role("admin", "supervisor")
+def admin_import_review(batch_id):
+    batch = ImportBatch.query.get_or_404(batch_id)
+
+    if request.method == "POST":
+        for row in batch.rows:
+            prefix = f"row-{row.id}-"
+            if request.form.get(prefix + "delete") == "on":
+                db.session.delete(row)
+                continue
+
+            raw_json = request.form.get(prefix + "data_json") or ""
+            try:
+                row.data = json.loads(raw_json)
+                row.is_valid = True
+                row.error = None
+            except Exception as e:  # noqa: BLE001
+                row.is_valid = False
+                row.error = f"Invalid JSON: {e}"
+        db.session.commit()
+        flash("Rows updated.", "success")
+        return redirect(url_for("admin_import_review", batch_id=batch.id))
+
+    return render_template("admin_import_review.html", batch=batch)
+
+
+@app.route("/admin/import/<int:batch_id>/commit", methods=["POST"])
+@require_role("admin")
+def admin_import_commit(batch_id):
+    batch = ImportBatch.query.get_or_404(batch_id)
+    if batch.status != "pending":
+        flash("Batch already processed.", "warning")
+        return redirect(url_for("admin_import_index"))
+
+    errors = 0
+    imported = 0
+
+    for row in batch.rows:
+        if not row.is_valid:
+            errors += 1
+            continue
+
+        data = row.data or {}
+        try:
+            if batch.import_type == "flights":
+                f = Flight(
+                    flight_number=data.get("flight_number", "").strip(),
+                    date=_parse_date(data.get("date")),
+                    origin=data.get("origin"),
+                    destination=data.get("destination"),
+                    eta_local=_parse_time(data.get("eta_local")),
+                    etd_local=_parse_time(data.get("etd_local")),
+                    tail_number=data.get("tail_number"),
+                    truck_assignment=data.get("truck_assignment"),
+                    status=data.get("status"),
+                    notes=data.get("notes"),
+                )
+                db.session.add(f)
+            else:
+                r = RosterEntry(
+                    date=_parse_date(data.get("date")),
+                    employee_name=data.get("employee_name", "").strip(),
+                    role=data.get("role"),
+                    shift_start=_parse_time(data.get("shift_start")),
+                    shift_end=_parse_time(data.get("shift_end")),
+                    truck=data.get("truck"),
+                    notes=data.get("notes"),
+                )
+                db.session.add(r)
+
+            imported += 1
+        except Exception as e:  # noqa: BLE001
+            row.is_valid = False
+            row.error = f"Commit error: {e}"
+            errors += 1
+
+    batch.status = "committed"
+    db.session.commit()
+
+    flash(f"Committed {imported} rows to {batch.import_type} ({errors} errors).", "success")
+    return redirect(url_for("admin_import_index"))
+
+
 @app.route("/maintenance")
 def maintenance_page():
     """
@@ -642,7 +877,11 @@ def machine_room():
     flight_count = Flight.query.count()
 
     recent_employees = Employee.query.order_by(Employee.id.desc()).limit(5).all()
-    recent_flights = Flight.query.order_by(Flight.eta.desc()).limit(5).all()
+    recent_flights = (
+        Flight.query.order_by(Flight.date.desc(), Flight.eta_local.desc())
+        .limit(5)
+        .all()
+    )
     recent_audit = (
         AuditLog.query.order_by(AuditLog.timestamp.desc())
         .limit(20)

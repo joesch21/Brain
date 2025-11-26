@@ -18,15 +18,17 @@
 
   <dl class="details">
     <dt>Flight</dt>
-    <dd>{{ flight.flight_number }} — {{ flight.airline }}</dd>
-    <dt>ETA</dt>
-    <dd>{{ flight.eta }}</dd>
-    <dt>Bay</dt>
-    <dd>{{ flight.bay or "-" }}</dd>
-    <dt>Fuel (tonnes)</dt>
-    <dd>{{ flight.fuel_tonnes or "-" }}</dd>
+    <dd>{{ flight.flight_number }}</dd>
+    <dt>Date</dt>
+    <dd>{{ flight.date }}</dd>
+    <dt>Route</dt>
+    <dd>{{ flight.origin or '-' }} → {{ flight.destination or '-' }}</dd>
+    <dt>Times</dt>
+    <dd>ETA: {{ flight.eta_local or '-' }} | ETD: {{ flight.etd_local or '-' }}</dd>
     <dt>Status</dt>
-    <dd>{{ flight.status }}</dd>
+    <dd>{{ flight.status or '-' }}</dd>
+    <dt>Notes</dt>
+    <dd>{{ flight.notes or '-' }}</dd>
   </dl>
 
   <form method="post" class="actions">
