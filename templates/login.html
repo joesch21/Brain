@@ -29,6 +29,22 @@
           <input type="hidden" name="next" value="{{ next_url }}" />
 
           <div class="card login-card">
+            <h2>Admin access</h2>
+            <p class="hint">
+              Use the dedicated admin key for user and role management.
+            </p>
+            <label for="admin_key">Admin key</label>
+            <input
+              id="admin_key"
+              name="admin_key"
+              type="password"
+              autocomplete="off"
+              placeholder="••••••••"
+            />
+            <button type="submit" class="btn-primary">Login as admin</button>
+          </div>
+
+          <div class="card login-card">
             <h2>Supervisor access</h2>
             <p class="hint">
               Enter the supervisor access code to unlock editing and Machine Room tools.

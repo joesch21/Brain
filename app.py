@@ -36,6 +36,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-me")
 raw_uri = os.getenv("DATABASE_URL", "sqlite:///cc_office.db")
 app.config["SUPERVISOR_KEY"] = os.getenv("SUPERVISOR_KEY")
+app.config["ADMIN_KEY"] = os.getenv("ADMIN_KEY")
 
 # Normalize old-style postgres scheme for SQLAlchemy
 if raw_uri.startswith("postgres://"):
@@ -44,7 +45,8 @@ if raw_uri.startswith("postgres://"):
 app.config["SQLALCHEMY_DATABASE_URI"] = raw_uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-SUPPORTED_ROLES = ("operator", "supervisor")
+SUPPORTED_ROLES = ("admin", "supervisor", "refueler", "viewer", "operator")
+ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
 
 
 db = SQLAlchemy(app)
@@ -93,13 +95,21 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(40), nullable=False, default="operator")
+    role = db.Column(db.String(40), nullable=False, default="refueler")
 
     def set_password(self, password: str):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+    @property
+    def is_supervisor(self) -> bool:
+        return self.role == "supervisor"
 
 
 def get_current_user():
@@ -110,12 +120,8 @@ def get_current_user():
 
 
 def get_current_role():
-    role = None
     user = get_current_user()
-    if user:
-        role = user.role
-    else:
-        role = session.get("role")
+    role = user.role if user else session.get("role")
     if role not in SUPPORTED_ROLES:
         return None
     return role
@@ -125,14 +131,20 @@ def require_role(*roles):
     def decorator(view_func):
         @wraps(view_func)
         def wrapper(*args, **kwargs):
+            user = get_current_user()
             role = get_current_role()
-            if not role:
+
+            if not user and not role:
                 flash("Please log in to access this page.", "info")
                 return redirect(url_for("login", next=request.path))
 
-            if roles and role not in roles:
-                flash("You do not have permission to access this page.", "error")
-                return redirect(url_for("home"))
+            if role == "admin" or (user and user.is_admin):
+                return view_func(*args, **kwargs)
+
+            if roles:
+                if role not in roles and not (user and user.role in roles):
+                    flash("You do not have permission to access this page.", "error")
+                    return redirect(url_for("home"))
 
             return view_func(*args, **kwargs)
 
@@ -168,6 +180,7 @@ def inject_role():
         "get_current_role": get_current_role,
         "current_user": get_current_user(),
         "current_role": get_current_role(),
+        "display_name": session.get("display_name"),
     }
 
 BASE_DIR = os.path.dirname(__file__)
@@ -200,8 +213,20 @@ def login():
     if request.method == "POST":
         next_url = request.form.get("next") or next_url
 
+        admin_key_input = (request.form.get("admin_key") or "").strip()
         supervisor_key_input = (request.form.get("supervisor_key") or "").strip()
+        configured_admin_key = app.config.get("ADMIN_KEY")
         configured_key = app.config.get("SUPERVISOR_KEY")
+
+        if admin_key_input:
+            if configured_admin_key and admin_key_input == configured_admin_key:
+                session["user_id"] = None
+                session["role"] = "admin"
+                session["display_name"] = "Admin (key)"
+                flash("Admin access granted.", "success")
+                return redirect(next_url)
+            flash("Invalid admin key.", "error")
+            return render_template("login.html", next_url=next_url)
 
         if supervisor_key_input:
             if configured_key and supervisor_key_input == configured_key:
@@ -228,7 +253,7 @@ def login():
             flash(f"Logged in as {user.username} ({user.role}).", "success")
             return redirect(next_url)
 
-        flash("Please enter a valid supervisor key or username/password.", "error")
+        flash("Please enter a valid admin key, supervisor key or username/password.", "error")
         return render_template("login.html", next_url=next_url)
 
     return render_template("login.html", next_url=next_url)
@@ -242,6 +267,69 @@ def logout():
     session.clear()
     flash("Logged out.", "success")
     return redirect(url_for("home"))
+
+
+@app.route("/admin/users")
+@require_role("admin")
+def admin_users():
+    users = User.query.order_by(User.username.asc()).all()
+    return render_template("admin_users.html", users=users)
+
+
+@app.route("/admin/users/new", methods=["GET", "POST"])
+@require_role("admin")
+def admin_users_new():
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        role = (request.form.get("role") or "refueler").strip()
+        password = request.form.get("password") or ""
+
+        if not username or not password:
+            flash("Username and password are required.", "error")
+            return render_template("admin_users_form.html", mode="new")
+
+        if role not in ROLE_CHOICES:
+            flash("Invalid role.", "error")
+            return render_template("admin_users_form.html", mode="new")
+
+        existing = User.query.filter_by(username=username).first()
+        if existing:
+            flash("Username already exists.", "error")
+            return render_template("admin_users_form.html", mode="new")
+
+        user = User(username=username, role=role)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+
+        flash(f"User {username} created with role {role}.", "success")
+        return redirect(url_for("admin_users"))
+
+    return render_template("admin_users_form.html", mode="new")
+
+
+@app.route("/admin/users/<int:user_id>/edit", methods=["GET", "POST"])
+@require_role("admin")
+def admin_users_edit(user_id):
+    user = User.query.get_or_404(user_id)
+
+    if request.method == "POST":
+        role = (request.form.get("role") or user.role).strip()
+        new_password = request.form.get("password") or ""
+
+        if role not in ROLE_CHOICES:
+            flash("Invalid role.", "error")
+            return render_template("admin_users_form.html", mode="edit", user=user)
+
+        user.role = role
+        if new_password:
+            user.set_password(new_password)
+
+        db.session.commit()
+        flash(f"User {user.username} updated.", "success")
+        return redirect(url_for("admin_users"))
+
+    return render_template("admin_users_form.html", mode="edit", user=user)
 
 @app.route("/build", methods=["GET", "POST"])
 def build():

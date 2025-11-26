@@ -29,7 +29,7 @@
       <a class="cc-nav-link" href="{{ url_for('schedule_page') }}">Schedule</a>
       <a class="cc-nav-link" href="{{ url_for('maintenance_page') }}">Maintenance</a>
       {% set current_role = current_role or get_current_role() %}
-      {% if current_role == 'supervisor' %}
+      {% if current_role in ['supervisor', 'admin'] %}
         <a class="cc-nav-link" href="{{ url_for('machine_room') }}">Machine Room</a>
       {% else %}
         <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true" title="Supervisor role required">Machine Room</span>
@@ -48,6 +48,9 @@
         🎙
       </button>
       {% set active_role = current_role or get_current_role() %}
+      {% if active_role == 'admin' %}
+        <a class="cc-nav-link" href="{{ url_for('admin_users') }}">Admin</a>
+      {% endif %}
       <div class="user-status">
         {% if current_user or active_role %}
           <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">
