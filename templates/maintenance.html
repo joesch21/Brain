@@ -3,10 +3,9 @@
 {% block content %}
 <style>
   .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); }
-  .card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
-  .card-header h1 { margin: 0; font-size: 1.5rem; }
   .btn-primary { background: var(--accent); color: var(--accent-ink); border: none; border-radius: 12px; padding: 0.6rem 1rem; font-weight: 600; text-decoration: none; }
   .btn-primary:hover, .btn-primary:focus { filter: brightness(1.05); }
+  .btn-secondary { border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 0.5rem 1rem; text-decoration: none; }
   .maintenance-table { width: 100%; border-collapse: collapse; }
   .maintenance-table th, .maintenance-table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
   .maintenance-table th { color: var(--muted); font-weight: 600; }
@@ -14,17 +13,22 @@
   .link-small { color: var(--accent); text-decoration: none; font-size: 0.95rem; }
   .link-small:hover, .link-small:focus { text-decoration: underline; }
   .link-disabled { color: var(--muted); font-size: 0.95rem; }
+  .page-toolbar { position: static; padding: 0; margin-bottom: 1rem; background: transparent; border-bottom: none; display: flex; align-items: center; gap: 1rem; }
+  .cc-toolbar-actions { display: flex; gap: 0.5rem; margin-left: auto; }
 </style>
 
-<section class="card">
-  <div class="card-header">
-    <h1>Maintenance Items</h1>
-    {% set current_role = get_current_role() %}
-    {% if current_role in ['supervisor', 'admin'] %}
-      <a href="{{ url_for('maintenance_create') }}" class="btn-primary">+ New Maintenance</a>
-    {% endif %}
-  </div>
+{% set current_role = get_current_role() %}
+<div class="cc-toolbar page-toolbar">
+  <h1>Truck Maintenance</h1>
+  {% if current_role in ["supervisor", "admin"] %}
+    <div class="cc-toolbar-actions">
+      <a href="{{ url_for('maintenance_create') }}" class="btn-primary">New Maintenance Item</a>
+      <a href="{{ url_for('admin_import_index', import_type='maintenance') }}" class="btn-secondary">Import Maintenance</a>
+    </div>
+  {% endif %}
+</div>
 
+<section class="card">
   <p>Upcoming and open maintenance actions pulled directly from the connected database.</p>
 
   <div class="table-wrapper">

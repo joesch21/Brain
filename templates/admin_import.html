@@ -3,13 +3,23 @@
 {% block content %}
 <section class="card">
   <h1>Data Import</h1>
-  <form method="post" action="{{ url_for('admin_import_upload') }}" enctype="multipart/form-data" class="form-grid" style="gap: 1rem;">
+  <form method="post" action="{{ url_for('admin_import_upload') }}" enctype="multipart/form-data" class="form-grid" style="gap:1rem;">
     <label>
       Import type
-      <select id="import_type" name="import_type">
-        <option value="flights">Flights</option>
-        <option value="roster">Roster</option>
-      </select>
+      <div>
+        <label>
+          <input type="radio" name="import_type" value="flights" {% if default_type == "flights" %}checked{% endif %}>
+          Flights
+        </label>
+        <label>
+          <input type="radio" name="import_type" value="roster" {% if default_type == "roster" %}checked{% endif %}>
+          Roster
+        </label>
+        <label>
+          <input type="radio" name="import_type" value="maintenance" {% if default_type == "maintenance" %}checked{% endif %}>
+          Maintenance
+        </label>
+      </div>
     </label>
 
     <label>

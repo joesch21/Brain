@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Literal
 
 from .llm_client import LLMClient
 
-ImportType = Literal["flights", "roster"]
+ImportType = Literal["flights", "roster", "maintenance"]
 
 
 @dataclass
@@ -111,6 +111,13 @@ class ImportService:
 - status (string or null)
 - notes (string or null)
 """
+        elif import_type == "maintenance":
+            schema_hint = """Return a JSON array of maintenance objects with keys:
+- truck_id (string)
+- description (string or null)
+- due_date (YYYY-MM-DD or null)
+- status (string or null)
+"""
         else:
             schema_hint = """Return a JSON array of roster objects with keys:
 - date (YYYY-MM-DD)
@@ -175,6 +182,13 @@ Make sure the output is valid JSON only, no explanations.
                 "truck_assignment": lower.get("truck_assignment") or lower.get("truck"),
                 "status": lower.get("status"),
                 "notes": lower.get("notes"),
+            }
+        if import_type == "maintenance":
+            return {
+                "truck_id": lower.get("truck_id") or lower.get("truck") or "",
+                "description": lower.get("description") or lower.get("notes"),
+                "due_date": lower.get("due_date"),
+                "status": lower.get("status"),
             }
         return {
             "date": lower.get("date"),
