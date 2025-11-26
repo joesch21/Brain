@@ -47,10 +47,15 @@
       >
         🎙
       </button>
+      {% set active_role = current_role or get_current_role() %}
       <div class="user-status">
-        {% if current_user %}
+        {% if current_user or active_role %}
           <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">
-            Signed in as {{ current_user.username }} ({{ current_role or 'unknown' }})
+            {% if current_user %}
+              Signed in as {{ current_user.username }} ({{ active_role or 'unknown' }})
+            {% else %}
+              Signed in as {{ session.display_name or "Supervisor" }} ({{ active_role or 'unknown' }})
+            {% endif %}
           </span>
           <a class="cc-nav-link" href="{{ url_for('logout') }}">Logout</a>
         {% else %}
