@@ -21,9 +21,30 @@
     <p class="cc-text-muted">Full credentials are never shown in the UI.</p>
   </section>
 
-  <section class="cc-card">
-    <h2>Preferences (coming soon)</h2>
-    <p>Voice selection and per-user preferences will be configured here.</p>
+  <section class="cc-card" id="voice-preferences-card">
+    <h2>Voice Preferences</h2>
+    <p class="cc-text-muted">Stored in this browser only. Choose the voice that feels clearest to you.</p>
+
+    <div class="cc-field">
+      <label for="voice-select">Preferred voice</label>
+      <select id="voice-select" name="voice-select">
+        <option>Loading voices…</option>
+      </select>
+    </div>
+
+    <div class="cc-card-actions">
+      <button class="cc-btn cc-btn--primary" id="voice-save" type="button">Save voice</button>
+    </div>
+
+    <p id="voice-save-message" class="cc-text-muted"></p>
+    <p id="voice-unsupported" class="cc-text-muted" style="display:none;">Speech synthesis is not available in this browser. Try Chrome or Edge.</p>
   </section>
 </main>
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    if (window.BrainVoicePreferences && window.BrainVoicePreferences.initSettingsUI) {
+      window.BrainVoicePreferences.initSettingsUI();
+    }
+  });
+</script>
 {% endblock %}

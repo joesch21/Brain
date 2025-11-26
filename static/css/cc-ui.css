@@ -60,6 +60,10 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui, -a
 label{display:block;margin:.5rem 0 .25rem;color:var(--muted)}
 input[type="text"],input[type="file"],textarea{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:.6rem}
 textarea{resize:vertical}
+.cc-field{margin-top:1rem}
+select{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:.6rem;min-height:44px}
+.cc-card.is-disabled{opacity:.6}
+.cc-inline-hint{color:var(--muted);font-size:.95rem;margin-top:.35rem}
 
 /* Artifacts */
 .cc-artifacts table{width:100%;border-collapse:collapse}
