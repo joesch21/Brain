@@ -21,7 +21,7 @@
   <div class="card-header">
     <h1>Flight Schedule</h1>
     {% set current_role = get_current_role() %}
-    {% if current_role == 'supervisor' %}
+    {% if current_role in ['supervisor', 'admin'] %}
       <a href="{{ url_for('flight_create') }}" class="btn-primary">+ New Flight</a>
     {% endif %}
   </div>
@@ -48,13 +48,11 @@
           <td>{{ f.bay or "-" }}</td>
           <td>{{ f.fuel_tonnes or "-" }}</td>
           <td>{{ f.status }}</td>
-          {% if current_role == 'supervisor' %}
+          {% if current_role in ['supervisor', 'admin'] %}
           <td>
             <div class="actions">
               <a href="{{ url_for('flight_edit', flight_id=f.id) }}" class="link-small">Edit</a>
-              <form action="{{ url_for('flight_delete', flight_id=f.id) }}" method="post" style="display:inline;" onsubmit="return confirm('Delete this flight?');">
-                <button type="submit" class="link-small link-danger" style="background:none;border:none;padding:0;cursor:pointer;">Delete</button>
-              </form>
+              <a href="{{ url_for('flight_confirm_delete', flight_id=f.id) }}" class="link-small link-danger">Delete</a>
             </div>
           </td>
           {% else %}

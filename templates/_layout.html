@@ -88,7 +88,7 @@
 
   <div id="toast-container" class="cc-toast-container" aria-live="polite"></div>
   <script>
-    window.CURRENT_ROLE = "{{ current_role or 'guest' }}";
+    window.CURRENT_ROLE = "{{ current_role or get_current_role() or '' }}";
   </script>
   <script src="{{ url_for('static', filename='js/voice.js') }}"></script>
   <script src="{{ url_for('static', filename='js/cc-ui.js') }}"></script>
