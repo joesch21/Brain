@@ -48,6 +48,22 @@
     window.speechSynthesis.speak(u);
   }
 
+  function updateKnowTranscript(heard, understood) {
+    const el = document.getElementById("know-voice-transcript");
+    if (!el) return;
+
+    if (!heard && !understood) {
+      el.textContent = "";
+      return;
+    }
+
+    if (understood) {
+      el.textContent = `Heard: “${heard}” → Understood: ${understood}`;
+    } else {
+      el.textContent = `Heard: “${heard}”`;
+    }
+  }
+
   // --- Command parsing + routing ---
 
   function interpretCommand(raw) {
@@ -144,6 +160,19 @@
         speak("What would you like to ask Know?");
         return;
       }
+      const q = (cmd.question || "").trim();
+
+      if (window.location.pathname.startsWith("/know")) {
+        updateKnowTranscript(
+          pendingRawInput || q,
+          q ? `asking Know: “${q}”` : "asking Know"
+        );
+      } else {
+        updateKnowTranscript(
+          pendingRawInput || q,
+          q ? `taking you to Know to ask: “${q}”` : "taking you to Know"
+        );
+      }
       // Fill the Know question field if present; otherwise navigate to /know.
       const input =
         document.getElementById("know-question-input") ||
@@ -218,6 +247,24 @@
     pendingRawInput = transcript;
 
     const cmd = interpretCommand(transcript);
+
+    if (window.location.pathname.startsWith("/know") || (cmd && cmd.type === "know")) {
+      let understood = null;
+
+      if (!cmd) {
+        understood = "not sure what to do with that";
+      } else if (cmd.type === "nav") {
+        understood = `navigate to ${cmd.target}`;
+      } else if (cmd.type === "know") {
+        const q = (cmd.question || "").trim();
+        understood = q ? `ask Know: “${q}”` : "ask Know a question";
+      } else {
+        understood = `run command type ${cmd.type}`;
+      }
+
+      updateKnowTranscript(transcript, understood);
+    }
+
     if (!cmd) {
       speak(
         `I heard: “${transcript}”, but I'm not sure what to do with that. ` +
@@ -263,6 +310,17 @@
       t.includes("that's wrong");
 
     if (positive) {
+      if (
+        pendingCommand.type === "know" &&
+        window.location.pathname.startsWith("/know")
+      ) {
+        const q = (pendingCommand.question || "").trim();
+        updateKnowTranscript(
+          pendingRawInput || "",
+          q ? `confirmed: ask Know “${q}”` : "confirmed Know command"
+        );
+      }
+
       speak("Okay, I'll do that.");
       // Execute the command
       runCommand(pendingCommand);
@@ -272,6 +330,7 @@
     }
 
     if (negative) {
+      updateKnowTranscript(null, null);
       speak("No problem. Let's try again. What can I help you with today?");
       pendingCommand = null;
       pendingRawInput = null;

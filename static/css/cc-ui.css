@@ -61,6 +61,16 @@ label{display:block;margin:.5rem 0 .25rem;color:var(--muted)}
 input[type="text"],input[type="file"],textarea{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:.6rem}
 textarea{resize:vertical}
 
+.voice-transcript{
+  margin-top:0.5rem;
+  font-size:0.8rem;
+  color:#8a9ba8;
+  font-family:monospace;
+  opacity:0.85;
+}
+
+.voice-transcript strong{font-weight:600}
+
 /* Artifacts */
 .cc-artifacts table{width:100%;border-collapse:collapse}
 .cc-artifacts th,.cc-artifacts td{border-bottom:1px solid var(--line);padding:.5rem;text-align:left}

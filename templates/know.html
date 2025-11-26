@@ -2,14 +2,21 @@
 {% block title %}Know — CodeCrafter{% endblock %}
 {% block content %}
 <h1 class="cc-h1">Know</h1>
-<form id="question-form" method="post" class="cc-form">
-  <label for="question-input">Question</label>
-  <div style="display:flex; gap:0.5rem; align-items:flex-start;">
-    <input id="question-input" name="question" type="text" class="cc-input" placeholder="Ask something about the project…" required style="flex:1;" />
+<form id="know-form" method="post" action="/know" class="cc-form">
+  <label for="know-question-input">Question</label>
+  <textarea
+    id="know-question-input"
+    name="question"
+    class="cc-input"
+    placeholder="Ask about procedures, flights, rosters...">{{ prefill_question or '' }}</textarea>
+  <div style="display:flex; gap:0.5rem; align-items:flex-start; margin-top:0.5rem;">
     <button type="button" class="cc-btn" aria-label="Speak question" onclick="window.voice.startDictation()">🎤</button>
     <button id="ask-btn" class="cc-btn cc-btn--primary" type="submit">Ask</button>
   </div>
 </form>
+<div id="know-voice-transcript" class="voice-transcript">
+  <!-- voice transcript will appear here -->
+</div>
 
 <div class="cc-card" style="margin-top:1.5rem;">
   <h2>Answer</h2>
@@ -19,7 +26,9 @@
 </div>
 
 <script>
-const form = document.getElementById('question-form');
+const form = document.getElementById('know-form');
+const questionInput = document.getElementById('know-question-input');
+
 form.addEventListener('submit', async (event)=>{
   event.preventDefault();
   const fd = new FormData(form);
@@ -29,10 +38,11 @@ form.addEventListener('submit', async (event)=>{
   document.getElementById('answer-sources').innerHTML = j.sources.map(s=>`<li>${s}</li>`).join('');
   if (j.answer) voice.speak(j.answer);
 });
+
 const urlParams = new URLSearchParams(window.location.search);
 const presetQuestion = urlParams.get('q');
 if (presetQuestion) {
-  document.getElementById('question-input').value = presetQuestion;
+  questionInput.value = presetQuestion;
   form.dispatchEvent(new Event('submit', { cancelable: true }));
 }
 </script>
