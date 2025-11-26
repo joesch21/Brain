@@ -3,9 +3,6 @@
 {% block content %}
 <style>
   .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); }
-  .btn-primary { background: var(--accent); color: var(--accent-ink); border: none; border-radius: 12px; padding: 0.6rem 1rem; font-weight: 600; text-decoration: none; }
-  .btn-primary:hover, .btn-primary:focus { filter: brightness(1.05); }
-  .btn-secondary { border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 0.5rem 1rem; text-decoration: none; }
   .roster-table { width: 100%; border-collapse: collapse; }
   .roster-table th, .roster-table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
   .roster-table th { color: var(--muted); font-weight: 600; }
@@ -15,16 +12,16 @@
   .link-disabled { color: var(--muted); font-size: 0.95rem; }
   .actions { display: flex; gap: 0.5rem; align-items: center; }
   .status-pill { display: inline-flex; align-items: center; padding: 0.25rem 0.6rem; border-radius: 999px; background: var(--line); color: var(--text); font-size: 0.9rem; }
-  .page-toolbar { position: static; padding: 0; margin-bottom: 1rem; background: transparent; border-bottom: none; display: flex; align-items: center; gap: 1rem; }
-  .cc-toolbar-actions { display: flex; gap: 0.5rem; margin-left: auto; }
+  .cc-toolbar { display: flex; align-items: center; gap: 1rem; justify-content: space-between; margin-bottom: 1rem; }
+  .cc-toolbar-actions { display: flex; gap: 0.5rem; }
 </style>
 
 {% set current_role = get_current_role() %}
-<div class="cc-toolbar page-toolbar">
+<div class="cc-toolbar">
   <h1>Roster</h1>
   {% if current_role in ["supervisor", "admin"] %}
     <div class="cc-toolbar-actions">
-      <a href="{{ url_for('admin_import_index') }}" class="btn-secondary">
+      <a href="{{ url_for('admin_import_index') }}" class="cc-button-secondary">
         Import Roster / Flights
       </a>
     </div>
