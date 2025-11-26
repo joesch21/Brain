@@ -778,14 +778,17 @@ def flight_delete(flight_id):
 @require_role("admin", "supervisor")
 def admin_import_index():
     batches = ImportBatch.query.order_by(ImportBatch.created_at.desc()).limit(20).all()
-    return render_template("admin_import.html", batches=batches)
+    default_type = request.args.get("import_type", "flights")
+    if default_type not in ("flights", "roster", "maintenance"):
+        default_type = "flights"
+    return render_template("admin_import.html", batches=batches, default_type=default_type)
 
 
 @app.route("/admin/import/upload", methods=["POST"])
 @require_role("admin", "supervisor")
 def admin_import_upload():
     import_type = request.form.get("import_type", "flights")
-    if import_type not in ("flights", "roster"):
+    if import_type not in ("flights", "roster", "maintenance"):
         flash("Invalid import type.", "danger")
         return redirect(url_for("admin_import_index"))
 
@@ -879,7 +882,7 @@ def admin_import_commit(batch_id):
                     notes=data.get("notes"),
                 )
                 db.session.add(f)
-            else:
+            elif batch.import_type == "roster":
                 r = RosterEntry(
                     date=_parse_date(data.get("date")),
                     employee_name=data.get("employee_name", "").strip(),
@@ -890,6 +893,14 @@ def admin_import_commit(batch_id):
                     notes=data.get("notes"),
                 )
                 db.session.add(r)
+            else:
+                m = MaintenanceItem(
+                    truck_id=data.get("truck_id", "").strip(),
+                    description=data.get("description"),
+                    due_date=_parse_date(data.get("due_date")),
+                    status=data.get("status"),
+                )
+                db.session.add(m)
 
             imported += 1
         except Exception as e:  # noqa: BLE001
