@@ -72,12 +72,15 @@
     if (t.includes("machine room") || t.includes("machine-room")) {
       return { type: "nav", target: "/machine-room" };
     }
-    if (t.includes("know") || t.includes("knowledge")) {
-      // Anything after the word "know" becomes the question, if present.
-      const m = t.split("know").pop().trim();
+    if (t.includes("know")) {
+      const idx = t.indexOf("know");
+      let question = raw.substring(idx + "know".length).trim();
+      if (!question) {
+        question = raw;
+      }
       return {
         type: "know",
-        question: m || raw, // fallback to full phrase
+        question,
       };
     }
 
@@ -140,35 +143,39 @@
     }
 
     if (cmd.type === "know") {
-      if (!cmd.question || !cmd.question.trim()) {
-        speak("What would you like to ask Know?");
+      const q = (cmd.question || "").trim();
+      if (!q) {
+        speak("I couldn't hear a clear question for Know.");
         return;
       }
-      // Fill the Know question field if present; otherwise navigate to /know.
-      const input =
-        document.getElementById("know-question-input") ||
-        document.getElementById("question-input") ||
-        document.querySelector("input[name=question]") ||
-        document.querySelector("textarea[name=question]");
 
-      if (input) {
-        input.value = cmd.question;
-        // Try to submit the form via JS if wired that way.
-        const form = input.form;
-        if (form) {
-          const evt = new Event("submit", { cancelable: true });
-          if (!form.dispatchEvent(evt)) {
-            form.submit();
+      if (window.location.pathname.startsWith("/know")) {
+        const input = document.getElementById("know-question-input");
+        if (input) {
+          input.value = q;
+          input.focus();
+          input.setSelectionRange(q.length, q.length);
+
+          const form = document.getElementById("know-form") || input.closest("form");
+          if (form) {
+            speak(`Okay, I'll ask Know: “${q}”.`);
+            if (form.requestSubmit) {
+              form.requestSubmit();
+            } else {
+              form.submit();
+            }
+          } else {
+            speak("I found the question box but not the form to send it.");
           }
+        } else {
+          speak("I couldn't find the Know question box on this page.");
         }
-        speak("Asking Know.");
-      } else {
-        // Not on the Know page yet; go there with a query param.
-        const url = new URL(window.location.origin + "/know");
-        url.searchParams.set("q", cmd.question);
-        speak("Opening Know.");
-        window.location.href = url.toString();
+        return;
       }
+
+      const target = "/know?voice_q=" + encodeURIComponent(q);
+      speak(`Okay, I'll take you to Know and ask: “${q}”.`);
+      window.location.href = target;
       return;
     }
   }

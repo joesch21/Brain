@@ -211,7 +211,13 @@ def fix():
 
 @app.route("/know", methods=["GET", "POST"])
 def know():
-    return render_template("know.html", answer=None)
+    prefill_question = request.args.get("voice_q", "")
+
+    if request.method == "POST":
+        question = request.form.get("question", "").strip()
+        prefill_question = question
+
+    return render_template("know.html", answer=None, prefill_question=prefill_question)
 
 # ----- Pages: Office Manager -----
 @app.route("/roster")
