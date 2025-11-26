@@ -18,35 +18,10 @@
     font-weight: 600;
     color: #e0f2f1;
   }
-  .voice-btn {
-    background: #00b894;
-    border: none;
-    border-radius: 999px;
-    padding: 0.6rem 1.1rem;
-    font-size: 1rem;
-    color: #021316;
-    cursor: pointer;
-    box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.6);
-    transition: box-shadow 0.2s ease, transform 0.1s ease;
-  }
-  .voice-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 0 0 6px rgba(0, 184, 148, 0.25);
-  }
-  .voice-cta {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.15rem;
-  }
-  .voice-hint {
-    font-size: 0.85rem;
-    color: #8abbb5;
-  }
   .topbar-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1.25rem;
   }
   .user-status {
     display: flex;
@@ -69,10 +44,6 @@
       {% else %}
         <a href="{{ url_for('login') }}" class="link-small">Login</a>
       {% endif %}
-    </div>
-    <div class="voice-cta">
-      <button id="voice-command-btn" class="voice-btn" title="Talk to CodeCrafter">🎙</button>
-      <div class="voice-hint">Try saying “open roster” or “ask Know about today’s flights”.</div>
     </div>
   </div>
 </header>
@@ -174,32 +145,4 @@
     </div>
   </div>
 </div>
-
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    function wireVoiceButton(id) {
-      const btn = document.getElementById(id);
-      if (!btn) return;
-
-      btn.addEventListener("click", () => {
-        if (window.voice && typeof window.voice.startListening === "function") {
-          window.voice.startListening();
-        } else {
-          console.warn("[voice] voice module not ready yet");
-          alert("Voice assistant is still loading, please try again in a moment.");
-        }
-      });
-    }
-
-    // Header mic
-    wireVoiceButton("voice-command-btn");
-    // Hero mic
-    wireVoiceButton("voice-hero-button");
-
-    const label = document.getElementById("voice-status-label");
-    if (label) {
-      window.voiceStatusLabel = label;
-    }
-  });
-</script>
 {% endblock %}

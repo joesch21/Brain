@@ -38,6 +38,15 @@
       <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Settings</span>
     </nav>
     <div class="cc-toolbar__right" aria-live="polite">
+      <button
+        id="voice-command-btn"
+        class="voice-btn"
+        type="button"
+        title="Talk to Ops Assistant"
+        aria-label="Talk to Ops Assistant"
+      >
+        🎙
+      </button>
       <div class="user-status">
         {% if current_user %}
           <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">
@@ -75,5 +84,38 @@
   </script>
   <script src="{{ url_for('static', filename='js/voice.js') }}"></script>
   <script src="{{ url_for('static', filename='js/cc-ui.js') }}"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // Hide the header mic on the home page, keep it everywhere else
+      if (window.location.pathname === "/") {
+        const headerMic = document.getElementById("voice-command-btn");
+        if (headerMic) {
+          headerMic.style.display = "none";
+        }
+      }
+
+      function wireVoiceButton(id) {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+
+        btn.addEventListener("click", () => {
+          if (window.voice && typeof window.voice.startListening === "function") {
+            window.voice.startListening();
+          } else {
+            console.warn("[voice] voice module not ready yet");
+            alert("Voice assistant is still loading, please try again in a moment.");
+          }
+        });
+      }
+
+      wireVoiceButton("voice-command-btn");
+      wireVoiceButton("voice-hero-button");
+
+      const label = document.getElementById("voice-status-label");
+      if (label) {
+        window.voiceStatusLabel = label;
+      }
+    });
+  </script>
 </body>
 </html>
