@@ -34,9 +34,13 @@ from services.knowledge import KnowledgeService
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-me")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-    "DATABASE_URL", "sqlite:///cc_office.db"
-)
+raw_uri = os.getenv("DATABASE_URL", "sqlite:///cc_office.db")
+
+# Normalize old-style postgres scheme for SQLAlchemy
+if raw_uri.startswith("postgres://"):
+    raw_uri = raw_uri.replace("postgres://", "postgresql://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = raw_uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 SUPPORTED_ROLES = ("operator", "supervisor")
