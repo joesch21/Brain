@@ -4,6 +4,52 @@
     window.SpeechRecognition || window.webkitSpeechRecognition || null;
 
   let recognition = null;
+  let selectedVoice = null;
+
+  function choosePreferredVoice(voices) {
+    if (!voices || !voices.length) return null;
+
+    // 1) Try specific nice voices if they exist
+    const preferredNames = [
+      "Google UK English Female",
+      "Google US English Female",
+      "Google UK English Male",
+      "Google US English",
+      "Microsoft Zira Desktop - English (United States)",
+      "Microsoft David Desktop - English (United States)",
+    ];
+    for (const name of preferredNames) {
+      const v = voices.find((voice) => voice.name === name);
+      if (v) return v;
+    }
+
+    // 2) Otherwise, pick the first English voice
+    const english = voices.find(
+      (v) => v.lang && v.lang.toLowerCase().startsWith("en")
+    );
+    if (english) return english;
+
+    // 3) Fallback: first voice in the list
+    return voices[0];
+  }
+
+  function initVoices() {
+    if (!window.speechSynthesis) return;
+
+    function loadVoices() {
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices || !voices.length) return;
+      selectedVoice = choosePreferredVoice(voices);
+      console.log("[voice] selected voice:", selectedVoice && selectedVoice.name);
+    }
+
+    // Some browsers fire onvoiceschanged, others already have voices loaded
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+  }
+
+  // Call this once when the script loads
+  initVoices();
 
   function ensureRecognition() {
     if (!SpeechRecognition) {
@@ -40,8 +86,16 @@
   function speak(text) {
     if (!window.speechSynthesis) return;
     const utterance = new SpeechSynthesisUtterance(String(text));
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
+
+    // Use the selected voice if available
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+
+    // Tune the “personality” a bit
+    utterance.rate = 1.0; // 0.8 = slower/calm, 1.2 = faster/urgent
+    utterance.pitch = 1.0; // 0.8 = deeper, 1.2 = brighter
+
     window.speechSynthesis.speak(utterance);
   }
 
