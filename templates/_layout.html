@@ -38,7 +38,9 @@
         <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true" title="Supervisor role required">Machine Room</span>
       {% endif %}
       <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Jobs</span>
-      <span class="cc-nav-link cc-nav-link--disabled" aria-disabled="true">Settings</span>
+      {% if current_role == 'admin' %}
+        <a class="cc-nav-link" href="{{ url_for('settings') }}">Settings</a>
+      {% endif %}
     </nav>
     <div class="cc-toolbar__right" aria-live="polite">
       <button
