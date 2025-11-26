@@ -395,6 +395,42 @@ def admin_users_edit(user_id):
 
     return render_template("admin_users_form.html", mode="edit", user=user)
 
+
+@app.route("/settings", methods=["GET", "POST"])
+@require_role("admin")
+def settings():
+    # List users for display
+    users = User.query.order_by(User.username.asc()).all()
+
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        role = (request.form.get("role") or "refueler").strip()
+
+        allowed_roles = ("admin", "supervisor", "refueler", "viewer")
+        if role not in allowed_roles:
+            flash("Invalid role selected.", "danger")
+            return render_template("settings.html", users=users)
+
+        if not username or not password:
+            flash("Username and password are required.", "danger")
+            return render_template("settings.html", users=users)
+
+        existing = User.query.filter_by(username=username).first()
+        if existing:
+            flash("Username already exists.", "danger")
+            return render_template("settings.html", users=users)
+
+        user = User(username=username, role=role)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+
+        flash(f"User {username} created with role {role}.", "success")
+        users = User.query.order_by(User.username.asc()).all()
+
+    return render_template("settings.html", users=users)
+
 @app.route("/build", methods=["GET", "POST"])
 def build():
     return render_template("build.html", job=None, steps=[])

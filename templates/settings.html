@@ -1,0 +1,73 @@
+{% extends "_layout.html" %}
+{% block title %}Settings — User & Roles{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<section class="cc-card">
+  <h2>Admin – User & Roles</h2>
+  <p class="text-muted">
+    Create Supervisor and Refueller accounts for your refuelling office.
+  </p>
+
+  <form method="post" class="user-create-form">
+    <div class="cc-field-row">
+      <label for="username">Username</label>
+      <input
+        id="username"
+        name="username"
+        type="text"
+        placeholder="e.g. jane.supervisor"
+        required
+      >
+    </div>
+
+    <div class="cc-field-row">
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        placeholder="Set an initial password"
+        required
+      >
+    </div>
+
+    <div class="cc-field-row">
+      <label for="role">Role</label>
+      <select id="role" name="role">
+        <option value="supervisor">Supervisor</option>
+        <option value="refueler">Refueller</option>
+        <option value="viewer">Viewer (read-only)</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+
+    <button type="submit" class="cc-btn cc-btn--primary">Create user</button>
+  </form>
+</section>
+
+<section class="cc-card" style="margin-top: 1.5rem;">
+  <h2>Existing users</h2>
+
+  {% if users %}
+    <table class="cc-table">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Role</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>{{ u.role }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No users found yet. Create a supervisor or refueller above.</p>
+  {% endif %}
+</section>
+{% endblock %}
