@@ -2,9 +2,43 @@
 (function () {
   let recognition = null;
   let selectedVoice = null;
+  let availableVoices = [];
+  let voicesLoaded = false;
+  const voiceReadyCallbacks = [];
+
+  const PREFERRED_VOICE_KEY = "brain_preferred_voice";
+
+  function getPreferredVoiceName() {
+    try {
+      return localStorage.getItem(PREFERRED_VOICE_KEY);
+    } catch (err) {
+      console.warn("[voice] Unable to read preferred voice", err);
+      return null;
+    }
+  }
+
+  function setPreferredVoiceName(name) {
+    try {
+      if (name) {
+        localStorage.setItem(PREFERRED_VOICE_KEY, name);
+      } else {
+        localStorage.removeItem(PREFERRED_VOICE_KEY);
+      }
+      // Re-evaluate selection once the preference changes
+      selectVoiceFromAvailable();
+    } catch (err) {
+      console.warn("[voice] Unable to save preferred voice", err);
+    }
+  }
 
   function choosePreferredVoice(voices) {
     if (!voices || !voices.length) return null;
+
+    const preferredName = getPreferredVoiceName();
+    if (preferredName) {
+      const preferred = voices.find((voice) => voice.name === preferredName);
+      if (preferred) return preferred;
+    }
 
     // 1) Try specific nice voices if they exist
     const preferredNames = [
@@ -30,14 +64,30 @@
     return voices[0];
   }
 
+  function selectVoiceFromAvailable() {
+    if (!availableVoices.length) return null;
+    selectedVoice = choosePreferredVoice(availableVoices);
+    console.log("[voice] selected voice:", selectedVoice && selectedVoice.name);
+    return selectedVoice;
+  }
+
   function initVoices() {
     if (!window.speechSynthesis) return;
 
     function loadVoices() {
       const voices = window.speechSynthesis.getVoices();
       if (!voices || !voices.length) return;
-      selectedVoice = choosePreferredVoice(voices);
-      console.log("[voice] selected voice:", selectedVoice && selectedVoice.name);
+      availableVoices = voices;
+      voicesLoaded = true;
+      selectVoiceFromAvailable();
+      while (voiceReadyCallbacks.length) {
+        const cb = voiceReadyCallbacks.shift();
+        try {
+          cb(availableVoices, selectedVoice);
+        } catch (err) {
+          console.warn("[voice] callback error", err);
+        }
+      }
     }
 
     // Some browsers fire onvoiceschanged, others already have voices loaded
@@ -428,9 +478,110 @@
     rec.start();
   }
 
+  function onVoicesReady(cb) {
+    if (voicesLoaded) {
+      cb(availableVoices, selectedVoice);
+    } else {
+      voiceReadyCallbacks.push(cb);
+    }
+  }
+
+  function formatVoiceLabel(voice) {
+    if (!voice) return "";
+    const langLabel = voice.lang ? ` (${voice.lang})` : "";
+    return `${voice.name}${langLabel}`;
+  }
+
+  function initSettingsUI() {
+    const card = document.getElementById("voice-preferences-card");
+    if (!card) return;
+
+    const select = document.getElementById("voice-select");
+    const saveBtn = document.getElementById("voice-save");
+    const messageEl = document.getElementById("voice-save-message");
+    const unsupportedEl = document.getElementById("voice-unsupported");
+
+    if (!window.speechSynthesis) {
+      card.classList.add("is-disabled");
+      if (unsupportedEl) {
+        unsupportedEl.style.display = "block";
+      }
+      if (select) select.disabled = true;
+      if (saveBtn) saveBtn.disabled = true;
+      return;
+    }
+
+    function showMessage(text) {
+      if (messageEl) {
+        messageEl.textContent = text;
+        messageEl.style.opacity = text ? "1" : "0";
+      }
+    }
+
+    function populateSelect(voices) {
+      if (!select) return;
+      select.innerHTML = "";
+      voices.forEach((voice) => {
+        const opt = document.createElement("option");
+        opt.value = voice.name;
+        opt.textContent = formatVoiceLabel(voice);
+        select.appendChild(opt);
+      });
+
+      const selectedName =
+        getPreferredVoiceName() &&
+        voices.some((v) => v.name === getPreferredVoiceName())
+          ? getPreferredVoiceName()
+          : selectedVoice && voices.some((v) => v.name === selectedVoice.name)
+          ? selectedVoice.name
+          : voices[0] && voices[0].name;
+
+      if (selectedName) {
+        select.value = selectedName;
+      }
+
+      select.disabled = false;
+      if (saveBtn) {
+        saveBtn.disabled = false;
+      }
+    }
+
+    if (select) {
+      select.innerHTML = "<option>Loading voices…</option>";
+      select.disabled = true;
+    }
+    if (saveBtn) {
+      saveBtn.disabled = true;
+    }
+
+    onVoicesReady((voices) => {
+      populateSelect(voices);
+      if (!messageEl) return;
+      const preferredName = getPreferredVoiceName();
+      messageEl.textContent = preferredName
+        ? "Your preferred voice is ready."
+        : "Voices loaded. Pick your favorite and save.";
+      messageEl.style.opacity = "1";
+    });
+
+    if (saveBtn) {
+      saveBtn.addEventListener("click", () => {
+        if (!select || !select.value) return;
+        setPreferredVoiceName(select.value);
+        showMessage("Saved. All future prompts will use this voice in this browser.");
+        // Optional quick preview so users know what they chose
+        speak("This is your chosen voice.");
+      });
+    }
+  }
+
   // Export global voice API
   window.voice = {
     startListening,
     speak,
+  };
+
+  window.BrainVoicePreferences = {
+    initSettingsUI,
   };
 })();
