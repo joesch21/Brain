@@ -1,8 +1,5 @@
 // static/js/voice.js
 (function () {
-  const SpeechRecognition =
-    window.SpeechRecognition || window.webkitSpeechRecognition || null;
-
   let recognition = null;
   let selectedVoice = null;
 
@@ -52,12 +49,12 @@
   initVoices();
 
   function ensureRecognition() {
-    if (!SpeechRecognition) {
-      alert("Your browser doesn't support voice recognition yet.");
-      return null;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      return null; // handled by startListening
     }
     if (!recognition) {
-      recognition = new SpeechRecognition();
+      recognition = new SR();
       recognition.lang = "en-US";
       recognition.continuous = false;
       recognition.interimResults = false;
@@ -291,10 +288,19 @@
 
   // One-shot assistant flow: greet, listen, interpret, act.
   function startListening() {
-    const rec = ensureRecognition();
-    if (!rec) return;
-
+    // Always greet first so the user gets immediate feedback
     speak("What can I help you with today?");
+
+    const rec = ensureRecognition();
+    if (!rec) {
+      console.warn("[voice] SpeechRecognition not available in this browser");
+      const label =
+        window.voiceStatusLabel || document.getElementById("voice-status-label");
+      if (label) {
+        label.textContent = "Voice input not supported on this browser";
+      }
+      return;
+    }
 
     setListeningState(true);
 
