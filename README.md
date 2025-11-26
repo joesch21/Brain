@@ -10,6 +10,60 @@ Database configuration:
 
 Swap stubs with your AI tooling in `services/`.
 
+### Seeding demo data (recommended for office/ops UI)
+
+On a fresh clone, after installing dependencies:
+
+```bash
+python dev_seed_all.py
+```
+
+This will:
+
+- create demo users (supervisor, refueler) with known passwords
+- seed Employees, Flights, Roster entries, Maintenance items, and an AuditLog entry
+
+Then start the app:
+
+```bash
+python app.py
+```
+
+Log in as supervisor and visit:
+
+- `/roster` – roster view
+- `/schedule` – flight schedule view
+- `/maintenance` – maintenance items
+- `/machine-room` – DB + audit overview
+
+---
+
+## 3) How you actually use it now
+
+From the **Brain repo root**:
+
+```bash
+# 1. Ensure dependencies are installed
+pip install -r requirements.txt
+
+# 2. Seed everything
+python dev_seed_all.py
+
+# 3. Run the app
+python app.py
+```
+
+Then in the browser:
+
+Log in as supervisor (password from seed_db.py – currently superpass123).
+
+Use the nav/Home cards to open:
+
+- Roster → see Alice/Bob rostered
+- Schedule → see QF / SQ flights
+- Maintenance → see Truck-1/2/3 items
+- Machine Room → see counts and recent rows
+
 ## Office Manager data and pages
 
 1. Ensure `DATABASE_URL` is set (defaults to SQLite locally).
