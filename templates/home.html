@@ -176,22 +176,30 @@
 </div>
 
 <script>
-  (function () {
-    const heroBtn = document.getElementById("voice-hero-button");
-    if (heroBtn && window.voice) {
-      heroBtn.addEventListener("click", () => {
-        window.voice.startListening();
+  document.addEventListener("DOMContentLoaded", () => {
+    function wireVoiceButton(id) {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+
+      btn.addEventListener("click", () => {
+        if (window.voice && typeof window.voice.startListening === "function") {
+          window.voice.startListening();
+        } else {
+          console.warn("[voice] voice module not ready yet");
+          alert("Voice assistant is still loading, please try again in a moment.");
+        }
       });
     }
 
-    const voiceBtn = document.getElementById("voice-command-btn");
-    if (voiceBtn && window.voice) {
-      voiceBtn.addEventListener("click", () => {
-        window.voice.startListening();
-      });
-    }
+    // Header mic
+    wireVoiceButton("voice-command-btn");
+    // Hero mic
+    wireVoiceButton("voice-hero-button");
 
-    window.voiceStatusLabel = document.getElementById("voice-status-label");
-  })();
+    const label = document.getElementById("voice-status-label");
+    if (label) {
+      window.voiceStatusLabel = label;
+    }
+  });
 </script>
 {% endblock %}
