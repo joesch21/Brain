@@ -1,93 +1,209 @@
 {% extends "_layout.html" %}
 {% block title %}Machine Room — Office Manager{% endblock %}
+
 {% block content %}
 <style>
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
-  .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); }
-  .muted { color: var(--muted); }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
-  th { color: var(--muted); font-weight: 600; }
+  .mr-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.2fr);
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .mr-grid-narrow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .card {
+    background: var(--elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: var(--pad);
+    box-shadow: var(--shadow);
+  }
+
+  .card h1,
+  .card h2 {
+    margin-top: 0;
+  }
+
+  .mr-kv {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem 1.5rem;
+    margin-top: 1rem;
+  }
+
+  .mr-kv-item dt {
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .mr-kv-item dd {
+    margin: 0.15rem 0 0;
+    font-weight: 600;
+  }
+
+  .mr-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.75rem;
+  }
+
+  .mr-table th,
+  .mr-table td {
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    font-size: 0.92rem;
+  }
+
+  .mr-table th {
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .mr-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .mr-uri {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+    font-size: 0.8rem;
+    word-break: break-all;
+    color: var(--muted);
+  }
 </style>
 
-<h1 class="cc-h1">Machine Room</h1>
-<p class="muted">Quick system snapshot for supervisors and admins.</p>
+<main>
+  <section class="card">
+    <h1>Machine Room</h1>
+    <p class="mr-tag">Supervisor view • system status &amp; recent changes</p>
 
-<div class="grid" aria-label="Database overview">
-  <div class="card">
-    <h2>Database</h2>
-    <p><strong>Type:</strong> {{ db_type }}</p>
-    <p><strong>URI:</strong> {{ db_uri[:80] }}{% if db_uri|length > 80 %}…{% endif %}</p>
-  </div>
-  <div class="card">
-    <h2>Counts</h2>
-    <p><strong>Employees:</strong> {{ employee_count }}</p>
-    <p><strong>Flights:</strong> {{ flight_count }}</p>
-    <p><strong>Maintenance items:</strong> {{ maintenance_count }}</p>
-    <p><strong>Audit events:</strong> {{ audit_count }}</p>
-  </div>
-</div>
+    <dl class="mr-kv">
+      <div class="mr-kv-item">
+        <dt>Database Type</dt>
+        <dd>{{ db_type }}</dd>
+      </div>
+      <div class="mr-kv-item">
+        <dt>Employees (total)</dt>
+        <dd>{{ employee_count }}</dd>
+      </div>
+      <div class="mr-kv-item">
+        <dt>Flights (total)</dt>
+        <dd>{{ flight_count }}</dd>
+      </div>
+      <div class="mr-kv-item">
+        <dt>Database URI</dt>
+        <dd class="mr-uri">{{ db_uri }}</dd>
+      </div>
+    </dl>
+  </section>
 
-<div class="grid" style="margin-top: 1rem;" aria-label="Recent activity">
-  <div class="card">
-    <h3>Recent Employees</h3>
-    <table>
-      <thead>
-        <tr><th>Name</th><th>Role</th><th>Shift</th></tr>
-      </thead>
-      <tbody>
-        {% for emp in recent_employees %}
+  <section class="mr-grid">
+    <div class="card">
+      <h2>Recent Employees</h2>
+      <table class="mr-table">
+        <thead>
           <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Role</th>
+            <th>Shift</th>
+            <th>Base</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in recent_employees %}
+          <tr>
+            <td>{{ emp.id }}</td>
             <td>{{ emp.name }}</td>
             <td>{{ emp.role }}</td>
             <td>{{ emp.shift }}</td>
+            <td>{{ emp.base or "-" }}</td>
           </tr>
-        {% else %}
-          <tr><td colspan="3" class="muted">No employees yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h3>Recent Flights</h3>
-    <table>
-      <thead>
-        <tr><th>Flight</th><th>Date</th><th>Status</th></tr>
-      </thead>
-      <tbody>
-        {% for flight in recent_flights %}
+          {% endfor %}
+          {% if recent_employees|length == 0 %}
           <tr>
-            <td>{{ flight.flight_number }}</td>
-            <td>{{ flight.date }}</td>
-            <td>{{ flight.status or 'Scheduled' }}</td>
+            <td colspan="5">No employees found.</td>
           </tr>
-        {% else %}
-          <tr><td colspan="3" class="muted">No flights yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
 
-  <div class="card">
-    <h3>Recent Audit</h3>
-    <table>
-      <thead>
-        <tr><th>When</th><th>Action</th><th>Description</th></tr>
-      </thead>
-      <tbody>
-        {% for entry in recent_audit %}
+    <div class="card">
+      <h2>Recent Flights</h2>
+      <table class="mr-table">
+        <thead>
           <tr>
-            <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M') if entry.timestamp else '' }}</td>
+            <th>ID</th>
+            <th>Flight</th>
+            <th>Date</th>
+            <th>Origin</th>
+            <th>Dest</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fl in recent_flights %}
+          <tr>
+            <td>{{ fl.id }}</td>
+            <td>{{ fl.flight_number }}</td>
+            <td>{{ fl.date }}</td>
+            <td>{{ fl.origin or "-" }}</td>
+            <td>{{ fl.destination or "-" }}</td>
+          </tr>
+          {% endfor %}
+          {% if recent_flights|length == 0 %}
+          <tr>
+            <td colspan="5">No flights found.</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="mr-grid-narrow">
+    <div class="card">
+      <h2>Audit Log (last 20)</h2>
+      <table class="mr-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Entity</th>
+            <th>Action</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in recent_audit %}
+          <tr>
+            <td>{{ entry.timestamp }}</td>
+            <td>{{ entry.entity_type }}{% if entry.entity_id %} #{{ entry.entity_id }}{% endif %}</td>
             <td>{{ entry.action }}</td>
-            <td>{{ entry.description or '-' }}</td>
+            <td>{{ entry.description or "-" }}</td>
           </tr>
-        {% else %}
-          <tr><td colspan="3" class="muted">No audit events yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
+          {% endfor %}
+          {% if recent_audit|length == 0 %}
+          <tr>
+            <td colspan="4">No audit entries yet.</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
 {% endblock %}
