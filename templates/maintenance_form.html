@@ -1,0 +1,50 @@
+{% extends "_layout.html" %}
+
+{% block content %}
+<main class="cc-panel">
+  <h1>{{ "New Maintenance Item" if mode == "new" else "Edit Maintenance Item" }}</h1>
+
+  <form method="post" class="cc-form">
+    <div class="cc-field">
+      <label for="truck_id">Truck ID</label>
+      <input
+        type="text"
+        id="truck_id"
+        name="truck_id"
+        value="{{ item.truck_id if item else '' }}"
+        required
+      />
+    </div>
+
+    <div class="cc-field">
+      <label for="due_date">Due Date (YYYY-MM-DD)</label>
+      <input
+        type="text"
+        id="due_date"
+        name="due_date"
+        value="{{ item.due_date if item and item.due_date else '' }}"
+      />
+    </div>
+
+    <div class="cc-field">
+      <label for="status">Status</label>
+      <input
+        type="text"
+        id="status"
+        name="status"
+        value="{{ item.status if item else '' }}"
+      />
+    </div>
+
+    <div class="cc-field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description">{{ item.description if item else "" }}</textarea>
+    </div>
+
+    <button type="submit" class="cc-button-primary">
+      {{ "Create" if mode == "new" else "Save changes" }}
+    </button>
+    <a href="{{ url_for('maintenance_page') }}" class="cc-button-secondary">Cancel</a>
+  </form>
+</main>
+{% endblock %}

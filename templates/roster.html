@@ -22,29 +22,41 @@
 <section class="card">
   <div class="card-header">
     <h1>Crew Roster</h1>
+    {% set current_role = get_current_role() %}
+    {% if current_role in ["supervisor", "admin"] %}
+      <a href="{{ url_for('admin_import_index') }}" class="btn-secondary">
+        Import roster / flights
+      </a>
+    {% endif %}
   </div>
 
   <div class="table-wrapper">
     <table class="roster-table">
       <thead>
         <tr>
+          <th>Date</th>
           <th>Name</th>
           <th>Role</th>
           <th>Shift</th>
-          <th>Base</th>
-          <th>Status</th>
+          <th>Truck</th>
+          <th>Notes</th>
         </tr>
       </thead>
       <tbody>
-        {% for emp in employees %}
+        {% for entry in roster_entries %}
         <tr>
-          <td>{{ emp.name }}</td>
-          <td>{{ emp.role }}</td>
-          <td>{{ emp.shift }}</td>
-          <td>{{ emp.base or '-' }}</td>
+          <td>{{ entry.date }}</td>
+          <td>{{ entry.employee_name }}</td>
+          <td>{{ entry.role or '-' }}</td>
           <td>
-            <span class="status-pill">{{ 'Active' if emp.active else 'Inactive' }}</span>
+            {% if entry.shift_start or entry.shift_end %}
+              {{ entry.shift_start or "" }} - {{ entry.shift_end or "" }}
+            {% else %}
+              -
+            {% endif %}
           </td>
+          <td>{{ entry.truck or '-' }}</td>
+          <td>{{ entry.notes or '-' }}</td>
         </tr>
         {% endfor %}
       </tbody>

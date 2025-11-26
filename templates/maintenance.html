@@ -5,15 +5,24 @@
   .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); }
   .card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
   .card-header h1 { margin: 0; font-size: 1.5rem; }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); border: none; border-radius: 12px; padding: 0.6rem 1rem; font-weight: 600; text-decoration: none; }
+  .btn-primary:hover, .btn-primary:focus { filter: brightness(1.05); }
   .maintenance-table { width: 100%; border-collapse: collapse; }
   .maintenance-table th, .maintenance-table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
   .maintenance-table th { color: var(--muted); font-weight: 600; }
   .status-pill { display: inline-flex; align-items: center; padding: 0.25rem 0.6rem; border-radius: 999px; background: var(--line); color: var(--text); font-size: 0.9rem; }
+  .link-small { color: var(--accent); text-decoration: none; font-size: 0.95rem; }
+  .link-small:hover, .link-small:focus { text-decoration: underline; }
+  .link-disabled { color: var(--muted); font-size: 0.95rem; }
 </style>
 
 <section class="card">
   <div class="card-header">
     <h1>Maintenance Items</h1>
+    {% set current_role = get_current_role() %}
+    {% if current_role in ['supervisor', 'admin'] %}
+      <a href="{{ url_for('maintenance_create') }}" class="btn-primary">+ New Maintenance</a>
+    {% endif %}
   </div>
 
   <p>Upcoming and open maintenance actions pulled directly from the connected database.</p>
@@ -22,21 +31,31 @@
     <table class="maintenance-table">
       <thead>
         <tr>
-          <th>Item</th>
+          <th>Truck</th>
           <th>Due Date</th>
           <th>Status</th>
-          <th>Priority</th>
-          <th>Notes</th>
+          <th>Description</th>
+          {% if current_role in ['supervisor', 'admin'] %}
+          <th>Actions</th>
+          {% endif %}
         </tr>
       </thead>
       <tbody>
-        {% for item in maintenance_items %}
+        {% for truck in trucks %}
         <tr>
-          <td>{{ item.item_name }}</td>
-          <td>{{ item.due_date or '-' }}</td>
-          <td><span class="status-pill">{{ item.status }}</span></td>
-          <td>{{ item.priority or '-' }}</td>
-          <td>{{ item.notes or '-' }}</td>
+          <td>{{ truck.id }}</td>
+          <td>{{ truck.next_maintenance or '-' }}</td>
+          <td><span class="status-pill">{{ truck.status or '-' }}</span></td>
+          <td>{{ truck.description or '-' }}</td>
+          {% if current_role in ['supervisor', 'admin'] %}
+          <td>
+            {% if truck.item_id %}
+              <a href="{{ url_for('maintenance_edit', item_id=truck.item_id) }}" class="link-small">Edit</a>
+            {% else %}
+              <span class="link-disabled">Seed only</span>
+            {% endif %}
+          </td>
+          {% endif %}
         </tr>
         {% endfor %}
       </tbody>

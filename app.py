@@ -17,6 +17,7 @@ from flask import (
     send_from_directory,
     session,
     url_for,
+    has_request_context,
 )
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -46,6 +47,22 @@ app.config["SUPERVISOR_KEY"] = os.getenv("SUPERVISOR_KEY")
 
 SUPPORTED_ROLES = ("admin", "supervisor", "refueler", "viewer")
 ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
+
+
+TRUCKS = [
+    {
+        "id": "Truck-1",
+        "next_maintenance": "2024-12-01",
+        "status": "OK",
+        "description": "Initial service seed",
+    },
+    {
+        "id": "Truck-2",
+        "next_maintenance": "2024-12-05",
+        "status": "Due",
+        "description": "Brake inspection",
+    },
+]
 
 
 db = SQLAlchemy(app)
@@ -111,11 +128,10 @@ class MaintenanceItem(db.Model):
     __tablename__ = "maintenance_items"
 
     id = db.Column(db.Integer, primary_key=True)
-    item_name = db.Column(db.String(120), nullable=False)
+    truck_id = db.Column(db.String(32), nullable=False)
+    description = db.Column(db.Text, nullable=True)
     due_date = db.Column(db.Date, nullable=True)
-    status = db.Column(db.String(40), nullable=False, default="Scheduled")
-    priority = db.Column(db.String(40), nullable=True)
-    notes = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(32), nullable=True)
 
 
 class RosterEntry(db.Model):
@@ -251,8 +267,13 @@ def log_audit(entity_type, entity_id, action, description=None):
     """
     Record a simple audit event in the AuditLog table.
     """
-    user = get_current_user()
-    role = user.role if user else get_current_role() or "viewer"
+    user = get_current_user() if has_request_context() else None
+    role = None
+
+    if has_request_context():
+        role = get_current_role()
+
+    role = role or "viewer"
     entry = AuditLog(
         entity_type=entity_type,
         entity_id=entity_id,
@@ -465,8 +486,11 @@ def roster_page():
     """
     Roster page showing current employees and their shifts.
     """
-    employees = Employee.query.order_by(Employee.name.asc()).all()
-    return render_template("roster.html", employees=employees)
+    entries = (
+        RosterEntry.query.order_by(RosterEntry.date.asc(), RosterEntry.shift_start.asc())
+        .all()
+    )
+    return render_template("roster.html", roster_entries=entries)
 
 
 @app.route("/employees/new", methods=["GET", "POST"])
@@ -881,12 +905,97 @@ def admin_import_commit(batch_id):
 
 
 @app.route("/maintenance")
+@require_role("refueler", "supervisor")
 def maintenance_page():
     """
     Truck maintenance page showing upcoming service dates.
+    One sentence explanation: renders maintenance.html with truck maintenance data from the MaintenanceItem table, falling back to static TRUCKS if empty.
     """
     items = MaintenanceItem.query.order_by(MaintenanceItem.due_date.asc()).all()
-    return render_template("maintenance.html", maintenance_items=items)
+
+    if items:
+        # Keep the 'trucks' shape for compatibility with existing template.
+        trucks = [
+            {
+                "id": item.truck_id,
+                "next_maintenance": item.due_date.strftime("%Y-%m-%d") if item.due_date else "",
+                "status": item.status or "",
+                "description": item.description or "",
+                "item_id": item.id,
+            }
+            for item in items
+        ]
+    else:
+        trucks = TRUCKS  # Fallback seed for first run
+        items = []
+
+    return render_template("maintenance.html", trucks=trucks, maintenance_items=items)
+
+
+@app.route("/maintenance/new", methods=["GET", "POST"])
+@requires_supervisor
+def maintenance_create():
+    """
+    Create a new maintenance item.
+    One sentence explanation: lets supervisors register upcoming maintenance for a truck in the database.
+    """
+    if request.method == "POST":
+        truck_id = request.form.get("truck_id", "").strip()
+        due_date_str = request.form.get("due_date", "").strip()
+        status = request.form.get("status", "").strip() or None
+        description = request.form.get("description", "").strip() or None
+
+        if not truck_id:
+            flash("Truck ID is required.", "error")
+        else:
+            item = MaintenanceItem(
+                truck_id=truck_id,
+                due_date=_parse_date(due_date_str),
+                status=status,
+                description=description,
+            )
+            db.session.add(item)
+            db.session.flush()
+            log_audit("maintenance", item.id, "create", f"Created maintenance for {truck_id}")
+            db.session.commit()
+            flash("Maintenance item created.", "success")
+            return redirect(url_for("maintenance_page"))
+
+    # GET or validation failure
+    return render_template("maintenance_form.html", item=None, mode="new")
+
+
+@app.route("/maintenance/<int:item_id>/edit", methods=["GET", "POST"])
+@requires_supervisor
+def maintenance_edit(item_id):
+    """
+    Edit an existing maintenance item.
+    One sentence explanation: lets supervisors update due date, status or description for upcoming truck maintenance.
+    """
+    item = MaintenanceItem.query.get_or_404(item_id)
+
+    if request.method == "POST":
+        truck_id = request.form.get("truck_id", "").strip()
+        due_date_str = request.form.get("due_date", "").strip()
+        status = request.form.get("status", "").strip() or None
+        description = request.form.get("description", "").strip() or None
+
+        if not truck_id:
+            flash("Truck ID is required.", "error")
+        else:
+            before = f"{item.truck_id} due={item.due_date} status={item.status}"
+            item.truck_id = truck_id
+            item.due_date = _parse_date(due_date_str)
+            item.status = status
+            item.description = description
+            after = f"{item.truck_id} due={item.due_date} status={item.status}"
+            db.session.flush()
+            log_audit("maintenance", item.id, "update", f"{before} -> {after}")
+            db.session.commit()
+            flash("Maintenance item updated.", "success")
+            return redirect(url_for("maintenance_page"))
+
+    return render_template("maintenance_form.html", item=item, mode="edit")
 
 
 @app.route("/machine-room")
