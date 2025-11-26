@@ -26,6 +26,7 @@
         {% endwith %}
 
         <form method="post" class="form-grid">
+          <input type="hidden" name="next" value="{{ next_url }}" />
           <label>
             Username
             <input type="text" name="username" required />

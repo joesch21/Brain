@@ -9,8 +9,13 @@ def seed():
 
         if not User.query.filter_by(username="supervisor").first():
             sup = User(username="supervisor", role="supervisor")
-            sup.set_password("CHANGE_ME_SUPERVISOR")
+            sup.set_password("superpass123")
             db.session.add(sup)
+
+        if not User.query.filter_by(username="operator").first():
+            op = User(username="operator", role="operator")
+            op.set_password("operator123")
+            db.session.add(op)
 
         if not Employee.query.first():
             crew = [

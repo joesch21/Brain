@@ -109,25 +109,39 @@ def get_current_user():
 
 
 def get_current_role():
+    role = None
     user = get_current_user()
     if user:
         role = user.role
     else:
-        role = "operator"
+        role = session.get("role")
     if role not in SUPPORTED_ROLES:
-        role = "operator"
+        return None
     return role
 
 
-def requires_supervisor(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if get_current_role() != "supervisor":
-            flash("Supervisor role required for this action.", "error")
-            return redirect(url_for("home"))
-        return f(*args, **kwargs)
+def require_role(*roles):
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(*args, **kwargs):
+            user = get_current_user()
+            if not user:
+                flash("Please log in to access this page.", "info")
+                return redirect(url_for("login", next=request.path))
 
-    return wrapper
+            if roles and user.role not in roles:
+                flash("You do not have permission to access this page.", "error")
+                return redirect(url_for("home"))
+
+            return view_func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def requires_supervisor(f):
+    return require_role("supervisor")(f)
 
 
 def log_audit(entity_type, entity_id, action, description=None):
@@ -135,9 +149,7 @@ def log_audit(entity_type, entity_id, action, description=None):
     Record a simple audit event in the AuditLog table.
     """
     user = get_current_user()
-    role = user.role if user else get_current_role()
-    if role not in SUPPORTED_ROLES:
-        role = "operator"
+    role = user.role if user else get_current_role() or "operator"
     entry = AuditLog(
         entity_type=entity_type,
         entity_id=entity_id,
@@ -154,6 +166,7 @@ def inject_role():
     return {
         "get_current_role": get_current_role,
         "current_user": get_current_user(),
+        "current_role": get_current_role(),
     }
 
 BASE_DIR = os.path.dirname(__file__)
@@ -177,19 +190,27 @@ def login():
     """
     Simple login: username + password.
     """
+    next_url = request.args.get("next") or url_for("home")
+
+    if get_current_user():
+        flash("You are already logged in.", "info")
+        return redirect(next_url)
+
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        next_url = request.form.get("next") or next_url
 
         user = User.query.filter_by(username=username).first()
         if not user or not user.check_password(password):
             flash("Invalid username or password.", "error")
         else:
             session["user_id"] = user.id
-            flash(f"Welcome, {user.username}.", "success")
-            return redirect(url_for("home"))
+            session["role"] = user.role
+            flash(f"Logged in as {user.username} ({user.role}).", "success")
+            return redirect(next_url)
 
-    return render_template("login.html")
+    return render_template("login.html", next_url=next_url)
 
 
 @app.route("/logout")
@@ -197,7 +218,7 @@ def logout():
     """
     Clear login session.
     """
-    session.pop("user_id", None)
+    session.clear()
     flash("Logged out.", "success")
     return redirect(url_for("home"))
 
@@ -221,6 +242,7 @@ def know():
 
 # ----- Pages: Office Manager -----
 @app.route("/roster")
+@require_role("operator", "supervisor")
 def roster_page():
     """
     Roster page showing personnel assignments.
@@ -335,6 +357,7 @@ def employee_delete(employee_id):
 
 
 @app.route("/schedule")
+@require_role("operator", "supervisor")
 def schedule_page():
     """
     Flight schedule page, now backed by the Flight table.
