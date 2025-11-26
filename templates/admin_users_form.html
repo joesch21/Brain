@@ -1,0 +1,52 @@
+{% extends "_layout.html" %}
+{% block title %}{% if mode == 'new' %}New User{% else %}Edit User{% endif %} — Admin{% endblock %}
+{% block content %}
+  <div class="cc-card">
+    <div class="cc-card__header">
+      <div>
+        <h1 class="cc-card__title">
+          {% if mode == 'new' %}Create user{% else %}Edit user{% endif %}
+        </h1>
+        <p class="cc-card__subtitle">Assign a role and credentials for this account.</p>
+      </div>
+      <a class="btn-secondary" href="{{ url_for('admin_users') }}">Back to users</a>
+    </div>
+
+    <form method="post" class="cc-form">
+      <div class="cc-form__group">
+        <label for="username">Username</label>
+        <input
+          id="username"
+          name="username"
+          type="text"
+          value="{{ user.username if user and mode == 'edit' else '' }}"
+          {% if mode == 'edit' %}readonly{% endif %}
+          required
+        />
+      </div>
+
+      <div class="cc-form__group">
+        <label for="role">Role</label>
+        {% set current_role = user.role if user else 'refueler' %}
+        <select id="role" name="role">
+          {% for r in ['admin', 'supervisor', 'refueler', 'viewer'] %}
+            <option value="{{ r }}" {% if r == current_role %}selected{% endif %}>{{ r|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="cc-form__group">
+        <label for="password">
+          {% if mode == 'new' %}Password{% else %}New password (leave blank to keep current){% endif %}
+        </label>
+        <input id="password" name="password" type="password" autocomplete="new-password" {% if mode == 'new' %}required{% endif %} />
+      </div>
+
+      <div class="cc-form__actions">
+        <button type="submit" class="btn-primary">
+          {% if mode == 'new' %}Create user{% else %}Save changes{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

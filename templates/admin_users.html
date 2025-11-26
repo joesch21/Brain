@@ -1,0 +1,35 @@
+{% extends "_layout.html" %}
+{% block title %}Admin — Users & Roles{% endblock %}
+{% block content %}
+  <div class="cc-card">
+    <div class="cc-card__header">
+      <div>
+        <h1 class="cc-card__title">Users & Roles</h1>
+        <p class="cc-card__subtitle">Manage account access for supervisors, refuelers, viewers, and admins.</p>
+      </div>
+      <a class="btn-primary" href="{{ url_for('admin_users_new') }}">+ New user</a>
+    </div>
+    <div class="cc-table cc-table--dense">
+      <div class="cc-table__head">
+        <div>Username</div>
+        <div>Role</div>
+        <div class="cc-table__actions">Actions</div>
+      </div>
+      <div class="cc-table__body">
+        {% for u in users %}
+          <div class="cc-table__row">
+            <div>{{ u.username }}</div>
+            <div>{{ u.role }}</div>
+            <div class="cc-table__actions">
+              <a class="btn-secondary" href="{{ url_for('admin_users_edit', user_id=u.id) }}">Edit</a>
+            </div>
+          </div>
+        {% else %}
+          <div class="cc-table__row">
+            <div colspan="3">No users found.</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock %}
