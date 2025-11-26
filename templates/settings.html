@@ -21,6 +21,24 @@
     <p class="cc-text-muted">Full credentials are never shown in the UI.</p>
   </section>
 
+  <section class="cc-card">
+    <h2>Development data</h2>
+    <p class="cc-text-muted">
+      Initialise demo users and office data for testing roster, schedule,
+      maintenance, and Machine Room views.
+    </p>
+
+    <form method="post" action="{{ url_for('admin_dev_seed') }}">
+      <button type="submit" class="cc-btn cc-btn--danger">
+        Initialise dev database
+      </button>
+    </form>
+
+    <p class="cc-text-muted">
+      For dev / staging only. Safe to run more than once; existing rows are preserved.
+    </p>
+  </section>
+
   <section class="cc-card" id="voice-preferences-card">
     <h2>Voice Preferences</h2>
     <p class="cc-text-muted">Stored in this browser only. Choose the voice that feels clearest to you.</p>
