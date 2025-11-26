@@ -36,19 +36,20 @@ from services.knowledge import KnowledgeService
 from services.importer import ImportService
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY", "dev-secret-key-change-me")
+
 raw_uri = os.getenv("DATABASE_URL", "sqlite:///cc_office.db")
-app.config["SUPERVISOR_KEY"] = os.getenv("SUPERVISOR_KEY")
-app.config["ADMIN_KEY"] = os.getenv("ADMIN_KEY")
 
 # Normalize old-style postgres scheme for SQLAlchemy
 if raw_uri.startswith("postgres://"):
     raw_uri = raw_uri.replace("postgres://", "postgresql://", 1)
 
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev")
 app.config["SQLALCHEMY_DATABASE_URI"] = raw_uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["ADMIN_KEY"] = os.getenv("ADMIN_KEY")
+app.config["SUPERVISOR_KEY"] = os.getenv("SUPERVISOR_KEY")
 
-SUPPORTED_ROLES = ("admin", "supervisor", "refueler", "viewer", "operator")
+SUPPORTED_ROLES = ("admin", "supervisor", "refueler", "viewer")
 ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
 
 
@@ -179,7 +180,7 @@ def require_role(*roles):
             role = get_current_role()
 
             if not user and not role:
-                flash("Please log in to access this page.", "info")
+                flash("Please log in to access this page.", "warning")
                 return redirect(url_for("login", next=request.path))
 
             if role == "admin" or (user and user.is_admin):
@@ -187,7 +188,7 @@ def require_role(*roles):
 
             if roles:
                 if role not in roles and not (user and user.role in roles):
-                    flash("You do not have permission to access this page.", "error")
+                    flash("You do not have permission to access this page.", "danger")
                     return redirect(url_for("home"))
 
             return view_func(*args, **kwargs)
@@ -206,7 +207,7 @@ def log_audit(entity_type, entity_id, action, description=None):
     Record a simple audit event in the AuditLog table.
     """
     user = get_current_user()
-    role = user.role if user else get_current_role() or "operator"
+    role = user.role if user else get_current_role() or "viewer"
     entry = AuditLog(
         entity_type=entity_type,
         entity_id=entity_id,
@@ -274,59 +275,49 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """
-    Simple login: username + password.
-    """
     next_url = request.args.get("next") or url_for("home")
-
-    if get_current_role():
-        flash("You are already logged in.", "info")
-        return redirect(next_url)
 
     if request.method == "POST":
         next_url = request.form.get("next") or next_url
 
         admin_key_input = (request.form.get("admin_key") or "").strip()
         supervisor_key_input = (request.form.get("supervisor_key") or "").strip()
-        configured_admin_key = app.config.get("ADMIN_KEY")
-        configured_key = app.config.get("SUPERVISOR_KEY")
-
-        if admin_key_input:
-            if configured_admin_key and admin_key_input == configured_admin_key:
-                session["user_id"] = None
-                session["role"] = "admin"
-                session["display_name"] = "Admin (key)"
-                flash("Admin access granted.", "success")
-                return redirect(next_url)
-            flash("Invalid admin key.", "error")
-            return render_template("login.html", next_url=next_url)
-
-        if supervisor_key_input:
-            if configured_key and supervisor_key_input == configured_key:
-                session["user_id"] = None
-                session["role"] = "supervisor"
-                session["display_name"] = "Supervisor (key)"
-                flash("Supervisor access granted.", "success")
-                return redirect(next_url)
-            flash("Invalid supervisor key.", "error")
-            return render_template("login.html", next_url=next_url)
-
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
+
+        admin_key = app.config.get("ADMIN_KEY")
+        supervisor_key = app.config.get("SUPERVISOR_KEY")
+
+        if admin_key_input and admin_key and admin_key_input == admin_key:
+            session.clear()
+            session["user_id"] = None
+            session["role"] = "admin"
+            session["display_name"] = "Admin (key)"
+            flash("Admin access granted.", "success")
+            return redirect(next_url)
+
+        if supervisor_key_input and supervisor_key and supervisor_key_input == supervisor_key:
+            session.clear()
+            session["user_id"] = None
+            session["role"] = "supervisor"
+            session["display_name"] = "Supervisor (key)"
+            flash("Supervisor access granted.", "success")
+            return redirect(next_url)
 
         if username and password:
             user = User.query.filter_by(username=username).first()
             if not user or not user.check_password(password):
-                flash("Invalid username or password.", "error")
+                flash("Invalid username or password.", "danger")
                 return render_template("login.html", next_url=next_url)
 
+            session.clear()
             session["user_id"] = user.id
             session["role"] = user.role
             session["display_name"] = user.username
             flash(f"Logged in as {user.username} ({user.role}).", "success")
             return redirect(next_url)
 
-        flash("Please enter a valid admin key, supervisor key or username/password.", "error")
+        flash("Please enter a valid admin key, supervisor key, or username/password.", "danger")
         return render_template("login.html", next_url=next_url)
 
     return render_template("login.html", next_url=next_url)
@@ -338,7 +329,7 @@ def logout():
     Clear login session.
     """
     session.clear()
-    flash("Logged out.", "success")
+    flash("You have been logged out.", "info")
     return redirect(url_for("home"))
 
 
@@ -358,16 +349,16 @@ def admin_users_new():
         password = request.form.get("password") or ""
 
         if not username or not password:
-            flash("Username and password are required.", "error")
+            flash("Username and password are required.", "danger")
             return render_template("admin_users_form.html", mode="new")
 
         if role not in ROLE_CHOICES:
-            flash("Invalid role.", "error")
+            flash("Invalid role.", "danger")
             return render_template("admin_users_form.html", mode="new")
 
         existing = User.query.filter_by(username=username).first()
         if existing:
-            flash("Username already exists.", "error")
+            flash("Username already exists.", "danger")
             return render_template("admin_users_form.html", mode="new")
 
         user = User(username=username, role=role)
@@ -391,7 +382,7 @@ def admin_users_edit(user_id):
         new_password = request.form.get("password") or ""
 
         if role not in ROLE_CHOICES:
-            flash("Invalid role.", "error")
+            flash("Invalid role.", "danger")
             return render_template("admin_users_form.html", mode="edit", user=user)
 
         user.role = role
@@ -424,7 +415,7 @@ def know():
 
 # ----- Pages: Office Manager -----
 @app.route("/roster")
-@require_role("operator", "supervisor")
+@require_role("refueler", "supervisor")
 def roster_page():
     """
     Roster page showing personnel assignments.
@@ -538,7 +529,7 @@ def employee_delete(employee_id):
 
 
 @app.route("/schedule")
-@require_role("operator", "supervisor")
+@require_role("refueler", "supervisor")
 def schedule_page():
     """
     Flight schedule page, now backed by the Flight table.

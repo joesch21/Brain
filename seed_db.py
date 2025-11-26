@@ -12,10 +12,10 @@ def seed():
             sup.set_password("superpass123")
             db.session.add(sup)
 
-        if not User.query.filter_by(username="operator").first():
-            op = User(username="operator", role="operator")
-            op.set_password("operator123")
-            db.session.add(op)
+        if not User.query.filter_by(username="refueler").first():
+            refueler = User(username="refueler", role="refueler")
+            refueler.set_password("refueler123")
+            db.session.add(refueler)
 
         if not Employee.query.first():
             crew = [
