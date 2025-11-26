@@ -481,7 +481,7 @@ def know():
 
 # ----- Pages: Office Manager -----
 @app.route("/roster")
-@require_role("refueler", "supervisor")
+@require_role("refueler", "supervisor", "admin")
 def roster_page():
     """
     Roster page showing current employees and their shifts.
@@ -594,7 +594,7 @@ def employee_delete(employee_id):
 
 
 @app.route("/schedule")
-@require_role("refueler", "supervisor")
+@require_role("refueler", "supervisor", "admin")
 def schedule_page():
     """
     Flight schedule page, now backed by the Flight table.
@@ -916,7 +916,7 @@ def admin_import_commit(batch_id):
 
 
 @app.route("/maintenance")
-@require_role("refueler", "supervisor")
+@require_role("refueler", "supervisor", "admin")
 def maintenance_page():
     """
     Truck maintenance page showing upcoming service dates.
@@ -1010,7 +1010,7 @@ def maintenance_edit(item_id):
 
 
 @app.route("/machine-room")
-@requires_supervisor
+@require_role("supervisor", "admin")
 def machine_room():
     """
     Supervisor-only view with database and system overview.
