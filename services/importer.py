@@ -100,33 +100,54 @@ class ImportService:
         schema_hint = ""
         if import_type == "flights":
             schema_hint = """Return a JSON array of flight objects with keys:
-- flight_number (string)
-- date (YYYY-MM-DD)
-- origin (string)
-- destination (string)
-- eta_local (HH:MM, 24h)
-- etd_local (HH:MM, 24h) or null
-- tail_number (string or null)
-- truck_assignment (string or null)
-- status (string or null)
-- notes (string or null)
+
+flight_number (string)
+
+date (YYYY-MM-DD)
+
+origin (string)
+
+destination (string)
+
+eta_local (HH:MM, 24h)
+
+etd_local (HH:MM, 24h) or null
+
+tail_number (string or null)
+
+truck_assignment (string or null)
+
+status (string or null)
+
+notes (string or null)
 """
         elif import_type == "maintenance":
             schema_hint = """Return a JSON array of maintenance objects with keys:
-- truck_id (string)
-- description (string or null)
-- due_date (YYYY-MM-DD or null)
-- status (string or null)
+
+truck_id (string)
+
+description (string or null)
+
+due_date (YYYY-MM-DD or null)
+
+status (string or null)
 """
         else:
             schema_hint = """Return a JSON array of roster objects with keys:
-- date (YYYY-MM-DD)
-- employee_name (string)
-- role (string)
-- shift_start (HH:MM, 24h) or null
-- shift_end (HH:MM, 24h) or null
-- truck (string or null)
-- notes (string or null)
+
+date (YYYY-MM-DD)
+
+employee_name (string)
+
+role (string)
+
+shift_start (HH:MM, 24h) or null
+
+shift_end (HH:MM, 24h) or null
+
+truck (string or null)
+
+notes (string or null)
 """
 
         prompt = f"""
@@ -170,6 +191,7 @@ Make sure the output is valid JSON only, no explanations.
 
     def _normalize_row_keys(self, import_type: ImportType, row: dict) -> dict:
         lower = {k.lower(): v for k, v in row.items()}
+
         if import_type == "flights":
             return {
                 "flight_number": lower.get("flight_number") or lower.get("flight") or "",
@@ -177,12 +199,13 @@ Make sure the output is valid JSON only, no explanations.
                 "origin": lower.get("origin"),
                 "destination": lower.get("destination"),
                 "eta_local": lower.get("eta_local") or lower.get("eta"),
-                "etd_local": lower.get("etd_local") or lower.get("etd"),
+                "etd_local": lower.get("etd_local"),
                 "tail_number": lower.get("tail_number"),
                 "truck_assignment": lower.get("truck_assignment") or lower.get("truck"),
                 "status": lower.get("status"),
                 "notes": lower.get("notes"),
             }
+
         if import_type == "maintenance":
             return {
                 "truck_id": lower.get("truck_id") or lower.get("truck") or "",
@@ -190,6 +213,8 @@ Make sure the output is valid JSON only, no explanations.
                 "due_date": lower.get("due_date"),
                 "status": lower.get("status"),
             }
+
+        # roster (default)
         return {
             "date": lower.get("date"),
             "employee_name": lower.get("employee_name") or lower.get("name") or "",
