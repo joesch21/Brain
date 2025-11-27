@@ -1092,6 +1092,12 @@ def machine_room():
     maintenance_count = MaintenanceItem.query.count()
     audit_count = AuditLog.query.count()
 
+    # New: global "last updated" from newest audit log row
+    last_audit_entry = (
+        AuditLog.query.order_by(AuditLog.timestamp.desc()).first()
+    )
+    last_updated_any = last_audit_entry.timestamp if last_audit_entry else None
+
     recent_employees = Employee.query.order_by(Employee.id.desc()).limit(5).all()
     recent_flights = (
         Flight.query.order_by(Flight.date.desc(), Flight.eta_local.desc())
@@ -1124,6 +1130,7 @@ def machine_room():
         recent_flights=recent_flights,
         recent_maintenance=recent_maintenance,
         recent_audit=recent_audit,
+        last_updated_any=last_updated_any,
     )
 
 

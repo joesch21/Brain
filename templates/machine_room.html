@@ -95,11 +95,22 @@
     word-break: break-all;
     color: var(--muted);
   }
+
+  .last-meta {
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+  }
 </style>
 
 <main>
   <h1 class="cc-h1">Machine Room</h1>
   <p class="muted">Quick system snapshot for supervisors and admins.</p>
+
+  {% if last_updated_any %}
+    <p class="muted last-meta">
+      Last change recorded: {{ last_updated_any.strftime('%Y-%m-%d %H:%M') }} (audit log)
+    </p>
+  {% endif %}
 
   {% if project_summary %}
   <div class="grid" aria-label="Project summary" style="margin-bottom: 1rem;">
