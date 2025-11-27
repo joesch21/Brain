@@ -98,6 +98,11 @@
   <script>
     window.CURRENT_ROLE = "{{ current_role or get_current_role() or '' }}";
   </script>
+  <script>
+    // If backend lives on a different origin, set it here:
+    // window.BRAIN_BACKEND_BASE_URL = "https://code-crafter2.yourdomain.com";
+    window.BRAIN_BACKEND_BASE_URL = "";
+  </script>
   <script src="{{ url_for('static', filename='js/voice.js') }}"></script>
   <script src="{{ url_for('static', filename='js/cc-ui.js') }}"></script>
   <script>

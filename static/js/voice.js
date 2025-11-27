@@ -239,6 +239,13 @@
     return "";
   }
 
+  function backendUrl(path) {
+    // If you later want a different host (e.g. Code_Crafter2 on another domain),
+    // set window.BRAIN_BACKEND_BASE_URL in _layout.html and it will prefix requests.
+    const base = window.BRAIN_BACKEND_BASE_URL || "";
+    return base + path;
+  }
+
   function formatISODate(d) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -374,6 +381,43 @@
           action: "maintenance_status_update",
           truckId,
           status,
+          restricted: true,
+          allowedRoles: ["supervisor", "admin"],
+        };
+      }
+    }
+
+    // ACTION: bulk update maintenance status for a truck
+    if (
+      (t.includes("mark all maintenance") ||
+        t.includes("mark all items") ||
+        t.includes("close all maintenance") ||
+        t.includes("close all items")) &&
+      t.includes("truck")
+    ) {
+      const truckId = extractTruckIdFromSpeech(t);
+      let status = normalizeMaintenanceStatus(t);
+      let onlyDue = false;
+
+      // e.g. "close all due items for truck 3"
+      if (t.includes("close all due")) {
+        onlyDue = true;
+        // Here "due" describes current state; treat target as Completed.
+        if (status === "Due") {
+          status = "Completed";
+        }
+      } else if (t.includes("due items") || t.includes("only due")) {
+        // e.g. "mark all due items completed for truck 3"
+        onlyDue = true;
+      }
+
+      if (truckId && status) {
+        return {
+          type: "action",
+          action: "maintenance_status_update_bulk",
+          truckId,
+          status,
+          onlyDue,
           restricted: true,
           allowedRoles: ["supervisor", "admin"],
         };
@@ -548,7 +592,7 @@
       return;
     }
 
-    fetch("/api/maintenance/voice_status", {
+    fetch(backendUrl("/api/maintenance/voice_status"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -586,6 +630,71 @@
       .catch((err) => {
         console.error("[voice] maintenance_status_update fetch error:", err);
         speak("I couldn't reach the server to update that truck.");
+      });
+  }
+
+  function sendMaintenanceStatusBulkUpdate(truckId, status, onlyDue) {
+    if (!truckId || !status) {
+      speak("I need both a truck ID and a status to update.");
+      return;
+    }
+
+    fetch(backendUrl("/api/maintenance/voice_status_bulk"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        truck_id: truckId,
+        status: status,
+        only_due: !!onlyDue,
+      }),
+    })
+      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+      .then((result) => {
+        if (!result.ok || !result.data.ok) {
+          const msg =
+            (result.data && result.data.error) ||
+            "The server could not update those maintenance items.";
+          console.error("[voice] maintenance_status_bulk error:", msg);
+          speak(msg);
+          return;
+        }
+
+        const updatedCount = result.data.updated_count || 0;
+        const s = result.data.status || status;
+        const truck = result.data.truck_id || truckId;
+
+        if (updatedCount === 0) {
+          speak(
+            `I didn't find any maintenance items to update for truck ${truck}.`
+          );
+          return;
+        }
+
+        if (onlyDue) {
+          speak(
+            `Okay, I updated ${updatedCount} due maintenance item${updatedCount === 1 ? "" : "s"} ` +
+              `for truck ${truck} to status ${s}.`
+          );
+        } else {
+          speak(
+            `Okay, I updated ${updatedCount} maintenance item${updatedCount === 1 ? "" : "s"} ` +
+              `for truck ${truck} to status ${s}.`
+          );
+        }
+
+        // If we're on the maintenance list, refresh so the change is visible.
+        const path = window.location.pathname || "";
+        if (path.startsWith("/maintenance") && !path.includes("/new")) {
+          setTimeout(() => {
+            window.location.reload();
+          }, 800);
+        }
+      })
+      .catch((err) => {
+        console.error("[voice] maintenance_status_bulk fetch error:", err);
+        speak("I couldn't reach the server to update those maintenance items.");
       });
   }
 
@@ -640,6 +749,29 @@
         `Updating maintenance status for truck ${truckId} to ${status}.`
       );
       sendMaintenanceStatusUpdate(truckId, status);
+      return;
+    }
+
+    if (cmd.action === "maintenance_status_update_bulk") {
+      const truckId = cmd.truckId;
+      const status = cmd.status;
+      const onlyDue = !!cmd.onlyDue;
+      if (!truckId || !status) {
+        speak("I couldn't understand which truck or status you wanted to change.");
+        return;
+      }
+
+      if (onlyDue) {
+        speak(
+          `Updating all due maintenance items for truck ${truckId} to status ${status}.`
+        );
+      } else {
+        speak(
+          `Updating all maintenance items for truck ${truckId} to status ${status}.`
+        );
+      }
+
+      sendMaintenanceStatusBulkUpdate(truckId, status, onlyDue);
       return;
     }
 
