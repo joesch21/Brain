@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 
 load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
 
+from config import CODE_CRAFTER2_API_BASE
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
@@ -44,6 +45,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = raw_uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["ADMIN_KEY"] = os.getenv("ADMIN_KEY")
 app.config["SUPERVISOR_KEY"] = os.getenv("SUPERVISOR_KEY")
+app.config["CODE_CRAFTER2_API_BASE"] = CODE_CRAFTER2_API_BASE
 
 SUPPORTED_ROLES = ("admin", "supervisor", "refueler", "viewer")
 ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
@@ -633,38 +635,13 @@ def employee_delete(employee_id):
 @require_role("refueler", "supervisor", "admin")
 def schedule_page():
     """
-    Flight schedule page, now backed by the Flight table.
-    Supports simple date and truck filters via query parameters.
+    Flight schedule page backed by CodeCrafter2's API.
     """
-    q_date_str = request.args.get("date", "").strip()
-    q_truck = request.args.get("truck", "").strip()
-
-    query = Flight.query
-
-    # Optional date filter
-    q_date = _parse_date(q_date_str)
-    if q_date:
-        query = query.filter(Flight.date == q_date)
-
-    # Optional truck filter (partial match)
-    if q_truck:
-        query = query.filter(Flight.truck_assignment.ilike(f"%{q_truck}%"))
-
-    flights = query.order_by(Flight.date.asc(), Flight.eta_local.asc()).all()
-
-    # Build distinct date and truck lists for filter UI
-    date_rows = db.session.query(Flight.date).distinct().all()
-    truck_rows = db.session.query(Flight.truck_assignment).distinct().all()
-    filter_dates = sorted([r[0] for r in date_rows if r[0] is not None])
-    filter_trucks = sorted([r[0] for r in truck_rows if r[0]])
+    api_base = app.config.get("CODE_CRAFTER2_API_BASE", "")
 
     return render_template(
         "schedule.html",
-        flights=flights,
-        filter_date=q_date_str,
-        filter_truck=q_truck,
-        filter_dates=filter_dates,
-        filter_trucks=filter_trucks,
+        api_base_url=api_base,
     )
 
 
