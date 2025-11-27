@@ -44,6 +44,30 @@
     border-radius: var(--radius-sm, 4px);
     text-decoration: none;
   }
+  .cc-active-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0.25rem 0 0.75rem;
+  }
+  .cc-active-filters-label {
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .cc-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    font-size: 0.8rem;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .cc-pill--clear {
+    cursor: pointer;
+    text-decoration: none;
+  }
 </style>
 
 {% set current_role = get_current_role() %}
@@ -65,6 +89,21 @@
 </div>
 
 <section class="card">
+
+  {% if filter_date or filter_role %}
+  <div class="cc-active-filters" aria-label="Active filters">
+    <span class="cc-active-filters-label">Active filters:</span>
+    {% if filter_date %}
+      <span class="cc-pill">Date: {{ filter_date }}</span>
+    {% endif %}
+    {% if filter_role %}
+      <span class="cc-pill">Role: {{ filter_role }}</span>
+    {% endif %}
+    <a href="{{ url_for('roster_page') }}" class="cc-pill cc-pill--clear">
+      Clear all ✕
+    </a>
+  </div>
+  {% endif %}
 
   <form method="get" class="cc-filter-bar">
     <div class="cc-filter-field">
