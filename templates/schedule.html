@@ -67,6 +67,11 @@
     cursor: pointer;
     text-decoration: none;
   }
+  .cc-summary {
+    margin-top: 0.25rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
 </style>
 
 {% set current_role = get_current_role() %}
@@ -83,6 +88,22 @@
     </div>
   {% endif %}
 </div>
+
+{% set total_flights = flights|length %}
+<p class="cc-summary">
+  Showing {{ total_flights }} flight{% if total_flights != 1 %}s{% endif %}
+  {# Optional filter context if previous CWOs added filters #}
+  {% if (filter_date is defined and filter_date) or (filter_truck is defined and filter_truck) %}
+    &mdash;
+    {% if filter_date is defined and filter_date %}
+      date: {{ filter_date }}
+    {% endif %}
+    {% if filter_truck is defined and filter_truck %}
+      {% if filter_date is defined and filter_date %}, {% endif %}
+      truck: {{ filter_truck }}
+    {% endif %}
+  {% endif %}
+</p>
 
 <section class="card">
 
