@@ -87,78 +87,66 @@
 </style>
 
 <main>
-  <section class="card">
-    <h1>Machine Room</h1>
-    <p class="mr-tag">Supervisor view • system status &amp; recent changes</p>
+  <h1 class="cc-h1">Machine Room</h1>
+  <p class="muted">Quick system snapshot for supervisors and admins.</p>
 
-    <dl class="mr-kv">
-      <div class="mr-kv-item">
-        <dt>Database Type</dt>
-        <dd>{{ db_type }}</dd>
-      </div>
-      <div class="mr-kv-item">
-        <dt>Employees (total)</dt>
-        <dd>{{ employee_count }}</dd>
-      </div>
-      <div class="mr-kv-item">
-        <dt>Flights (total)</dt>
-        <dd>{{ flight_count }}</dd>
-      </div>
-      <div class="mr-kv-item">
-        <dt>Database URI</dt>
-        <dd class="mr-uri">{{ db_uri }}</dd>
-      </div>
-    </dl>
-  </section>
-
-  <section class="card">
-    {% set project = (project_summary or {}).get('project') %}
-    {% set work_orders = ((project_summary or {}).get('work_order_audit') or {}).get('in_progress_or_partially_implemented', []) %}
-    {% set primary_flows = (project or {}).get('primary_user_flows', []) %}
-    {% set has_summary = project or (work_orders | length > 0) or (primary_flows | length > 0) %}
-
-    <h2>Project Summary</h2>
-    {% if has_summary %}
-    <div class="mr-kv">
-      {% if project %}
-      <div class="mr-kv-item">
-        <dt>Project</dt>
-        <dd>{{ project.get('name', '—') }}</dd>
-      </div>
-      <div class="mr-kv-item">
-        <dt>Status</dt>
-        <dd>{{ project.get('status', '—') }}</dd>
-      </div>
-      {% if project.get('repo') %}
-      <div class="mr-kv-item">
-        <dt>Repo</dt>
-        <dd class="mr-uri">{{ project.get('repo') }}</dd>
-      </div>
+  {% if project_summary %}
+  <div class="grid" aria-label="Project summary" style="margin-bottom: 1rem;">
+    <div class="card">
+      <h2>Project</h2>
+      <p>
+        <strong>Name:</strong>
+        {{ project_summary.project.name if project_summary.project and project_summary.project.name else "The Brain" }}
+      </p>
+      <p>
+        <strong>Status:</strong>
+        {{ project_summary.project.status if project_summary.project and project_summary.project.status else "unknown" }}
+      </p>
+      {% if project_summary.project and project_summary.project.purpose %}
+        <p class="muted">{{ project_summary.project.purpose }}</p>
       {% endif %}
+
+      {% if project_summary.project and project_summary.project.primary_user_flows %}
+        <h3>Primary flows</h3>
+        <ul>
+          {% for flow in project_summary.project.primary_user_flows %}
+            <li>{{ flow }}</li>
+          {% endfor %}
+        </ul>
       {% endif %}
     </div>
 
-    {% if primary_flows %}
-    <h3>Core Flows</h3>
-    <ul>
-      {% for flow in primary_flows %}
-      <li>{{ flow }}</li>
-      {% endfor %}
-    </ul>
+    {% if project_summary.work_order_audit and project_summary.work_order_audit.completed_or_legacy %}
+    <div class="card">
+      <h2>Work orders</h2>
+      <ul>
+        {% for wo in project_summary.work_order_audit.completed_or_legacy %}
+          <li>
+            <strong>{{ wo.id }}</strong>
+            {% if wo.title %} — {{ wo.title }}{% endif %}
+            {% if wo.status %} <span class="muted">({{ wo.status }})</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
     {% endif %}
+  </div>
+  {% endif %}
 
-    {% if work_orders %}
-    <h3>Current Work Orders</h3>
-    <ul>
-      {% for item in work_orders %}
-      <li><strong>{{ item.get('id', 'Untracked') }}</strong>{% if item.get('title') %}: {{ item.get('title') }}{% endif %}</li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-    {% else %}
-    <p class="mr-tag">No project summary available.</p>
-    {% endif %}
-  </section>
+  <div class="grid" aria-label="Database overview">
+    <div class="card">
+      <h2>Database</h2>
+      <p><strong>Type:</strong> {{ db_type }}</p>
+      <p><strong>URI:</strong> {{ db_uri[:80] }}{% if db_uri|length > 80 %}…{% endif %}</p>
+    </div>
+    <div class="card">
+      <h2>Counts</h2>
+      <p><strong>Employees:</strong> {{ employee_count }}</p>
+      <p><strong>Flights:</strong> {{ flight_count }}</p>
+      <p><strong>Maintenance items:</strong> {{ maintenance_count }}</p>
+      <p><strong>Audit events:</strong> {{ audit_count }}</p>
+    </div>
+  </div>
 
   <section class="mr-grid">
     <div class="card">
