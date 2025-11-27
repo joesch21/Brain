@@ -493,6 +493,16 @@ def roster_page():
     return render_template("roster.html", roster_entries=roster_entries)
 
 
+@app.route("/employees")
+@require_role("supervisor", "admin")
+def employees_index():
+    """
+    List all employees (crew members) for supervisors/admins.
+    """
+    employees = Employee.query.order_by(Employee.name.asc()).all()
+    return render_template("employees.html", employees=employees)
+
+
 @app.route("/employees/new", methods=["GET", "POST"])
 @requires_supervisor
 def employee_create():

@@ -21,7 +21,13 @@
   <h1>Roster</h1>
   {% if current_role in ["supervisor", "admin"] %}
     <div class="cc-toolbar-actions">
-      <a href="{{ url_for('admin_import_index') }}" class="cc-button-secondary">
+      <a href="{{ url_for('employee_create') }}" class="btn-primary">
+        New employee
+      </a>
+      <a href="{{ url_for('employees_index') }}" class="btn-secondary">
+        Manage employees
+      </a>
+      <a href="{{ url_for('admin_import_index') }}" class="btn-secondary">
         Import Roster / Flights
       </a>
     </div>
