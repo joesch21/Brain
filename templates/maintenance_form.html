@@ -4,6 +4,20 @@
 <main class="cc-panel">
   <h1>{{ "New Maintenance Item" if mode == "new" else "Edit Maintenance Item" }}</h1>
 
+  {% if mode == "new" %}
+    <p class="muted" style="margin-top: 0.25rem;">
+      You can fill this in by hand, or use the voice assistant to report a broken truck.
+    </p>
+    <button
+      type="button"
+      id="maintenance-voice-btn"
+      class="cc-button-secondary"
+      style="margin: 0.5rem 0 1rem;"
+    >
+      🎙 Use voice to report a broken truck
+    </button>
+  {% endif %}
+
   <form method="post" class="cc-form">
     <div class="cc-field">
       <label for="truck_id">Truck ID</label>
@@ -54,5 +68,34 @@
     </button>
     <a href="{{ url_for('maintenance_page') }}" class="cc-button-secondary">Cancel</a>
   </form>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var btn = document.getElementById("maintenance-voice-btn");
+      if (btn) {
+        btn.addEventListener("click", function () {
+          if (window.voice && typeof window.voice.startMaintenanceFlow === "function") {
+            window.voice.startMaintenanceFlow();
+          } else {
+            alert("Voice assistant is not available yet. Please try again in a moment.");
+          }
+        });
+      }
+
+      // If we arrived via voice command (?voice=1), auto-start the wizard after a short delay.
+      try {
+        var params = new URLSearchParams(window.location.search || "");
+        if (params.get("voice") === "1") {
+          setTimeout(function () {
+            if (window.voice && typeof window.voice.startMaintenanceFlow === "function") {
+              window.voice.startMaintenanceFlow();
+            }
+          }, 800);
+        }
+      } catch (err) {
+        console.warn("[voice] unable to auto-start maintenance flow", err);
+      }
+    });
+  </script>
 </main>
 {% endblock %}
