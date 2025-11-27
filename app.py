@@ -31,6 +31,7 @@ from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
 from services.importer import ImportService
+from routes_runs_view import bp_runs_view
 
 app = Flask(__name__)
 
@@ -46,6 +47,8 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["ADMIN_KEY"] = os.getenv("ADMIN_KEY")
 app.config["SUPERVISOR_KEY"] = os.getenv("SUPERVISOR_KEY")
 app.config["CODE_CRAFTER2_API_BASE"] = CODE_CRAFTER2_API_BASE
+
+app.register_blueprint(bp_runs_view)
 
 SUPPORTED_ROLES = ("admin", "supervisor", "refueler", "viewer")
 ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
