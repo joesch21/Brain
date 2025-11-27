@@ -30,6 +30,7 @@
       <a class="cc-nav-link" href="{{ url_for('roster_page') }}">Roster</a>
       <a class="cc-nav-link" href="{{ url_for('schedule_page') }}">Schedule</a>
       <a class="cc-nav-link" href="{{ url_for('maintenance_page') }}">Maintenance</a>
+      <a class="cc-nav-link" href="{{ url_for('bp_runs_view.runs_view') }}">Runs</a>
 
       {% if current_role in ['supervisor', 'admin'] %}
         <a class="cc-nav-link" href="{{ url_for('admin_import_index') }}">Import</a>
