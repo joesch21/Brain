@@ -1,75 +1,69 @@
 {% extends "_layout.html" %}
-{% block title %}Runs Overview — CodeCrafter{% endblock %}
+
+{% block title %}Runs Overview{% endblock %}
+
 {% block content %}
-<section class="cc-card runs-card" id="runs-root" data-api-base="{{ api_base_url | e }}">
-  <header class="runs-header">
-    <div>
-      <p class="runs-kicker">CodeCrafter2</p>
-      <h1 class="runs-title">Runs overview</h1>
-      <p class="runs-subtitle">Browse PT runs for a date and open the run sheet for each truck.</p>
-    </div>
+<div class="container">
+  <h1>Runs Overview</h1>
+
+  <div id="runs-root"
+       data-api-base="{{ api_base_url | safe }}">
+
+    <!-- Filters -->
     <div class="runs-filters">
-      <label for="runs-date">Date</label>
-      <input type="date" id="runs-date" />
+      <label>
+        Date:
+        <input type="date" id="runs-date" />
+      </label>
 
-      <label for="runs-operator-filter">Operator</label>
-      <select id="runs-operator-filter">
-        <option value="">All operators</option>
-        <option value="AJ">AJ</option>
-        <option value="RB">RB</option>
-        <option value="EG">EG</option>
-        <option value="TH">TH</option>
-        <option value="BM">BM</option>
-        <option value="DW">DW</option>
-        <option value="JSC">JSC</option>
-      </select>
+      <label>
+        Operator:
+        <select id="runs-operator-filter">
+          <option value="">All operators</option>
+          <option value="AJ">AJ</option>
+          <option value="RB">RB</option>
+          <option value="EG">EG</option>
+          <option value="TH">TH</option>
+          <option value="BM">BM</option>
+          <option value="DW">DW</option>
+          <option value="JSC">JSC</option>
+        </select>
+      </label>
 
-      <button class="cc-btn cc-btn--primary" id="runs-refresh" type="button">Refresh</button>
-      <button class="cc-btn" id="runs-auto-assign" type="button">Auto-assign runs for this day</button>
+      <button id="runs-refresh">Refresh</button>
+      <button id="runs-auto-assign">Auto-assign runs for this day</button>
     </div>
-  </header>
 
-  <div id="runs-status" class="runs-status" role="status">Loading…</div>
-
-  <!-- Run cards -->
-  <div id="runs-cards" class="runs-cards" aria-live="polite"></div>
-
-  <!-- NEW: Unassigned flights panel -->
-  <div id="unassigned-section" class="unassigned-section" style="display:none;">
-    <h2>Unassigned flights</h2>
-    <p id="unassigned-summary" class="unassigned-summary"></p>
-    <table id="unassigned-table" class="unassigned-table">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Flight</th>
-          <th>Dest</th>
-          <th>Operator</th>
-          <th>Notes</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- Rows injected by JS -->
-      </tbody>
-    </table>
-  </div>
-
-  <div id="run-sheet-section" class="run-sheet-section" style="display:none;">
-    <div class="run-sheet-header">
-      <h2 id="run-sheet-title">Run sheet</h2>
-      <p class="runs-hint">Flights appear in sequence order. Status is planned unless updated later.</p>
+    <!-- Edit toggle -->
+    <div class="runs-edit-controls">
+      <label>
+        <input type="checkbox" id="runs-edit-toggle" />
+        Edit layout (drag flights between runs)
+      </label>
     </div>
-    <div class="run-sheet-table-wrapper">
-      <table id="run-sheet-table" class="run-sheet-table">
+
+    <!-- Status -->
+    <div id="runs-status" class="runs-status">
+      Loading…
+    </div>
+
+    <!-- Run cards overview -->
+    <div id="runs-cards" class="runs-cards">
+      <!-- Cards injected by JS -->
+    </div>
+
+    <!-- Unassigned flights panel -->
+    <div id="unassigned-section" class="unassigned-section" style="display:none;">
+      <h2>Unassigned flights</h2>
+      <p id="unassigned-summary" class="unassigned-summary"></p>
+      <table id="unassigned-table" class="unassigned-table">
         <thead>
           <tr>
-            <th scope="col">Seq</th>
-            <th scope="col">Time</th>
-            <th scope="col">Flight</th>
-            <th scope="col">Dest</th>
-            <th scope="col">Operator</th>
-            <th scope="col">Notes</th>
-            <th scope="col">Status</th>
+            <th>Time</th>
+            <th>Flight</th>
+            <th>Dest</th>
+            <th>Operator</th>
+            <th>Notes</th>
           </tr>
         </thead>
         <tbody>
@@ -77,8 +71,35 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Edit grid: drag & drop between runs + from unassigned -->
+    <div id="runs-edit-grid" class="runs-edit-grid" style="display:none;">
+      <!-- Columns injected by JS -->
+    </div>
+
+    <!-- Selected run sheet -->
+    <div id="run-sheet-section" class="run-sheet-section" style="display:none;">
+      <h2 id="run-sheet-title">Run sheet</h2>
+      <table id="run-sheet-table" class="run-sheet-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Time</th>
+            <th>Flight</th>
+            <th>Dest</th>
+            <th>Operator</th>
+            <th>Notes</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+
   </div>
-</section>
+</div>
 
 <script src="{{ url_for('static', filename='js/runs.js') }}"></script>
 {% endblock %}
