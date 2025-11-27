@@ -68,6 +68,11 @@
     cursor: pointer;
     text-decoration: none;
   }
+  .cc-summary {
+    margin-top: 0.25rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
 </style>
 
 {% set current_role = get_current_role() %}
@@ -87,6 +92,21 @@
     </div>
   {% endif %}
 </div>
+
+{% set total_shifts = roster_entries|length %}
+<p class="cc-summary">
+  Showing {{ total_shifts }} shift{% if total_shifts != 1 %}s{% endif %}
+  {% if (filter_date is defined and filter_date) or (filter_role is defined and filter_role) %}
+    &mdash;
+    {% if filter_date is defined and filter_date %}
+      date: {{ filter_date }}
+    {% endif %}
+    {% if filter_role is defined and filter_role %}
+      {% if filter_date is defined and filter_date %}, {% endif %}
+      role: {{ filter_role }}
+    {% endif %}
+  {% endif %}
+</p>
 
 <section class="card">
 
