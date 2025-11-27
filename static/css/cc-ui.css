@@ -231,6 +231,10 @@ select{width:100%;background:var(--surface);color:var(--text);border:1px solid v
   width: 100%;
 }
 
+.runs-filters button {
+  margin-right: 0.5rem;
+}
+
 .runs-status {
   color: var(--muted);
 }
