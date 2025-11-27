@@ -28,12 +28,20 @@
 
     <div class="cc-field">
       <label for="status">Status</label>
-      <input
-        type="text"
-        id="status"
-        name="status"
-        value="{{ item.status if item else '' }}"
-      />
+      {% set current_status = item.status if item else "" %}
+      {% set options = ["OK", "Due", "Completed", "Out of service"] %}
+      <select id="status" name="status">
+        <option value="" {% if not current_status %}selected{% endif %}>— None —</option>
+        {% for opt in options %}
+          <option value="{{ opt }}" {% if current_status == opt %}selected{% endif %}>
+            {{ opt }}
+          </option>
+        {% endfor %}
+        {# If an existing item has a status outside the standard options, still show it #}
+        {% if current_status and current_status not in options %}
+          <option value="{{ current_status }}" selected>{{ current_status }}</option>
+        {% endif %}
+      </select>
     </div>
 
     <div class="cc-field">

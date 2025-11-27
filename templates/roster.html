@@ -14,6 +14,36 @@
   .status-pill { display: inline-flex; align-items: center; padding: 0.25rem 0.6rem; border-radius: 999px; background: var(--line); color: var(--text); font-size: 0.9rem; }
   .cc-toolbar { display: flex; align-items: center; gap: 1rem; justify-content: space-between; margin-bottom: 1rem; }
   .cc-toolbar-actions { display: flex; gap: 0.5rem; }
+  .cc-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+    margin-bottom: 1rem;
+    align-items: flex-end;
+  }
+  .cc-filter-field label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+  .cc-filter-field select,
+  .cc-filter-field input[type="date"] {
+    min-width: 8rem;
+  }
+  .cc-filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+  .cc-button-ghost {
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm, 4px);
+    text-decoration: none;
+  }
 </style>
 
 {% set current_role = get_current_role() %}
@@ -35,6 +65,37 @@
 </div>
 
 <section class="card">
+
+  <form method="get" class="cc-filter-bar">
+    <div class="cc-filter-field">
+      <label for="roster_filter_date">Date</label>
+      <select id="roster_filter_date" name="date">
+        <option value="">All</option>
+        {% for d in filter_dates %}
+          <option value="{{ d }}" {% if filter_date == d|string %}selected{% endif %}>
+            {{ d }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="cc-filter-field">
+      <label for="roster_filter_role">Role</label>
+      <select id="roster_filter_role" name="role">
+        <option value="">All</option>
+        {% for r in filter_roles %}
+          <option value="{{ r }}" {% if filter_role == r %}selected{% endif %}>
+            {{ r }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="cc-filter-actions">
+      <button type="submit" class="cc-button-secondary">Apply</button>
+      <a href="{{ url_for('roster_page') }}" class="cc-button-ghost">Clear</a>
+    </div>
+  </form>
 
   <div class="table-wrapper">
     <table class="roster-table">
