@@ -245,6 +245,34 @@ select{width:100%;background:var(--surface);color:var(--text);border:1px solid v
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 }
 
+.unassigned-section {
+  margin-top: 1.5rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 1rem;
+}
+
+.unassigned-summary {
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.unassigned-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.unassigned-table th,
+.unassigned-table td {
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.unassigned-table th {
+  background: var(--surface);
+}
+
 .run-card {
   border: 1px solid var(--line);
   border-radius: 12px;
