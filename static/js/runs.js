@@ -10,6 +10,7 @@
   const dateInput = document.getElementById("runs-date");
   const operatorSelect = document.getElementById("runs-operator-filter");
   const refreshButton = document.getElementById("runs-refresh");
+  const autoAssignButton = document.getElementById("runs-auto-assign");
   const statusDiv = document.getElementById("runs-status");
   const cardsContainer = document.getElementById("runs-cards");
 
@@ -29,6 +30,54 @@
   function setDefaultDate() {
     const today = new Date();
     dateInput.value = formatDateForApi(today);
+  }
+
+  async function autoAssignRuns() {
+    const dateVal = dateInput.value;
+    if (!dateVal) {
+      statusDiv.textContent = "Please select a date before auto-assigning.";
+      return;
+    }
+
+    const confirmMsg = `Auto-assign runs for ${dateVal}? This will rebuild assignments according to backend rules.`;
+    const ok = window.confirm(confirmMsg);
+    if (!ok) {
+      return;
+    }
+
+    statusDiv.textContent = "Auto-assigning runs…";
+
+    try {
+      const url = `${apiBase}/api/assignments/generate`;
+      const body = {
+        date: dateVal,
+        respect_existing_runs: false,
+      };
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error(data.error || "Unknown error from assignments API");
+      }
+
+      const assigned = data.assigned ?? 0;
+      const unassigned = (data.unassigned_flight_ids || []).length;
+      statusDiv.textContent = `Auto-assigned ${assigned} flights. Unassigned: ${unassigned}. Reloading runs…`;
+
+      await loadRuns();
+    } catch (err) {
+      console.error("Failed to auto-assign runs", err);
+      statusDiv.textContent = "Error during auto-assignment. Check backend logs.";
+    }
   }
 
   async function loadRuns() {
@@ -163,6 +212,9 @@
   }
 
   refreshButton.addEventListener("click", loadRuns);
+  if (autoAssignButton) {
+    autoAssignButton.addEventListener("click", autoAssignRuns);
+  }
   dateInput.addEventListener("change", loadRuns);
   operatorSelect.addEventListener("change", renderRunCards);
 
