@@ -173,6 +173,103 @@
     }
   }
 
+  // Listen for a single utterance and resolve with the transcript.
+  function listenOnce() {
+    return new Promise((resolve, reject) => {
+      const rec = ensureRecognition();
+      if (!rec) {
+        reject(new Error("SpeechRecognition not available"));
+        return;
+      }
+
+      rec.onresult = (event) => {
+        setListeningState(false);
+        const transcript = event.results[0][0].transcript.trim();
+        console.log("[voice] listenOnce heard:", transcript);
+        resolve(transcript);
+      };
+
+      rec.onerror = (event) => {
+        console.error("[voice] listenOnce error:", event.error);
+        setListeningState(false);
+        reject(event.error || new Error("speech error"));
+      };
+
+      rec.onend = () => {
+        setListeningState(false);
+      };
+
+      try {
+        setListeningState(true);
+        rec.start();
+      } catch (err) {
+        console.error("[voice] listenOnce start error:", err);
+        setListeningState(false);
+        reject(err);
+      }
+    });
+  }
+
+  function normalizeMaintenanceStatus(text) {
+    if (!text) return "";
+    const t = text.toLowerCase();
+    if (t.includes("out of service") || t.includes("broken") || t.includes("not working")) {
+      return "Out of service";
+    }
+    if (t.includes("due") || t.includes("needs service") || t.includes("service due")) {
+      return "Due";
+    }
+    if (t.includes("complete") || t.includes("completed") || t.includes("fixed") || t.includes("repaired")) {
+      return "Completed";
+    }
+    if (t.includes("ok") || t.includes("okay") || t.includes("fine")) {
+      return "OK";
+    }
+    return text.trim();
+  }
+
+  function formatISODate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function parseSpokenDateToISO(text) {
+    if (!text) return "";
+    const t = text.toLowerCase().trim();
+    if (!t || t === "skip" || t === "no" || t === "none" || t === "blank") {
+      return "";
+    }
+
+    const now = new Date();
+
+    if (t.includes("today")) {
+      return formatISODate(now);
+    }
+
+    if (t.includes("tomorrow")) {
+      const d = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      return formatISODate(d);
+    }
+
+    const inDaysMatch = t.match(/in\s+(\d+)\s+day/);
+    if (inDaysMatch && inDaysMatch[1]) {
+      const n = parseInt(inDaysMatch[1], 10);
+      if (!isNaN(n)) {
+        const d = new Date(now.getTime() + n * 24 * 60 * 60 * 1000);
+        return formatISODate(d);
+      }
+    }
+
+    // Direct ISO form e.g. "2025-11-27"
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
+      return t;
+    }
+
+    return "";
+  }
+
   // Interpret raw speech into a command.
   function interpretCommand(raw) {
     const t = raw.toLowerCase();
@@ -229,6 +326,21 @@
     }
     if (t.includes("fix") || t.includes("debug")) {
       return { type: "nav", target: "/fix" };
+    }
+
+    // ACTION: start maintenance wizard for a broken truck
+    if (
+      t.includes("broken truck") ||
+      t.includes("truck is broken") ||
+      t.includes("report broken truck") ||
+      (t.includes("log") && t.includes("maintenance"))
+    ) {
+      return {
+        type: "action",
+        action: "maintenance_wizard",
+        restricted: true,
+        allowedRoles: ["admin", "supervisor"],
+      };
     }
 
     // KNOWLEDGE / STATUS QUERIES
@@ -418,6 +530,21 @@
       return;
     }
 
+    if (cmd.action === "maintenance_wizard") {
+      const path = window.location.pathname || "";
+      // If we're already on the new maintenance form, start immediately.
+      if (path.startsWith("/maintenance") && path.includes("/new")) {
+        speak("Okay, let's log a broken truck together.");
+        if (window.voice && typeof window.voice.startMaintenanceFlow === "function") {
+          window.voice.startMaintenanceFlow();
+        }
+      } else {
+        speak("Opening the new maintenance form so we can log a broken truck.");
+        window.location.href = "/maintenance/new?voice=1";
+      }
+      return;
+    }
+
     speak("I heard an action, but I'm not sure how to handle it yet.");
   }
 
@@ -575,10 +702,114 @@
     }
   }
 
+  async function startMaintenanceFlow() {
+    const path = window.location.pathname || "";
+    const onMaintenanceForm =
+      path.startsWith("/maintenance") && path.includes("/new");
+
+    if (!onMaintenanceForm) {
+      speak("We need to be on the maintenance form first. I'll open it now.");
+      window.location.href = "/maintenance/new?voice=1";
+      return;
+    }
+
+    const form = document.querySelector("form.cc-form") || document.querySelector("form");
+    const truckInput = document.getElementById("truck_id");
+    const dueInput = document.getElementById("due_date");
+    const statusInput = document.getElementById("status");
+    const descInput = document.getElementById("description");
+
+    if (!form || !truckInput || !statusInput || !descInput) {
+      speak("I couldn't find the maintenance form on this page.");
+      return;
+    }
+
+    try {
+      // 1) Truck ID
+      speak("Let's log a broken truck. First, what is the truck ID?");
+      let heard = await listenOnce();
+      if (!heard) {
+        speak("I didn't catch that truck ID. You can try again or fill it in by hand.");
+        return;
+      }
+      truckInput.value = heard.trim().toUpperCase();
+      truckInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+      // 2) Description
+      speak("Got it. Briefly describe the problem.");
+      heard = await listenOnce();
+      if (heard) {
+        descInput.value = heard.trim();
+        descInput.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+
+      // 3) Status
+      speak("What status should I set? You can say out of service, due, okay, or completed.");
+      heard = await listenOnce();
+      const normalizedStatus = normalizeMaintenanceStatus(heard || "");
+      if (normalizedStatus) {
+        statusInput.value = normalizedStatus;
+        statusInput.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+
+      // 4) Due date (optional)
+      let dueStr = "";
+      if (dueInput) {
+        speak(
+          "Optionally, say a due date like today, tomorrow, in three days, or say skip to leave it blank."
+        );
+        heard = await listenOnce();
+        dueStr = parseSpokenDateToISO(heard || "");
+        if (dueStr) {
+          dueInput.value = dueStr;
+          dueInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      }
+
+      // 5) Summary + confirmation
+      const summaryParts = [];
+      if (truckInput.value) summaryParts.push(`truck ${truckInput.value}`);
+      if (statusInput.value) summaryParts.push(`status ${statusInput.value}`);
+      if (dueStr) summaryParts.push(`due ${dueStr}`);
+      if (descInput.value) summaryParts.push(`description: ${descInput.value}`);
+
+      const summaryText =
+        summaryParts.length > 0
+          ? summaryParts.join(", ")
+          : "no details filled in";
+
+      speak(
+        `Here is what I have: ${summaryText}. ` +
+          "Say submit to save this maintenance item, or say cancel to stop."
+      );
+
+      heard = await listenOnce();
+      const confirm = (heard || "").toLowerCase();
+      if (
+        confirm.includes("submit") ||
+        confirm.includes("save") ||
+        confirm.includes("yes")
+      ) {
+        speak("Okay, submitting the maintenance item.");
+        if (form.requestSubmit) {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+      } else {
+        speak("Okay, I won't submit. You can review and submit manually.");
+      }
+    } catch (err) {
+      console.error("[voice] maintenance flow error:", err);
+      speak("Something went wrong while listening. You can fill in the form manually.");
+    }
+  }
+
   // Export global voice API
   window.voice = {
     startListening,
     speak,
+    startMaintenanceFlow,
   };
 
   window.BrainVoicePreferences = {
