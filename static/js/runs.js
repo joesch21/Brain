@@ -1,5 +1,6 @@
-// Runs overview page script
-// Fetches runs from CodeCrafter2 and renders PT-style run cards + run sheet table.
+// runs.js
+// EWOT: This script drives the /runs page: it loads runs, shows unassigned flights, and enables drag-and-drop editing.
+
 (function () {
   const root = document.getElementById("runs-root");
   if (!root) return;
@@ -13,12 +14,13 @@
   const autoAssignButton = document.getElementById("runs-auto-assign");
   const statusDiv = document.getElementById("runs-status");
   const cardsContainer = document.getElementById("runs-cards");
-  const editToggle = document.getElementById("runs-edit-toggle");
 
-  // Unassigned panel elements
   const unassignedSection = document.getElementById("unassigned-section");
   const unassignedSummary = document.getElementById("unassigned-summary");
   const unassignedTableBody = document.querySelector("#unassigned-table tbody");
+
+  const editToggle = document.getElementById("runs-edit-toggle");
+  const editGrid = document.getElementById("runs-edit-grid");
 
   const runSheetSection = document.getElementById("run-sheet-section");
   const runSheetTitle = document.getElementById("run-sheet-title");
@@ -26,7 +28,11 @@
 
   let currentRuns = [];
 
+  let draggedItem = null;
+  let draggedItemType = null; // "run-item" or "unassigned"
+
   function formatDateForApi(date) {
+    // EWOT: Converts a Date object to YYYY-MM-DD for the API query.
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
@@ -34,85 +40,17 @@
   }
 
   function setDefaultDate() {
+    // EWOT: Sets the date input to today's date.
     const today = new Date();
     dateInput.value = formatDateForApi(today);
   }
 
-  function hideUnassignedPanel() {
-    if (unassignedSection) {
-      unassignedSection.style.display = "none";
-    }
-    if (unassignedTableBody) {
-      unassignedTableBody.innerHTML = "";
-    }
-    if (unassignedSummary) {
-      unassignedSummary.textContent = "";
-    }
-  }
-
-  async function autoAssignRuns() {
-    const dateVal = dateInput.value;
-    if (!dateVal) {
-      statusDiv.textContent = "Please select a date before auto-assigning.";
-      return;
-    }
-
-    const confirmMsg = `Auto-assign runs for ${dateVal}? This will rebuild assignments according to backend rules.`;
-    const ok = window.confirm(confirmMsg);
-    if (!ok) {
-      return;
-    }
-
-    statusDiv.textContent = "Auto-assigning runs…";
-
-    try {
-      const url = `${apiBase}/api/assignments/generate`;
-      const body = {
-        date: dateVal,
-        respect_existing_runs: false,
-      };
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (!data.ok) {
-        throw new Error(data.error || "Unknown error from assignments API");
-      }
-
-      const assigned = data.assigned ?? 0;
-      const unassigned = (data.unassigned_flight_ids || []).length;
-      statusDiv.textContent = `Auto-assigned ${assigned} flights. Unassigned: ${unassigned}. Reloading runs…`;
-
-      const success = await loadRuns();
-      if (editToggle?.checked && typeof buildEditGrid === "function") {
-        buildEditGrid();
-      }
-
-      if (success) {
-        await updateUnassignedFlights(dateVal);
-      } else {
-        hideUnassignedPanel();
-      }
-    } catch (err) {
-      console.error("Failed to auto-assign runs", err);
-      statusDiv.textContent = "Error during auto-assignment. Check backend logs.";
-    }
-  }
-
   async function loadRuns() {
+    // EWOT: Fetches runs for the selected date and updates currentRuns and cards.
     const dateVal = dateInput.value;
     if (!dateVal) {
       statusDiv.textContent = "Please select a date.";
-      hideUnassignedPanel();
-      return false;
+      return;
     }
 
     statusDiv.textContent = "Loading runs…";
@@ -127,21 +65,22 @@
       }
 
       const data = await res.json();
-      const runs = Array.isArray(data.runs) ? data.runs : [];
-      currentRuns = runs;
+      if (!data.ok) {
+        throw new Error(data.error || "Unknown error from runs API");
+      }
+
+      currentRuns = data.runs || [];
       renderRunCards();
-      return true;
     } catch (err) {
       console.error("Failed to load runs", err);
       statusDiv.textContent = "Error loading runs. Check connection or try again.";
       currentRuns = [];
       cardsContainer.innerHTML = "";
-      hideUnassignedPanel();
-      return false;
     }
   }
 
   function renderRunCards() {
+    // EWOT: Renders runs as PT-style cards with basic info and a 'View run sheet' button.
     cardsContainer.innerHTML = "";
     const operatorFilter = (operatorSelect.value || "").toUpperCase();
 
@@ -163,7 +102,7 @@
 
       const header = document.createElement("div");
       header.className = "run-card-header";
-      header.textContent = `${run.label || "Run"} • ${run.operator_code || "?"}`;
+      header.textContent = `${run.label} – ${run.operator_code || "?"}`;
       card.appendChild(header);
 
       const meta = document.createElement("div");
@@ -172,15 +111,12 @@
       const end = run.end_time || "";
       const truck = run.truck_id || "Unassigned";
       const flightCount = (run.flights || []).length;
-      meta.textContent = `Time: ${start}–${end} · Truck: ${truck} · Flights: ${flightCount}`;
+      meta.textContent = `Time: ${start}–${end} | Truck: ${truck} | Flights: ${flightCount}`;
       card.appendChild(meta);
 
       const button = document.createElement("button");
-      button.className = "cc-btn cc-btn--primary run-card-btn";
       button.textContent = "View run sheet";
-      button.addEventListener("click", () => {
-        showRunSheet(run);
-      });
+      button.addEventListener("click", () => showRunSheet(run));
       card.appendChild(button);
 
       cardsContainer.appendChild(card);
@@ -188,12 +124,14 @@
   }
 
   function hideRunSheet() {
+    // EWOT: Hides the run sheet section and clears rows.
     runSheetSection.style.display = "none";
     runSheetTableBody.innerHTML = "";
     runSheetTitle.textContent = "Run sheet";
   }
 
   function showRunSheet(run) {
+    // EWOT: Shows a selected run's flights in the run sheet table.
     const label = run.label || "";
     const op = run.operator_code || "";
     const truck = run.truck_id || "Unassigned";
@@ -242,7 +180,248 @@
     runSheetSection.style.display = flights.length > 0 ? "block" : "none";
   }
 
+  function buildEditGrid() {
+    // EWOT: Builds the drag-and-drop run columns from currentRuns.
+    editGrid.innerHTML = "";
+    const operatorFilter = (operatorSelect.value || "").toUpperCase();
+
+    const filtered = currentRuns.filter((run) => {
+      if (!operatorFilter) return true;
+      return (run.operator_code || "").toUpperCase() === operatorFilter;
+    });
+
+    filtered.forEach((run) => {
+      const col = document.createElement("div");
+      col.className = "run-edit-column";
+      col.setAttribute("data-run-id", run.id);
+
+      const header = document.createElement("div");
+      header.className = "run-edit-column-header";
+      const start = run.start_time || "";
+      const end = run.end_time || "";
+      const truck = run.truck_id || "Unassigned";
+      header.textContent = `${run.label} – ${run.operator_code || "?"} (${start}–${end}) Truck: ${truck}`;
+      col.appendChild(header);
+
+      const list = document.createElement("ul");
+      list.className = "run-edit-list";
+      col.appendChild(list);
+
+      const flights = (run.flights || []).slice().sort((a, b) => {
+        return (a.sequence_index || 0) - (b.sequence_index || 0);
+      });
+
+      flights.forEach((fr) => {
+        const li = document.createElement("li");
+        li.className = "run-edit-item";
+        li.setAttribute("draggable", "true");
+        li.setAttribute("data-flight-run-id", fr.id);
+        li.setAttribute("data-run-id", run.id);
+
+        const time = fr.planned_time || (fr.flight && fr.flight.time_local) || "";
+        const fn = fr.flight?.flight_number || "";
+        const dest = fr.flight?.destination || "";
+        li.textContent = `${time} ${fn} → ${dest}`;
+
+        attachDragHandlers(li);
+        list.appendChild(li);
+      });
+
+      attachListDropHandlers(list);
+      editGrid.appendChild(col);
+    });
+  }
+
+  function attachDragHandlers(li) {
+    // EWOT: Sets up drag handlers for items already assigned to a run.
+    li.addEventListener("dragstart", (e) => {
+      draggedItem = li;
+      draggedItemType = "run-item";
+      e.dataTransfer.effectAllowed = "move";
+    });
+
+    li.addEventListener("dragend", () => {
+      draggedItem = null;
+      draggedItemType = null;
+      clearDragOverStates();
+    });
+
+    li.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      li.classList.add("drag-over");
+    });
+
+    li.addEventListener("dragleave", () => {
+      li.classList.remove("drag-over");
+    });
+
+    li.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      li.classList.remove("drag-over");
+      if (!draggedItem || draggedItem === li || draggedItemType !== "run-item") return;
+
+      const list = li.parentElement;
+      list.insertBefore(draggedItem, li);
+      await saveCurrentLayout();
+    });
+  }
+
+  function attachListDropHandlers(list) {
+    // EWOT: Handles drops into the run column list for both run-items and unassigned rows.
+    list.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    });
+
+    list.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      if (!draggedItem) return;
+
+      const col = list.closest(".run-edit-column");
+      if (!col) return;
+      const runId = parseInt(col.getAttribute("data-run-id"), 10);
+      if (!runId) return;
+
+      if (draggedItemType === "run-item") {
+        list.appendChild(draggedItem);
+        await saveCurrentLayout();
+      } else if (draggedItemType === "unassigned") {
+        const flightId = parseInt(
+          draggedItem.getAttribute("data-flight-id"),
+          10
+        );
+        if (!flightId) return;
+        await assignUnassignedFlightToRun(runId, flightId);
+      }
+
+      draggedItem = null;
+      draggedItemType = null;
+      clearDragOverStates();
+    });
+  }
+
+  function attachUnassignedDragHandlers(row) {
+    // EWOT: Sets up drag for unassigned flight rows so they can be dropped into run columns.
+    row.addEventListener("dragstart", (e) => {
+      draggedItem = row;
+      draggedItemType = "unassigned";
+      e.dataTransfer.effectAllowed = "move";
+    });
+
+    row.addEventListener("dragend", () => {
+      draggedItem = null;
+      draggedItemType = null;
+      clearDragOverStates();
+    });
+  }
+
+  function clearDragOverStates() {
+    // EWOT: Clears visual drag-over markers from all run items.
+    document
+      .querySelectorAll(".run-edit-item.drag-over")
+      .forEach((el) => el.classList.remove("drag-over"));
+  }
+
+  async function saveCurrentLayout() {
+    // EWOT: Reads the current run columns layout and posts it to /api/runs/update_layout.
+    const dateVal = dateInput.value;
+    if (!dateVal) return;
+
+    const runsPayload = [];
+    const columns = editGrid.querySelectorAll(".run-edit-column");
+
+    columns.forEach((col) => {
+      const runId = col.getAttribute("data-run-id");
+      const list = col.querySelector(".run-edit-list");
+      const items = list ? Array.from(list.querySelectorAll(".run-edit-item")) : [];
+      const frIds = items.map((li) =>
+        parseInt(li.getAttribute("data-flight-run-id"), 10)
+      );
+      runsPayload.push({
+        id: parseInt(runId, 10),
+        flight_run_ids: frIds,
+      });
+    });
+
+    const body = {
+      date: dateVal,
+      runs: runsPayload,
+    };
+
+    statusDiv.textContent = "Saving layout…";
+
+    try {
+      const url = `${apiBase}/api/runs/update_layout`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error(data.error || "Unknown error from update_layout");
+      }
+      statusDiv.textContent = `Layout saved (${data.updated_flight_runs} flight runs updated).`;
+      await loadRuns();
+      renderRunCards();
+      if (editToggle.checked) {
+        buildEditGrid();
+      }
+      await updateUnassignedFlights(dateVal);
+    } catch (err) {
+      console.error("Failed to save layout", err);
+      statusDiv.textContent = "Error saving layout.";
+    }
+  }
+
+  async function assignUnassignedFlightToRun(runId, flightId) {
+    // EWOT: Calls /api/flight_runs/assign to add an unassigned flight into a run, then reloads runs and unassigned list.
+    if (!runId || !flightId) return;
+    const dateVal = dateInput.value;
+    statusDiv.textContent = `Assigning flight ${flightId} to run ${runId}…`;
+
+    try {
+      const url = `${apiBase}/api/flight_runs/assign`;
+      const body = {
+        run_id: runId,
+        flight_id: flightId,
+      };
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error(data.error || "Unknown error from assign endpoint");
+      }
+
+      statusDiv.textContent = `Flight assigned to run. Reloading…`;
+
+      await loadRuns();
+      renderRunCards();
+      if (editToggle && editToggle.checked) {
+        buildEditGrid();
+      }
+      await updateUnassignedFlights(dateVal);
+    } catch (err) {
+      console.error("Failed to assign unassigned flight", err);
+      statusDiv.textContent = "Error assigning flight. Check backend logs.";
+    }
+  }
+
   async function updateUnassignedFlights(dateVal) {
+    // EWOT: Loads all flights for the date and shows those not present in any run.
     if (!unassignedSection || !unassignedTableBody) return;
     if (!dateVal) {
       unassignedSection.style.display = "none";
@@ -288,7 +467,8 @@
       unassignedTableBody.innerHTML = "";
 
       if (unassignedSummary) {
-        unassignedSummary.textContent = `Unassigned flights for this date: ${unassigned.length}`;
+        unassignedSummary.textContent =
+          `Unassigned flights for this date: ${unassigned.length}`;
       }
 
       unassigned.sort((a, b) => {
@@ -303,6 +483,9 @@
 
       unassigned.forEach((f) => {
         const tr = document.createElement("tr");
+        tr.className = "unassigned-row";
+        tr.setAttribute("draggable", "true");
+        tr.setAttribute("data-flight-id", f.id);
 
         const tdTime = document.createElement("td");
         tdTime.textContent = f.time_local || "";
@@ -324,6 +507,7 @@
         tdNotes.textContent = f.notes || "";
         tr.appendChild(tdNotes);
 
+        attachUnassignedDragHandlers(tr);
         unassignedTableBody.appendChild(tr);
       });
     } catch (err) {
@@ -332,34 +516,107 @@
     }
   }
 
+  async function autoAssignRuns() {
+    // EWOT: Calls backend auto-assignment for the day, then reloads runs and unassigned panel.
+    const dateVal = dateInput.value;
+    if (!dateVal) {
+      statusDiv.textContent = "Please select a date before auto-assigning.";
+      return;
+    }
+
+    const confirmMsg =
+      `Auto-assign runs for ${dateVal}? This will rebuild assignments according to backend rules.`;
+    const ok = window.confirm(confirmMsg);
+    if (!ok) return;
+
+    statusDiv.textContent = "Auto-assigning runs…";
+
+    try {
+      const url = `${apiBase}/api/assignments/generate`;
+      const body = {
+        date: dateVal,
+        respect_existing_runs: false
+      };
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error(data.error || "Unknown error from assignments API");
+      }
+
+      const assigned = data.assigned ?? 0;
+      const unassignedCount = (data.unassigned_flight_ids || []).length;
+      statusDiv.textContent =
+        `Auto-assigned ${assigned} flights. Unassigned: ${unassignedCount}. Reloading runs…`;
+
+      await loadRuns();
+      renderRunCards();
+      if (editToggle && editToggle.checked) {
+        buildEditGrid();
+      }
+      await updateUnassignedFlights(dateVal);
+    } catch (err) {
+      console.error("Failed to auto-assign runs", err);
+      statusDiv.textContent = "Error during auto-assignment. Check backend logs.";
+    }
+  }
+
+  // Event wiring
   refreshButton.addEventListener("click", async () => {
     const dateVal = dateInput.value;
-    const success = await loadRuns();
-    if (success) {
-      await updateUnassignedFlights(dateVal);
-    } else {
-      hideUnassignedPanel();
+    await loadRuns();
+    if (editToggle.checked) {
+      buildEditGrid();
     }
+    await updateUnassignedFlights(dateVal);
   });
+
   if (autoAssignButton) {
     autoAssignButton.addEventListener("click", autoAssignRuns);
   }
+
   dateInput.addEventListener("change", async () => {
     const dateVal = dateInput.value;
-    const success = await loadRuns();
-    if (success) {
-      await updateUnassignedFlights(dateVal);
+    await loadRuns();
+    if (editToggle.checked) {
+      buildEditGrid();
+    }
+    await updateUnassignedFlights(dateVal);
+  });
+
+  operatorSelect.addEventListener("change", () => {
+    renderRunCards();
+    if (editToggle.checked) {
+      buildEditGrid();
+    }
+    // Note: unassigned panel is per date, not per operator.
+  });
+
+  editToggle.addEventListener("change", () => {
+    if (editToggle.checked) {
+      editGrid.style.display = "flex";
+      buildEditGrid();
     } else {
-      hideUnassignedPanel();
+      editGrid.style.display = "none";
     }
   });
-  operatorSelect.addEventListener("change", renderRunCards);
 
+  // Initial load
   setDefaultDate();
-  loadRuns().then((success) => {
+  loadRuns().then(() => {
     const dateVal = dateInput.value;
-    if (success) {
-      updateUnassignedFlights(dateVal);
+    if (editToggle.checked) {
+      buildEditGrid();
     }
+    updateUnassignedFlights(dateVal);
   });
 })();
