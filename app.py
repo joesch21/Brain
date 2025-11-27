@@ -485,12 +485,38 @@ def know():
 def roster_page():
     """
     Roster page showing current employees and their shifts.
+    Supports simple date and role filters via query parameters.
     """
-    roster_entries = (
-        RosterEntry.query.order_by(RosterEntry.date.asc(), RosterEntry.shift_start.asc())
-        .all()
+    q_date_str = request.args.get("date", "").strip()
+    q_role = request.args.get("role", "").strip()
+
+    query = RosterEntry.query
+
+    # Optional date filter
+    q_date = _parse_date(q_date_str)
+    if q_date:
+        query = query.filter(RosterEntry.date == q_date)
+
+    # Optional role filter (partial match)
+    if q_role:
+        query = query.filter(RosterEntry.role.ilike(f"%{q_role}%"))
+
+    roster_entries = query.order_by(RosterEntry.date.asc(), RosterEntry.shift_start.asc()).all()
+
+    # Distinct dates and roles for filter dropdowns
+    date_rows = db.session.query(RosterEntry.date).distinct().all()
+    role_rows = db.session.query(RosterEntry.role).distinct().all()
+    filter_dates = sorted([r[0] for r in date_rows if r[0] is not None])
+    filter_roles = sorted([r[0] for r in role_rows if r[0]])
+
+    return render_template(
+        "roster.html",
+        roster_entries=roster_entries,
+        filter_date=q_date_str,
+        filter_role=q_role,
+        filter_dates=filter_dates,
+        filter_roles=filter_roles,
     )
-    return render_template("roster.html", roster_entries=roster_entries)
 
 
 @app.route("/employees")
@@ -608,9 +634,38 @@ def employee_delete(employee_id):
 def schedule_page():
     """
     Flight schedule page, now backed by the Flight table.
+    Supports simple date and truck filters via query parameters.
     """
-    flights = Flight.query.order_by(Flight.date.asc(), Flight.eta_local.asc()).all()
-    return render_template("schedule.html", flights=flights)
+    q_date_str = request.args.get("date", "").strip()
+    q_truck = request.args.get("truck", "").strip()
+
+    query = Flight.query
+
+    # Optional date filter
+    q_date = _parse_date(q_date_str)
+    if q_date:
+        query = query.filter(Flight.date == q_date)
+
+    # Optional truck filter (partial match)
+    if q_truck:
+        query = query.filter(Flight.truck_assignment.ilike(f"%{q_truck}%"))
+
+    flights = query.order_by(Flight.date.asc(), Flight.eta_local.asc()).all()
+
+    # Build distinct date and truck lists for filter UI
+    date_rows = db.session.query(Flight.date).distinct().all()
+    truck_rows = db.session.query(Flight.truck_assignment).distinct().all()
+    filter_dates = sorted([r[0] for r in date_rows if r[0] is not None])
+    filter_trucks = sorted([r[0] for r in truck_rows if r[0]])
+
+    return render_template(
+        "schedule.html",
+        flights=flights,
+        filter_date=q_date_str,
+        filter_truck=q_truck,
+        filter_dates=filter_dates,
+        filter_trucks=filter_trucks,
+    )
 
 
 @app.route("/flights/new", methods=["GET", "POST"])
