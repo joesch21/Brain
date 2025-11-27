@@ -1,0 +1,46 @@
+{% extends "_layout.html" %}
+{% block title %}Employees — Office Manager{% endblock %}
+{% block content %}
+  <div class="cc-card">
+    <div class="cc-card__header">
+      <div>
+        <h1 class="cc-card__title">Employees</h1>
+        <p class="cc-card__subtitle">
+          Maintain rosterable staff records for refuelling operations.
+        </p>
+      </div>
+      <a class="btn-primary" href="{{ url_for('employee_create') }}">+ New employee</a>
+    </div>
+
+    <div class="cc-table cc-table--dense">
+      <div class="cc-table__head">
+        <div>Name</div>
+        <div>Role</div>
+        <div>Shift</div>
+        <div>Base</div>
+        <div>Active</div>
+        <div class="cc-table__actions">Actions</div>
+      </div>
+      <div class="cc-table__body">
+        {% for e in employees %}
+          <div class="cc-table__row">
+            <div>{{ e.name }}</div>
+            <div>{{ e.role }}</div>
+            <div>{{ e.shift }}</div>
+            <div>{{ e.base or "-" }}</div>
+            <div>{% if e.active %}Yes{% else %}No{% endif %}</div>
+            <div class="cc-table__actions">
+              <a class="btn-secondary" href="{{ url_for('employee_edit', employee_id=e.id) }}">
+                Edit
+              </a>
+            </div>
+          </div>
+        {% else %}
+          <div class="cc-table__row">
+            <div colspan="6">No employees found.</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock %}
