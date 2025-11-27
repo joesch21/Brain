@@ -31,7 +31,28 @@
 
   <div id="runs-status" class="runs-status" role="status">Loading…</div>
 
+  <!-- Run cards -->
   <div id="runs-cards" class="runs-cards" aria-live="polite"></div>
+
+  <!-- NEW: Unassigned flights panel -->
+  <div id="unassigned-section" class="unassigned-section" style="display:none;">
+    <h2>Unassigned flights</h2>
+    <p id="unassigned-summary" class="unassigned-summary"></p>
+    <table id="unassigned-table" class="unassigned-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Flight</th>
+          <th>Dest</th>
+          <th>Operator</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Rows injected by JS -->
+      </tbody>
+    </table>
+  </div>
 
   <div id="run-sheet-section" class="run-sheet-section" style="display:none;">
     <div class="run-sheet-header">
