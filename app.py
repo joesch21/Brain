@@ -1074,6 +1074,58 @@ def maintenance_edit(item_id):
     return render_template("maintenance_form.html", item=item, mode="edit")
 
 
+@app.route("/api/maintenance/voice_status", methods=["POST"])
+@require_role("supervisor", "admin")
+def maintenance_voice_status():
+    """
+    Voice-triggered status update for a maintenance item.
+    Expects JSON: { "truck_id": "...", "status": "..." }
+
+    Finds the most recent MaintenanceItem for the given truck_id and
+    updates its status, then logs an AuditLog entry.
+    """
+
+    data = request.get_json(silent=True) or {}
+    truck_id_raw = (data.get("truck_id") or "").strip()
+    status_raw = (data.get("status") or "").strip()
+
+    if not truck_id_raw or not status_raw:
+        return jsonify({"ok": False, "error": "truck_id and status required"}), 400
+
+    item = (
+        MaintenanceItem.query.filter(
+            MaintenanceItem.truck_id.ilike(truck_id_raw)
+        )
+        .order_by(MaintenanceItem.id.desc())
+        .first()
+    )
+
+    if not item:
+        return jsonify({"ok": False, "error": f"No maintenance item found for truck {truck_id_raw}"}), 404
+
+    old_status = item.status
+    item.status = status_raw
+
+    log_audit(
+        "maintenance",
+        item.id,
+        "voice_status_update",
+        f"Status changed from {old_status or 'None'} to {status_raw} for truck {item.truck_id} via voice",
+    )
+    db.session.commit()
+
+    return jsonify(
+        {
+            "ok": True,
+            "item": {
+                "id": item.id,
+                "truck_id": item.truck_id,
+                "status": item.status,
+            },
+        }
+    )
+
+
 @app.route("/machine-room")
 @require_role("supervisor", "admin")
 def machine_room():
