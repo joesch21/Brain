@@ -1,200 +1,53 @@
 {% extends "_layout.html" %}
-{% block title %}Schedule — Office Manager{% endblock %}
+{% block title %}Daily Flight Schedule{% endblock %}
 {% block content %}
-<style>
-  .card { background: var(--elev); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow); }
-  .schedule-table { width: 100%; border-collapse: collapse; }
-  .schedule-table th, .schedule-table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
-  .schedule-table th { color: var(--muted); font-weight: 600; }
-  .link-small { color: var(--accent); text-decoration: none; font-size: 0.95rem; }
-  .link-small:hover, .link-small:focus { text-decoration: underline; }
-  .link-danger { color: var(--danger); }
-  .link-disabled { color: var(--muted); font-size: 0.95rem; }
-  .actions { display: flex; gap: 0.5rem; align-items: center; }
-  .cc-toolbar { display: flex; align-items: center; gap: 1rem; justify-content: space-between; margin-bottom: 1rem; }
-  .cc-toolbar-actions { display: flex; gap: 0.5rem; }
-  .cc-filter-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1.5rem;
-    margin-bottom: 1rem;
-    align-items: flex-end;
-  }
-  .cc-filter-field label {
-    display: block;
-    font-size: 0.85rem;
-    color: var(--muted);
-    margin-bottom: 0.25rem;
-  }
-  .cc-filter-field select,
-  .cc-filter-field input[type="date"] {
-    min-width: 8rem;
-  }
-  .cc-filter-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-left: auto;
-  }
-  .cc-button-ghost {
-    border: 1px solid var(--line);
-    background: transparent;
-    color: var(--muted);
-    padding: 0.35rem 0.75rem;
-    border-radius: var(--radius-sm, 4px);
-    text-decoration: none;
-  }
-  .cc-active-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: center;
-    margin: 0.25rem 0 0.75rem;
-  }
-  .cc-active-filters-label {
-    font-size: 0.85rem;
-    color: var(--muted);
-  }
-  .cc-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.15rem 0.6rem;
-    border-radius: 999px;
-    border: 1px solid var(--line);
-    font-size: 0.8rem;
-    background: rgba(255, 255, 255, 0.02);
-  }
-  .cc-pill--clear {
-    cursor: pointer;
-    text-decoration: none;
-  }
-  .cc-summary {
-    margin-top: 0.25rem;
-    font-size: 0.9rem;
-    color: var(--muted);
-  }
-</style>
+<div class="container">
+  <h1>Daily Flight Schedule</h1>
 
-{% set current_role = get_current_role() %}
-<div class="cc-toolbar">
-  <h1>Flight Schedule</h1>
-  {% if current_role in ["supervisor", "admin"] %}
-    <div class="cc-toolbar-actions">
-      <a href="{{ url_for('flight_create') }}" class="cc-button-primary">
-        New Flight
-      </a>
-      <a href="{{ url_for('admin_import_index') }}" class="cc-button-secondary">
-        Import Flights / Roster
-      </a>
+  <div id="schedule-root" data-api-base="{{ api_base_url | safe }}">
+    <div class="schedule-filters">
+      <label for="schedule-date">
+        Date:
+        <input type="date" id="schedule-date" />
+      </label>
+
+      <label for="operator-filter">
+        Operator:
+        <select id="operator-filter">
+          <option value="">All operators</option>
+          <option value="AJ">AJ</option>
+          <option value="RB">RB</option>
+          <option value="EG">EG</option>
+          <option value="TH">TH</option>
+          <option value="BM">BM</option>
+          <option value="DW">DW</option>
+          <option value="JSC">JSC</option>
+        </select>
+      </label>
+
+      <button id="refresh-schedule" class="cc-button-secondary">Refresh</button>
     </div>
-  {% endif %}
+
+    <div id="schedule-status" class="schedule-status">Loading…</div>
+
+    <div class="table-wrapper">
+      <table id="schedule-table" class="schedule-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Flight</th>
+            <th>Dest</th>
+            <th>Operator</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-{% set total_flights = flights|length %}
-<p class="cc-summary">
-  Showing {{ total_flights }} flight{% if total_flights != 1 %}s{% endif %}
-  {# Optional filter context if previous CWOs added filters #}
-  {% if (filter_date is defined and filter_date) or (filter_truck is defined and filter_truck) %}
-    &mdash;
-    {% if filter_date is defined and filter_date %}
-      date: {{ filter_date }}
-    {% endif %}
-    {% if filter_truck is defined and filter_truck %}
-      {% if filter_date is defined and filter_date %}, {% endif %}
-      truck: {{ filter_truck }}
-    {% endif %}
-  {% endif %}
-</p>
-
-<section class="card">
-
-  {% if filter_date or filter_truck %}
-  <div class="cc-active-filters" aria-label="Active filters">
-    <span class="cc-active-filters-label">Active filters:</span>
-    {% if filter_date %}
-      <span class="cc-pill">Date: {{ filter_date }}</span>
-    {% endif %}
-    {% if filter_truck %}
-      <span class="cc-pill">Truck: {{ filter_truck }}</span>
-    {% endif %}
-    <a href="{{ url_for('schedule_page') }}" class="cc-pill cc-pill--clear">
-      Clear all ✕
-    </a>
-  </div>
-  {% endif %}
-
-  <form method="get" class="cc-filter-bar">
-    <div class="cc-filter-field">
-      <label for="schedule_filter_date">Date</label>
-      <select id="schedule_filter_date" name="date">
-        <option value="">All</option>
-        {% for d in filter_dates %}
-          <option value="{{ d }}" {% if filter_date == d|string %}selected{% endif %}>
-            {{ d }}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="cc-filter-field">
-      <label for="schedule_filter_truck">Truck</label>
-      <select id="schedule_filter_truck" name="truck">
-        <option value="">All</option>
-        {% for t in filter_trucks %}
-          <option value="{{ t }}" {% if filter_truck == t %}selected{% endif %}>
-            {{ t }}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="cc-filter-actions">
-      <button type="submit" class="cc-button-secondary">Apply</button>
-      <a href="{{ url_for('schedule_page') }}" class="cc-button-ghost">Clear</a>
-    </div>
-  </form>
-
-  <div class="table-wrapper">
-    <table class="schedule-table">
-      <thead>
-        <tr>
-          <th>Flight</th>
-          <th>Date</th>
-          <th>Origin</th>
-          <th>Destination</th>
-          <th>ETA</th>
-          <th>ETD</th>
-          <th>Tail</th>
-          <th>Truck</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for f in flights %}
-        <tr>
-          <td>{{ f.flight_number }}</td>
-          <td>{{ f.date }}</td>
-          <td>{{ f.origin or "-" }}</td>
-          <td>{{ f.destination or "-" }}</td>
-          <td>{{ f.eta_local or "-" }}</td>
-          <td>{{ f.etd_local or "-" }}</td>
-          <td>{{ f.tail_number or "-" }}</td>
-          <td>{{ f.truck_assignment or "-" }}</td>
-          <td>{{ f.status }}</td>
-          {% if current_role in ['supervisor', 'admin'] %}
-          <td>
-            <div class="actions">
-              <a href="{{ url_for('flight_edit', flight_id=f.id) }}" class="link-small">Edit</a>
-              <a href="{{ url_for('flight_confirm_delete', flight_id=f.id) }}" class="link-small link-danger">Delete</a>
-            </div>
-          </td>
-          {% else %}
-          <td><span class="link-disabled">View only</span></td>
-          {% endif %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
+<script src="{{ url_for('static', filename='js/schedule.js') }}"></script>
 {% endblock %}
