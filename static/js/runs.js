@@ -13,6 +13,7 @@
   const autoAssignButton = document.getElementById("runs-auto-assign");
   const statusDiv = document.getElementById("runs-status");
   const cardsContainer = document.getElementById("runs-cards");
+  const editToggle = document.getElementById("runs-edit-toggle");
 
   const runSheetSection = document.getElementById("run-sheet-section");
   const runSheetTitle = document.getElementById("run-sheet-title");
@@ -74,6 +75,9 @@
       statusDiv.textContent = `Auto-assigned ${assigned} flights. Unassigned: ${unassigned}. Reloading runs…`;
 
       await loadRuns();
+      if (editToggle?.checked && typeof buildEditGrid === "function") {
+        buildEditGrid();
+      }
     } catch (err) {
       console.error("Failed to auto-assign runs", err);
       statusDiv.textContent = "Error during auto-assignment. Check backend logs.";
