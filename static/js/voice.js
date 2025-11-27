@@ -246,6 +246,29 @@
     return base + path;
   }
 
+  function humanizeLastUpdated(isoString) {
+    if (!isoString) return null;
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return null;
+
+    const now = new Date();
+    const sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+
+    const timePart = d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const datePart = d.toLocaleDateString();
+
+    if (sameDay) {
+      return `today at ${timePart}`;
+    }
+    return `${datePart} at ${timePart}`;
+  }
+
   function formatISODate(d) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -418,6 +441,24 @@
           truckId,
           status,
           onlyDue,
+          restricted: true,
+          allowedRoles: ["supervisor", "admin"],
+        };
+      }
+    }
+
+    // ACTION: query maintenance status for a truck
+    if (
+      (t.includes("status of truck") ||
+        (t.includes("truck") && t.includes("status"))) &&
+      (t.includes("what's") || t.includes("what is") || t.includes("whats"))
+    ) {
+      const truckId = extractTruckIdFromSpeech(t);
+      if (truckId) {
+        return {
+          type: "action",
+          action: "maintenance_status_query",
+          truckId,
           restricted: true,
           allowedRoles: ["supervisor", "admin"],
         };
@@ -698,6 +739,53 @@
       });
   }
 
+  function sendMaintenanceStatusQuery(truckId) {
+    if (!truckId) {
+      speak("I need a truck ID to check its status.");
+      return;
+    }
+
+    const url =
+      backendUrl("/api/maintenance/status_summary") +
+      "?truck_id=" +
+      encodeURIComponent(truckId);
+
+    fetch(url)
+      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+      .then((result) => {
+        if (!result.ok || !result.data.ok) {
+          const msg =
+            (result.data && result.data.error) ||
+            `I couldn't find any maintenance items for truck ${truckId}.`;
+          console.error("[voice] maintenance_status_summary error:", msg);
+          speak(msg);
+          return;
+        }
+
+        const data = result.data;
+        const total = (data.counts && data.counts.total) || 0;
+        const currentStatus = data.current_status || "unknown";
+        const lastUpdatedHuman = humanizeLastUpdated(data.last_updated);
+        const truck = data.truck_id || truckId;
+
+        let message = `Truck ${truck} has ${total} maintenance item${
+          total === 1 ? "" : "s"
+        }. Latest status is ${currentStatus}`;
+
+        if (lastUpdatedHuman) {
+          message += `, last updated ${lastUpdatedHuman}.`;
+        } else {
+          message += ".";
+        }
+
+        speak(message);
+      })
+      .catch((err) => {
+        console.error("[voice] maintenance_status_summary fetch error:", err);
+        speak("I couldn't reach the server to check that truck's status.");
+      });
+  }
+
   function handleActionCommand(cmd, raw) {
     if (cmd.action === "add_flight") {
       speak("Opening the new flight form.");
@@ -772,6 +860,17 @@
       }
 
       sendMaintenanceStatusBulkUpdate(truckId, status, onlyDue);
+      return;
+    }
+
+    if (cmd.action === "maintenance_status_query") {
+      const truckId = cmd.truckId;
+      if (!truckId) {
+        speak("I couldn't tell which truck you meant.");
+        return;
+      }
+      speak(`Checking maintenance status for truck ${truckId}.`);
+      sendMaintenanceStatusQuery(truckId);
       return;
     }
 
