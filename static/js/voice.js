@@ -228,6 +228,17 @@
     return text.trim();
   }
 
+  function extractTruckIdFromSpeech(text) {
+    if (!text) return "";
+    const t = text.toLowerCase();
+    // Look for "truck X" pattern
+    const match = t.match(/truck\s+([a-z0-9\-]+)/);
+    if (match && match[1]) {
+      return match[1].toUpperCase();
+    }
+    return "";
+  }
+
   function formatISODate(d) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -341,6 +352,32 @@
         restricted: true,
         allowedRoles: ["admin", "supervisor"],
       };
+    }
+
+    // ACTION: update maintenance status for a truck
+    if (
+      (t.includes("mark truck") || t.includes("set truck")) &&
+      (t.includes("completed") ||
+        t.includes("complete") ||
+        t.includes("out of service") ||
+        t.includes("broken") ||
+        t.includes("due") ||
+        t.includes("okay") ||
+        t.includes("ok"))
+    ) {
+      const truckId = extractTruckIdFromSpeech(t);
+      const status = normalizeMaintenanceStatus(t);
+
+      if (truckId && status) {
+        return {
+          type: "action",
+          action: "maintenance_status_update",
+          truckId,
+          status,
+          restricted: true,
+          allowedRoles: ["supervisor", "admin"],
+        };
+      }
     }
 
     // KNOWLEDGE / STATUS QUERIES
@@ -505,6 +542,53 @@
     }
   }
 
+  function sendMaintenanceStatusUpdate(truckId, status) {
+    if (!truckId || !status) {
+      speak("I need both a truck ID and a status to update.");
+      return;
+    }
+
+    fetch("/api/maintenance/voice_status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        truck_id: truckId,
+        status: status,
+      }),
+    })
+      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+      .then((result) => {
+        if (!result.ok || !result.data.ok) {
+          const msg =
+            (result.data && result.data.error) ||
+            "The server could not update that truck.";
+          console.error("[voice] maintenance_status_update error:", msg);
+          speak(msg);
+          return;
+        }
+
+        const item = result.data.item || {};
+        const s = item.status || status;
+        speak(
+          `Okay, I updated truck ${item.truck_id || truckId} to status ${s}.`
+        );
+
+        // If we're on the maintenance list, refresh so the change is visible.
+        const path = window.location.pathname || "";
+        if (path.startsWith("/maintenance") && !path.includes("/new")) {
+          setTimeout(() => {
+            window.location.reload();
+          }, 800);
+        }
+      })
+      .catch((err) => {
+        console.error("[voice] maintenance_status_update fetch error:", err);
+        speak("I couldn't reach the server to update that truck.");
+      });
+  }
+
   function handleActionCommand(cmd, raw) {
     if (cmd.action === "add_flight") {
       speak("Opening the new flight form.");
@@ -542,6 +626,20 @@
         speak("Opening the new maintenance form so we can log a broken truck.");
         window.location.href = "/maintenance/new?voice=1";
       }
+      return;
+    }
+
+    if (cmd.action === "maintenance_status_update") {
+      const truckId = cmd.truckId;
+      const status = cmd.status;
+      if (!truckId || !status) {
+        speak("I couldn't understand which truck or status you wanted.");
+        return;
+      }
+      speak(
+        `Updating maintenance status for truck ${truckId} to ${status}.`
+      );
+      sendMaintenanceStatusUpdate(truckId, status);
       return;
     }
 
