@@ -1240,7 +1240,25 @@ def render_machine_room_template():
 @app.route("/machine-room")
 @require_role("supervisor", "admin")
 def machine_room():
-    """Machine Room SPA entry point served from the React build."""
+    """
+    Machine Room — Jinja template inside the shared CodeCrafter layout.
+
+    One sentence explanation: shows DB stats, recent activity, and project
+    summary using machine_room.html.
+    """
+
+    return render_machine_room_template()
+
+
+@app.route("/machine-room-react")
+@require_role("supervisor", "admin")
+def machine_room_react():
+    """
+    Machine Room React SPA entry point served from the built frontend.
+
+    One sentence explanation: serves frontend_dist/index.html for React-based
+    Machine Room experiments.
+    """
 
     return serve_frontend_spa()
 
@@ -1248,7 +1266,7 @@ def machine_room():
 @app.route("/legacy/machine-room")
 @require_role("supervisor", "admin")
 def legacy_machine_room():
-    """Legacy Machine Room template for fallback access."""
+    """Legacy alias for the Machine Room template."""
 
     return render_machine_room_template()
 
