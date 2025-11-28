@@ -1,3 +1,4 @@
+// Machine Room status card with backend health, API checks, and demo flight seeding
 import React, { useEffect, useState } from "react";
 
 function todayISO() {
