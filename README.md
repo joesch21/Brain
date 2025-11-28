@@ -10,6 +10,30 @@ Database configuration:
 
 Swap stubs with your AI tooling in `services/`.
 
+## Frontend SPA (Planner + Machine Room)
+
+- Build the React frontend (outputs to `frontend_dist/`):
+  ```bash
+  npm run build
+  ```
+- Run Flask and load the SPA at `/planner` or `/machine-room`:
+  ```bash
+  python app.py
+  # then visit http://localhost:5000/planner or /machine-room
+  ```
+- Local dev (React + Flask separately):
+  ```bash
+  python app.py           # Flask API + auth on :5000
+  npm run dev             # Vite dev server on :5173
+  # open http://localhost:5173/planner or /machine-room
+  ```
+  Configure your API calls to hit `http://localhost:5000` (e.g., via `VITE_API_BASE`).
+
+SPA details:
+- The built assets live in `frontend_dist/` and are served by Flask.
+- `/planner` and `/machine-room` now return the React SPA entry HTML; React Router picks the page.
+- Legacy Jinja templates remain available at `/legacy/planner` and `/legacy/machine-room` for fallback access.
+
 ### Seeding demo data (recommended for office/ops UI)
 
 On a fresh clone, after installing dependencies:

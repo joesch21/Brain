@@ -49,6 +49,9 @@ app.config["CODE_CRAFTER2_API_BASE"] = CODE_CRAFTER2_API_BASE
 SUPPORTED_ROLES = ("admin", "supervisor", "refueler", "viewer")
 ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
 
+BASE_DIR = Path(__file__).parent
+FRONTEND_BUILD_DIR = BASE_DIR / "frontend_dist"
+
 
 TRUCKS = [
     {
@@ -96,6 +99,31 @@ def load_project_summary():
         _PROJECT_SUMMARY_CACHE = {}
 
     return _PROJECT_SUMMARY_CACHE
+
+
+def serve_frontend_spa():
+    """Serve the built React SPA entry file for planner/machine-room routes."""
+
+    if not FRONTEND_BUILD_DIR.exists():
+        abort(
+            404,
+            description=(
+                "React frontend build not found. Run `npm run build` to generate frontend_dist."
+            ),
+        )
+
+    return send_from_directory(str(FRONTEND_BUILD_DIR), "index.html")
+
+
+@app.route("/assets/<path:filename>")
+def frontend_assets(filename):
+    """Serve static assets from the built React frontend."""
+
+    assets_dir = FRONTEND_BUILD_DIR / "assets"
+    if not assets_dir.exists():
+        abort(404)
+
+    return send_from_directory(str(assets_dir), filename)
 
 
 class Employee(db.Model):
@@ -665,16 +693,29 @@ def schedule_page():
     )
 
 
-@app.route("/planner")
-@require_role("refueler", "supervisor", "admin")
-def planner_page():
-    """Daily Ops Planner: combines flights, runs, and run sheets."""
+def render_planner_template():
     api_base = app.config.get("CODE_CRAFTER2_API_BASE", "")
 
     return render_template(
         "planner.html",
         api_base_url=api_base,
     )
+
+
+@app.route("/planner")
+@require_role("refueler", "supervisor", "admin")
+def planner_page():
+    """Daily Ops Planner SPA entry point."""
+
+    return serve_frontend_spa()
+
+
+@app.route("/legacy/planner")
+@require_role("refueler", "supervisor", "admin")
+def legacy_planner_page():
+    """Legacy planner template for fallback access."""
+
+    return render_planner_template()
 
 
 @app.route("/flights/new", methods=["GET", "POST"])
@@ -1135,9 +1176,7 @@ def maintenance_voice_status():
     )
 
 
-@app.route("/machine-room")
-@require_role("supervisor", "admin")
-def machine_room():
+def render_machine_room_template():
     """
     Supervisor-only view with database and system overview.
     Shows table counts and a small sample of records.
@@ -1193,6 +1232,22 @@ def machine_room():
         recent_audit=recent_audit,
         last_updated_any=last_updated_any,
     )
+
+
+@app.route("/machine-room")
+@require_role("supervisor", "admin")
+def machine_room():
+    """Machine Room SPA entry point served from the React build."""
+
+    return serve_frontend_spa()
+
+
+@app.route("/legacy/machine-room")
+@require_role("supervisor", "admin")
+def legacy_machine_room():
+    """Legacy Machine Room template for fallback access."""
+
+    return render_machine_room_template()
 
 
 @app.route("/settings")
