@@ -1,14 +1,14 @@
 from flask import Blueprint, jsonify, request
 
-from app import FlightRun, db
-
-
 flight_runs_bp = Blueprint("flight_runs_api", __name__, url_prefix="/api")
 
 
 @flight_runs_bp.route("/flight_runs/<int:flight_run_id>", methods=["PUT"])
 def update_flight_run(flight_run_id):
     """Update editable fields on a FlightRun row (bay, rego, on_time, status, start_figure, uplift)."""
+    # Local import to avoid circular dependency during app startup
+    from app import FlightRun, db
+
     payload = request.get_json(silent=True) or {}
 
     fr = FlightRun.query.get(flight_run_id)
