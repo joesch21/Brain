@@ -10,3 +10,5 @@ uploads/*
 outputs/*
 !uploads/.gitkeep
 !outputs/.gitkeep
+node_modules/
+dist/
