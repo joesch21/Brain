@@ -461,3 +461,75 @@ select{width:100%;background:var(--surface);color:var(--text);border:1px solid v
 .unassigned-row {
   cursor: grab;
 }
+
+/* Planner */
+.planner-header{display:grid;grid-template-columns:1.2fr 1fr auto;gap:1.25rem;align-items:flex-start;margin-top:var(--pad);}
+.planner-header__title h1{margin:0;}
+.planner-subtitle{margin:.25rem 0 0;color:var(--muted);}
+.planner-filters{display:grid;grid-template-columns:repeat(3, minmax(140px,1fr));gap:.75rem;align-items:end;}
+.planner-filters label{margin:0;color:var(--muted);font-size:.95rem;}
+.planner-filters input,.planner-filters select{width:100%;}
+.planner-actions{display:flex;gap:.5rem;justify-content:flex-end;align-items:center;}
+
+.planner-status{margin:1rem 0;color:var(--muted);}
+
+.planner-grid{display:grid;grid-template-columns:1fr;gap:var(--pad);margin-top:var(--pad);} 
+@media(min-width:1100px){.planner-grid{grid-template-columns:1.1fr 1.1fr 1fr;}}
+
+.planner-column{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:var(--pad);box-shadow:var(--shadow);}
+.planner-column__header{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.75rem;}
+.planner-muted{color:var(--muted);}
+
+.planner-table-wrapper{border:1px solid var(--line);border-radius:12px;overflow:auto;}
+.planner-table{width:100%;border-collapse:collapse;min-width:520px;}
+.planner-table th,.planner-table td{padding:.6rem;border-bottom:1px solid var(--line);text-align:left;}
+.planner-table tr:last-child td{border-bottom:0;}
+.planner-flight-row{cursor:pointer;}
+.planner-flight-row:hover{background:rgba(255,255,255,0.03);} 
+.planner-flight-row.is-selected{background:rgba(74,222,128,.08);}
+
+.planner-pill{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .55rem;border-radius:999px;border:1px solid var(--line);font-size:.9rem;}
+.planner-pill.is-assigned{background:rgba(74,222,128,.14);color:var(--text);border-color:rgba(74,222,128,.4);} 
+.planner-pill.is-unassigned{background:rgba(255,255,255,.05);color:var(--muted);} 
+
+.planner-run-group{margin-bottom:1rem;}
+.planner-run-group__title{font-weight:600;margin-bottom:.5rem;}
+.planner-run-card{margin-bottom:.75rem;border:1px solid var(--line);transition:transform 120ms ease, border-color 120ms ease;}
+.planner-run-card:hover{transform:translateY(-1px);border-color:rgba(74,222,128,.4);} 
+.planner-run-card.is-selected{border-color:rgba(74,222,128,.7);box-shadow:0 0 0 2px rgba(74,222,128,.15);} 
+.planner-run-card__header{display:flex;flex-direction:column;gap:.25rem;margin-bottom:.5rem;}
+.planner-run-title{font-weight:700;}
+.planner-run-meta{color:var(--muted);font-size:.95rem;}
+.planner-run-card__table{width:100%;border-collapse:collapse;}
+.planner-run-card__table th,.planner-run-card__table td{padding:.4rem;border-bottom:1px solid var(--line);text-align:left;font-size:.95rem;}
+.planner-run-card__table tr:last-child td{border-bottom:0;}
+
+.planner-info{margin-top:.5rem;}
+.planner-info__title{font-weight:600;margin-bottom:.25rem;}
+
+.planner-run-sheet{min-height:300px;}
+.planner-run-sheet__header{display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;margin-bottom:.5rem;}
+.planner-run-sheet__title{font-size:1.1rem;font-weight:700;}
+.planner-run-sheet__meta{color:var(--muted);} 
+.planner-run-sheet__table table{width:100%;border-collapse:collapse;}
+.planner-run-sheet__table th,.planner-run-sheet__table td{border:1px solid var(--line);padding:.45rem;font-size:.95rem;}
+.planner-run-sheet__table input{width:100%;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:.25rem .35rem;}
+.planner-run-sheet__table input[disabled]{opacity:.8;}
+
+.planner-summary{margin:1rem 0;}
+.planner-summary__row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;align-items:start;}
+.planner-summary__stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:.75rem;} 
+.planner-summary__stat .label{color:var(--muted);font-size:.9rem;margin-bottom:.25rem;}
+.planner-summary__stat .value{font-size:1.3rem;font-weight:700;}
+.planner-airlines{list-style:none;margin:.35rem 0 0;padding:0;display:flex;flex-wrap:wrap;gap:.4rem;}
+.planner-airlines li{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:.2rem .45rem;display:inline-flex;gap:.35rem;align-items:center;font-size:.9rem;}
+.planner-airlines .code{font-weight:700;}
+.planner-airlines .count{color:var(--muted);}
+
+.planner-empty{color:var(--muted);text-align:center;padding:.75rem;}
+@media(max-width:900px){
+  .planner-header{grid-template-columns:1fr;}
+  .planner-filters{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));}
+  .planner-actions{justify-content:flex-start;flex-wrap:wrap;}
+  .planner-run-sheet__header{flex-direction:column;}
+}
