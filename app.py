@@ -102,14 +102,18 @@ def load_project_summary():
 
 
 def serve_frontend_spa():
-    """Serve the built React SPA entry file for planner/machine-room routes."""
+    """
+    Serve the built React SPA (Planner/Machine Room).
 
-    if not FRONTEND_BUILD_DIR.exists():
-        abort(
+    Assumes `yarn build` has created `frontend_dist/index.html`.
+    If not present, return a helpful 404 message.
+    """
+
+    index_path = Path(FRONTEND_BUILD_DIR) / "index.html"
+    if not index_path.exists():
+        return (
+            "React frontend build not found. Run `yarn build` to generate frontend_dist.",
             404,
-            description=(
-                "React frontend build not found. Run `npm run build` to generate frontend_dist."
-            ),
         )
 
     return send_from_directory(str(FRONTEND_BUILD_DIR), "index.html")
@@ -372,9 +376,8 @@ def inject_role():
         "display_name": session.get("display_name"),
     }
 
-BASE_DIR = os.path.dirname(__file__)
-app.config["UPLOAD_FOLDER"] = os.path.join(BASE_DIR, "uploads")
-app.config["OUTPUTS_DIR"]  = os.path.join(BASE_DIR, "outputs")
+app.config["UPLOAD_FOLDER"] = BASE_DIR / "uploads"
+app.config["OUTPUTS_DIR"] = BASE_DIR / "outputs"
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["OUTPUTS_DIR"], exist_ok=True)
 
