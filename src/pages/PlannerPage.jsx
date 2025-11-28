@@ -170,7 +170,7 @@ function FlightListColumn({
 /**
  * Center column: run cards grouped by shift band.
  */
-function RunsGridColumn({ runs, selectedRunId, onSelectRun }) {
+function RunsGridColumn({ runs, selectedRunId, onSelectRun, onRunsReorder }) {
   const grouped = useMemo(() => {
     const groups = { AM: [], MIDDAY: [], EVENING: [], OTHER: [] };
     for (const run of runs) {
@@ -187,6 +187,74 @@ function RunsGridColumn({ runs, selectedRunId, onSelectRun }) {
     ["EVENING", "Evening (17:00–23:00)"],
     ["OTHER", "Other"],
   ];
+
+  const [dragging, setDragging] = useState(null); // { runId, index }
+
+  const handleDragStart = (runId, index) => (event) => {
+    setDragging({ runId, index });
+    event.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (targetRunId, targetIndex) => (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  };
+
+  const moveFlightBetweenRuns = (
+    currentRuns,
+    sourceRunId,
+    sourceIndex,
+    targetRunId,
+    targetIndex
+  ) => {
+    const cloned = currentRuns.map((run) => {
+      const flightsArr =
+        run.flights || run.flight_runs || run.flightRuns || [];
+      const copy = flightsArr.slice();
+      if (run.flights) return { ...run, flights: copy };
+      if (run.flight_runs) return { ...run, flight_runs: copy };
+      if (run.flightRuns) return { ...run, flightRuns: copy };
+      return run;
+    });
+
+    const sourceRun = cloned.find((r) => r.id === sourceRunId);
+    const targetRun = cloned.find((r) => r.id === targetRunId);
+    if (!sourceRun || !targetRun) return currentRuns;
+
+    const getArr = (run) => run.flights || run.flight_runs || run.flightRuns || [];
+    const sourceArr = getArr(sourceRun);
+    const targetArr = getArr(targetRun);
+
+    if (sourceIndex < 0 || sourceIndex >= sourceArr.length) return currentRuns;
+
+    const [moved] = sourceArr.splice(sourceIndex, 1);
+    const insertIndex =
+      targetRunId === sourceRunId && targetIndex > sourceIndex
+        ? targetIndex - 1
+        : targetIndex;
+    targetArr.splice(insertIndex, 0, moved);
+
+    return cloned;
+  };
+
+  const handleDrop = (targetRunId, targetIndex) => (event) => {
+    event.preventDefault();
+    if (!dragging) return;
+
+    const { runId: sourceRunId, index: sourceIndex } = dragging;
+    if (sourceRunId == null || sourceIndex == null) return;
+
+    const updatedRuns = moveFlightBetweenRuns(
+      runs,
+      sourceRunId,
+      sourceIndex,
+      targetRunId,
+      targetIndex
+    );
+
+    setDragging(null);
+    if (onRunsReorder) onRunsReorder(updatedRuns);
+  };
 
   return (
     <section className="planner-column planner-column--center">
@@ -237,16 +305,22 @@ function RunsGridColumn({ runs, selectedRunId, onSelectRun }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {flights.map((fr) => {
-                            const flt = fr.flight || fr; // some APIs embed flight object
+                          {flights.map((fr, index) => {
+                            const flt = fr.flight || fr;
                             const fn =
                               flt.flight_number || flt.flightNumber || "";
                             const time =
                               flt.time_local || flt.timeLocal || "";
                             const dest = flt.destination || flt.dest || "";
-                            const key = `${fn}|${time}`;
+                            const key = fr.id || `${fn}|${time}`;
                             return (
-                              <tr key={fr.id || key}>
+                              <tr
+                                key={key}
+                                draggable
+                                onDragStart={handleDragStart(run.id, index)}
+                                onDragOver={handleDragOver(run.id, index)}
+                                onDrop={handleDrop(run.id, index)}
+                              >
                                 <td>{time}</td>
                                 <td>{fn}</td>
                                 <td>{dest}</td>
@@ -277,7 +351,7 @@ function RunsGridColumn({ runs, selectedRunId, onSelectRun }) {
 /**
  * Right column: run sheet view for the selected run.
  */
-function RunSheetColumn({ runs, selectedRunId }) {
+function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
   const selectedRun =
     runs.find((r) => r.id === selectedRunId) || runs[0] || null;
 
@@ -300,6 +374,21 @@ function RunSheetColumn({ runs, selectedRunId }) {
   const op = selectedRun.operator_code || shift.operator_code || "";
   const truck = selectedRun.truck_id || "";
   const runLabel = selectedRun.label || selectedRun.run_label || "";
+
+  const handleFieldBlur = (fr, fieldName, value) => {
+    const patch = { [fieldName]: value };
+    onUpdateFlightRun(fr.id, patch);
+  };
+
+  const handleStatusChange = (fr, event) => {
+    const value = event.target.value;
+    onUpdateFlightRun(fr.id, { status: value });
+  };
+
+  const handleCheckboxChange = (fr, event) => {
+    const checked = event.target.checked;
+    onUpdateFlightRun(fr.id, { on_time: checked });
+  };
 
   return (
     <section className="planner-column planner-column--right">
@@ -336,18 +425,82 @@ function RunSheetColumn({ runs, selectedRunId }) {
               const fn = flt.flight_number || flt.flightNumber || "";
               const dest = flt.destination || flt.dest || "";
               const time = flt.time_local || flt.timeLocal || "";
-              const key = `${fn}|${time}`;
+              const key = fr.id || `${fn}|${time}`;
+
               return (
-                <tr key={fr.id || key}>
+                <tr key={key}>
                   <td>{fn}</td>
                   <td>{dest}</td>
                   <td>{time}</td>
-                  <td></td>
-                  <td></td>
-                  <td></td>
-                  <td>{fr.status || "planned"}</td>
-                  <td></td>
-                  <td></td>
+                  <td>
+                    <input
+                      type="text"
+                      defaultValue={fr.bay || ""}
+                      onBlur={(event) =>
+                        handleFieldBlur(fr, "bay", event.target.value.trim())
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      defaultValue={fr.rego || ""}
+                      onBlur={(event) =>
+                        handleFieldBlur(fr, "rego", event.target.value.trim())
+                      }
+                    />
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      defaultChecked={Boolean(fr.on_time)}
+                      onChange={(event) => handleCheckboxChange(fr, event)}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={fr.status || "planned"}
+                      onChange={(event) => handleStatusChange(fr, event)}
+                    >
+                      <option value="planned">Planned</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      defaultValue={
+                        fr.start_figure !== null && fr.start_figure !== undefined
+                          ? fr.start_figure
+                          : ""
+                      }
+                      onBlur={(event) =>
+                        handleFieldBlur(
+                          fr,
+                          "start_figure",
+                          event.target.value.trim()
+                        )
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      defaultValue={
+                        fr.uplift !== null && fr.uplift !== undefined
+                          ? fr.uplift
+                          : ""
+                      }
+                      onBlur={(event) =>
+                        handleFieldBlur(
+                          fr,
+                          "uplift",
+                          event.target.value.trim()
+                        )
+                      }
+                    />
+                  </td>
                 </tr>
               );
             })}
@@ -469,6 +622,78 @@ const PlannerPage = () => {
     return () => controller.abort();
   }, [date]);
 
+  async function updateFlightRun(flightRunId, patch) {
+    try {
+      const resp = await fetch(`/api/flight_runs/${flightRunId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(
+          `Update failed (${resp.status}): ${text || "Unknown error"}`
+        );
+      }
+      const updated = await resp.json();
+
+      setRuns((prevRuns) =>
+        prevRuns.map((run) => {
+          const flightsArr =
+            run.flights || run.flight_runs || run.flightRuns || [];
+          const newFlights = flightsArr.map((fr) =>
+            fr.id === updated.id ? { ...fr, ...updated } : fr
+          );
+
+          if (run.flights) {
+            return { ...run, flights: newFlights };
+          }
+          if (run.flight_runs) {
+            return { ...run, flight_runs: newFlights };
+          }
+          if (run.flightRuns) {
+            return { ...run, flightRuns: newFlights };
+          }
+          return run;
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Error updating flight run.");
+    }
+  }
+
+  async function persistLayout(newRuns) {
+    const runsPayload = newRuns.map((run) => {
+      const flightsArr =
+        run.flights || run.flight_runs || run.flightRuns || [];
+      const ids = flightsArr.map((fr) => fr.id);
+      return { run_id: run.id, flight_run_ids: ids };
+    });
+
+    try {
+      const resp = await fetch("/api/runs/update_layout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runs: runsPayload }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(
+          `Update layout failed (${resp.status}): ${text || "Unknown error"}`
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Error updating layout.");
+    }
+  }
+
+  function handleRunsReorder(newRuns) {
+    setRuns(newRuns);
+    persistLayout(newRuns);
+  }
+
   async function handleAutoAssign() {
     if (!date) return;
     try {
@@ -566,8 +791,13 @@ const PlannerPage = () => {
           runs={runs}
           selectedRunId={selectedRunId}
           onSelectRun={handleSelectRun}
+          onRunsReorder={handleRunsReorder}
         />
-        <RunSheetColumn runs={runs} selectedRunId={selectedRunId} />
+        <RunSheetColumn
+          runs={runs}
+          selectedRunId={selectedRunId}
+          onUpdateFlightRun={updateFlightRun}
+        />
       </main>
 
       <footer className="planner-footer">
