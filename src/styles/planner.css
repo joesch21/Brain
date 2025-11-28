@@ -1,0 +1,155 @@
+.planner-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.planner-header,
+.planner-footer {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.planner-footer {
+  border-top: 1px solid #ddd;
+  border-bottom: none;
+  font-size: 0.875rem;
+}
+
+.planner-summary span + span {
+  margin-left: 1rem;
+}
+
+.planner-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.planner-column {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  overflow: hidden;
+}
+
+.planner-column--left {
+  flex: 1.2;
+  border-right: 1px solid #eee;
+}
+
+.planner-column--center {
+  flex: 1.4;
+  border-right: 1px solid #eee;
+}
+
+.planner-column--right {
+  flex: 1.2;
+}
+
+.planner-list {
+  flex: 1;
+  overflow: auto;
+}
+
+.planner-runs-grid {
+  flex: 1;
+  overflow: auto;
+}
+
+.planner-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.planner-table th,
+.planner-table td {
+  border-bottom: 1px solid #eee;
+  padding: 0.15rem 0.35rem;
+}
+
+.planner-table--compact th,
+.planner-table--compact td {
+  padding: 0.1rem 0.25rem;
+}
+
+.planner-row {
+  cursor: pointer;
+}
+
+.planner-row--selected {
+  background: #e3f2fd;
+}
+
+.planner-run-group {
+  margin-bottom: 0.75rem;
+}
+
+.planner-run-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 0.5rem;
+}
+
+.planner-run-card {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fafafa;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+
+.planner-run-card--selected {
+  border-color: #1976d2;
+  box-shadow: 0 0 0 1px #1976d2;
+}
+
+.planner-run-card-header {
+  padding: 0.25rem 0.4rem;
+  background: #f0f4ff;
+  border-bottom: 1px solid #ddd;
+}
+
+.planner-run-card-sub {
+  font-size: 0.75rem;
+  color: #555;
+}
+
+.planner-status {
+  padding: 0.35rem 1rem;
+  font-size: 0.85rem;
+}
+
+.planner-status--error {
+  color: #b71c1c;
+}
+
+.tag {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+}
+
+.tag--assigned {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.tag--unassigned {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+.run-sheet-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
