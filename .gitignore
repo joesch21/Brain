@@ -12,3 +12,4 @@ outputs/*
 !outputs/.gitkeep
 node_modules/
 dist/
+frontend_dist/
