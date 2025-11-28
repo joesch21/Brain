@@ -33,6 +33,8 @@ const MachineRoomStatusCard = () => {
   const [testingApis, setTestingApis] = useState(false);
   const [apiTests, setApiTests] = useState([]); // { name, url, ok, status, millis, message }
 
+  const [seeding, setSeeding] = useState(false); // track seed demo flights in progress
+
   async function loadStatus(targetDate) {
     try {
       setLoading(true);
@@ -128,6 +130,71 @@ const MachineRoomStatusCard = () => {
     }
   }
 
+  async function seedDemoFlights() {
+    // Seed three anchor flights based on the paper schedule
+    const payload = {
+      date,
+      flights: [
+        {
+          flight_number: "JQ719",
+          destination: "HBA",
+          time_local: "06:00",
+          operator_code: "AJ",
+          aircraft_type: "A320",
+          notes: "",
+        },
+        {
+          flight_number: "JQ603",
+          destination: "AVV",
+          time_local: "06:00",
+          operator_code: "RB",
+          aircraft_type: "A320",
+          notes: "",
+        },
+        {
+          flight_number: "JQ400",
+          destination: "OOL",
+          time_local: "06:10",
+          operator_code: "EG",
+          aircraft_type: "A320",
+          notes: "",
+        },
+      ],
+    };
+
+    try {
+      setSeeding(true);
+      setError("");
+
+      const resp = await fetch("/api/flights/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(
+          `Seed demo flights failed (${resp.status}): ${
+            text || "Unknown error"
+          }`
+        );
+      }
+
+      // Optionally inspect response for counts, but not needed for now.
+      // const data = await resp.json();
+      // console.log("Seed result", data);
+
+      // Refresh status so counts update
+      await loadStatus(date);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Error seeding demo flights.");
+    } finally {
+      setSeeding(false);
+    }
+  }
+
   const flights = status?.flights || {
     total: 0,
     am_total: 0,
@@ -170,10 +237,18 @@ const MachineRoomStatusCard = () => {
           <button
             type="button"
             onClick={testCoreApis}
-            disabled={testingApis}
-            style={{ fontSize: "0.8rem" }}
+            disabled={testingApis || seeding}
+            style={{ fontSize: "0.8rem", marginRight: "0.5rem" }}
           >
             {testingApis ? "Testing APIs…" : "Test core APIs"}
+          </button>
+          <button
+            type="button"
+            onClick={seedDemoFlights}
+            disabled={seeding || testingApis}
+            style={{ fontSize: "0.8rem" }}
+          >
+            {seeding ? "Seeding…" : "Seed demo flights"}
           </button>
         </div>
       </div>
