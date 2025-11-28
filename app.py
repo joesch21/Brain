@@ -156,8 +156,10 @@ class Flight(db.Model):
     service_profile_code = db.Column(db.String(64), nullable=True)
     bay = db.Column(db.String(32), nullable=True)
     registration = db.Column(db.String(32), nullable=True)
-    status_code = db.Column(db.String(16), nullable=True)
-    is_international = db.Column(db.Boolean, nullable=False, default=False)
+    status_code = db.Column(db.String(32), nullable=True)
+    is_international = db.Column(
+        db.Boolean, nullable=False, server_default="0", default=False
+    )
     eta_local = db.Column(db.Time, nullable=True)
     etd_local = db.Column(db.Time, nullable=True)
     tail_number = db.Column(db.String(32), nullable=True)
@@ -1429,7 +1431,24 @@ def api_flights():
 @app.route("/api/flights/import", methods=["POST"])
 @require_role("supervisor", "admin")
 def api_import_flights():
-    """Import flights (idempotent upsert) from JSON payloads."""
+    """Import flights (idempotent upsert) from JSON payloads.
+
+    Example payload structure::
+
+        {
+          "date": "2024-12-30",
+          "flight_number": "JQ603",
+          "destination": "AVV",
+          "time_local": "06:00",
+          "operator_code": "JQ",
+          "aircraft_type": "A320",
+          "notes": "From Dec24 schedule",
+          "bay": null,
+          "registration": null,
+          "status_code": "Y",
+          "is_international": false
+        }
+    """
 
     ensure_flight_schema()
 
@@ -1470,7 +1489,7 @@ def api_import_flights():
         bay = (row.get("bay") or "").strip() or None
         registration = (row.get("registration") or "").strip() or None
         status_code = (row.get("status_code") or row.get("status") or "").strip() or None
-        is_international = _parse_bool(row.get("is_international"))
+        is_international = _parse_bool(row.get("is_international", False))
 
         eta_val = time_val or _parse_time(row.get("eta_local"))
         etd_val = _parse_time(row.get("etd_local"))
@@ -1502,7 +1521,7 @@ def api_import_flights():
         f.bay = bay
         f.registration = registration
         f.status_code = status_code
-        f.is_international = is_international if is_international is not None else False
+        f.is_international = bool(is_international) if is_international is not None else False
         f.eta_local = eta_val
         f.etd_local = etd_val
         f.tail_number = (row.get("tail_number") or "").strip() or None
@@ -1529,11 +1548,23 @@ def api_seed_dec24_schedule():
         from dev_seed_dec24_schedule import seed_dec24_schedule
 
         with app.app_context():
-            result = seed_dec24_schedule(date_filter=date_filter, wipe=wipe)
+            result = seed_dec24_schedule(date_str=date_filter, wipe=wipe)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 500
 
-    return jsonify({"ok": True, "date": date_filter, **result})
+    return jsonify(
+        {
+            "ok": True,
+            "date": date_filter,
+            "seeded": result.seeded,
+            "dates": result.get("dates", []),
+            "created": result.created,
+            "updated": result.updated,
+            "deleted": result.deleted,
+        }
+    )
 
 # ----- API: Build -----
 @app.route("/api/build/plan", methods=["POST"])

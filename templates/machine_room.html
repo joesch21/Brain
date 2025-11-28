@@ -168,6 +168,13 @@
       <p><strong>Maintenance items:</strong> {{ maintenance_count }}</p>
       <p><strong>Audit events:</strong> {{ audit_count }}</p>
     </div>
+    <div class="card">
+      <h2>Seed data</h2>
+      <p class="muted">Populate the demo flights table with the Dec24 schedule subset.</p>
+      <button id="seed-dec24-btn" class="cc-button cc-button--secondary">
+        Seed Dec24 demo flights
+      </button>
+    </div>
   </div>
 
   <section class="mr-grid">
@@ -271,4 +278,35 @@
     </div>
   </section>
 </main>
+
+<script>
+  document.getElementById("seed-dec24-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("seed-dec24-btn");
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = "Seeding…";
+    try {
+      const res = await fetch("/api/dev/seed_dec24_schedule", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Seeding failed: " + (data.error || res.statusText));
+      } else {
+        const dates = Array.isArray(data.dates) ? data.dates.join(", ") : "";
+        alert(`Seeded ${data.seeded ?? 0} flights for dates: ${dates}`);
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Seeding failed: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Seed Dec24 demo flights";
+    }
+  });
+</script>
 {% endblock %}
