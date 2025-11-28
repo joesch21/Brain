@@ -26,6 +26,8 @@ def seed():
             db.session.add_all(crew)
 
         if not Flight.query.first():
+            # Seed a couple of flights using the actual model fields so Machine Room
+            # has data to display in development.
             now = datetime.utcnow()
 
             flights = [
