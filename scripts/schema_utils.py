@@ -18,7 +18,7 @@ FLIGHT_NEW_COLUMNS: dict[str, str] = {
     "service_profile_code": "VARCHAR(64)",
     "bay": "VARCHAR(32)",
     "registration": "VARCHAR(32)",
-    "status_code": "VARCHAR(16)",
+    "status_code": "VARCHAR(32)",
     "is_international": "BOOLEAN DEFAULT 0",
 }
 

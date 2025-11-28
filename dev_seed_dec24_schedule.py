@@ -1,4 +1,10 @@
-"""Seed the canonical Dec 24 schedule into the local database."""
+"""Seed the canonical Dec 24 schedule into the local database.
+
+Usage examples::
+
+    python dev_seed_dec24_schedule.py --wipe-and-seed
+    python dev_seed_dec24_schedule.py --seed-date 2024-12-30
+"""
 
 from __future__ import annotations
 
@@ -33,6 +39,10 @@ class SeedResult(dict):
     def deleted(self) -> int:
         return int(self.get("deleted", 0))
 
+    @property
+    def seeded(self) -> int:
+        return self.created + self.updated
+
 
 
 def load_fixture() -> list[dict]:
@@ -60,19 +70,21 @@ def _wipe_dates(dates: Iterable[str]) -> int:
 
 
 
-def seed_dec24_schedule(date_filter: str | None = None, wipe: bool = False) -> SeedResult:
+def seed_dec24_schedule(date_str: str | None = None, wipe: bool = False) -> SeedResult:
     """Seed the Dec24 canonical schedule.
 
     Args:
-        date_filter: Optional YYYY-MM-DD string to seed a single date.
+        date_str: Optional YYYY-MM-DD string to seed a single date.
         wipe: When True, delete existing flights for the target dates before inserting.
     """
 
     ensure_flight_schema()
     rows = load_fixture()
 
-    if date_filter:
-        rows = [r for r in rows if r.get("date") == date_filter]
+    if date_str:
+        if not _parse_date(date_str):
+            raise ValueError("Invalid date format; expected YYYY-MM-DD")
+        rows = [r for r in rows if r.get("date") == date_str]
 
     if not rows:
         return SeedResult(created=0, updated=0, deleted=0, dates=[])
@@ -107,7 +119,7 @@ def seed_dec24_schedule(date_filter: str | None = None, wipe: bool = False) -> S
             created += 1
             db.session.add(f)
 
-        is_international = _parse_bool(row.get("is_international"))
+        is_international = _parse_bool(row.get("is_international", False))
 
         f.time_local = time_val
         f.destination = row.get("destination")
@@ -118,7 +130,7 @@ def seed_dec24_schedule(date_filter: str | None = None, wipe: bool = False) -> S
         f.bay = row.get("bay")
         f.registration = row.get("registration")
         f.status_code = row.get("status_code")
-        f.is_international = is_international if is_international is not None else False
+        f.is_international = bool(is_international) if is_international is not None else False
         f.eta_local = time_val or _parse_time(row.get("eta_local"))
         f.etd_local = _parse_time(row.get("etd_local"))
         f.tail_number = row.get("tail_number")
@@ -153,10 +165,11 @@ def main():
     args = parser.parse_args()
 
     with app.app_context():
-        result = seed_dec24_schedule(date_filter=args.seed_date, wipe=args.wipe_and_seed)
+        result = seed_dec24_schedule(date_str=args.seed_date, wipe=args.wipe_and_seed)
+        seeded_dates = ",".join(result.get("dates", []))
         print(
-            f"Seeded Dec24 flights: created={result.created}, updated={result.updated}, "
-            f"deleted={result.deleted}, dates={','.join(result.get('dates', []))}"
+            f"Seeded Dec24 flights: seeded={result.seeded}, created={result.created}, "
+            f"updated={result.updated}, deleted={result.deleted}, dates={seeded_dates}"
         )
 
 
