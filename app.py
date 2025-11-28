@@ -648,6 +648,18 @@ def schedule_page():
     )
 
 
+@app.route("/planner")
+@require_role("refueler", "supervisor", "admin")
+def planner_page():
+    """Daily Ops Planner: combines flights, runs, and run sheets."""
+    api_base = app.config.get("CODE_CRAFTER2_API_BASE", "")
+
+    return render_template(
+        "planner.html",
+        api_base_url=api_base,
+    )
+
+
 @app.route("/flights/new", methods=["GET", "POST"])
 @requires_supervisor
 def flight_create():
