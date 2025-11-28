@@ -132,44 +132,15 @@ const SystemStatusCard = () => {
   }
 
   async function seedDemoFlights() {
-    const payload = {
-      date,
-      flights: [
-        {
-          flight_number: "JQ719",
-          destination: "HBA",
-          time_local: "06:00",
-          operator_code: "AJ",
-          aircraft_type: "A320",
-          notes: "",
-        },
-        {
-          flight_number: "JQ603",
-          destination: "AVV",
-          time_local: "06:00",
-          operator_code: "RB",
-          aircraft_type: "A320",
-          notes: "",
-        },
-        {
-          flight_number: "JQ400",
-          destination: "OOL",
-          time_local: "06:10",
-          operator_code: "EG",
-          aircraft_type: "A320",
-          notes: "",
-        },
-      ],
-    };
-
     try {
       setSeeding(true);
       setError("");
 
-      const resp = await fetch("/api/flights/import", {
+      const url = date
+        ? `/api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`
+        : "/api/dev/seed_dec24_schedule";
+      const resp = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
       });
 
       if (!resp.ok) {
