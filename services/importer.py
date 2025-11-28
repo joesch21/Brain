@@ -105,9 +105,23 @@ flight_number (string)
 
 date (YYYY-MM-DD)
 
+time_local (HH:MM, 24h)
+
 origin (string)
 
 destination (string)
+
+operator_code (string)
+
+aircraft_type (string)
+
+bay (string or null)
+
+registration (string or null)
+
+status_code (string or null)
+
+is_international (boolean)
 
 eta_local (HH:MM, 24h)
 
@@ -196,8 +210,17 @@ Make sure the output is valid JSON only, no explanations.
             return {
                 "flight_number": lower.get("flight_number") or lower.get("flight") or "",
                 "date": lower.get("date"),
+                "time_local": lower.get("time_local") or lower.get("time"),
                 "origin": lower.get("origin"),
                 "destination": lower.get("destination"),
+                "operator_code": lower.get("operator_code") or lower.get("operator"),
+                "aircraft_type": lower.get("aircraft_type") or lower.get("aircraft"),
+                "service_profile_code": lower.get("service_profile_code")
+                or lower.get("service_profile"),
+                "bay": lower.get("bay"),
+                "registration": lower.get("registration") or lower.get("rego"),
+                "status_code": lower.get("status_code") or lower.get("status"),
+                "is_international": lower.get("is_international") or lower.get("international"),
                 "eta_local": lower.get("eta_local") or lower.get("eta"),
                 "etd_local": lower.get("etd_local"),
                 "tail_number": lower.get("tail_number"),

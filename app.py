@@ -31,6 +31,7 @@ from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
 from services.importer import ImportService
+from scripts.schema_utils import ensure_flight_columns
 app = Flask(__name__)
 
 raw_uri = os.getenv("DATABASE_URL", "sqlite:///cc_office.db")
@@ -146,9 +147,17 @@ class Flight(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     flight_number = db.Column(db.String(32), nullable=False)
+    time_local = db.Column(db.Time, nullable=True)
     date = db.Column(db.Date, nullable=False)
     origin = db.Column(db.String(32), nullable=True)
     destination = db.Column(db.String(32), nullable=True)
+    operator_code = db.Column(db.String(16), nullable=True)
+    aircraft_type = db.Column(db.String(32), nullable=True)
+    service_profile_code = db.Column(db.String(64), nullable=True)
+    bay = db.Column(db.String(32), nullable=True)
+    registration = db.Column(db.String(32), nullable=True)
+    status_code = db.Column(db.String(16), nullable=True)
+    is_international = db.Column(db.Boolean, nullable=False, default=False)
     eta_local = db.Column(db.Time, nullable=True)
     etd_local = db.Column(db.Time, nullable=True)
     tail_number = db.Column(db.String(32), nullable=True)
@@ -367,6 +376,54 @@ def _parse_time(val):
     return None
 
 
+def _parse_bool(val):
+    if isinstance(val, bool):
+        return val
+    if val is None:
+        return None
+    s = str(val).strip().lower()
+    if s in ("true", "1", "yes", "y", "on"):
+        return True
+    if s in ("false", "0", "no", "n", "off"):
+        return False
+    return None
+
+
+def flight_to_dict(f: Flight) -> dict:
+    return {
+        "id": f.id,
+        "flight_number": f.flight_number,
+        "date": f.date.strftime("%Y-%m-%d") if f.date else None,
+        "time_local": f.time_local.strftime("%H:%M") if f.time_local else None,
+        "origin": f.origin,
+        "destination": f.destination,
+        "operator_code": f.operator_code,
+        "aircraft_type": f.aircraft_type,
+        "service_profile_code": f.service_profile_code,
+        "bay": f.bay,
+        "registration": f.registration,
+        "status_code": f.status_code,
+        "is_international": bool(f.is_international) if f.is_international is not None else False,
+        "eta_local": f.eta_local.strftime("%H:%M") if f.eta_local else None,
+        "etd_local": f.etd_local.strftime("%H:%M") if f.etd_local else None,
+        "tail_number": f.tail_number,
+        "truck_assignment": f.truck_assignment,
+        "status": f.status,
+        "notes": f.notes,
+    }
+
+
+def ensure_flight_schema():
+    """Create tables and ensure the flights schema carries the new columns."""
+
+    try:
+        db.create_all()
+        ensure_flight_columns(db.engine)
+    except Exception as exc:  # noqa: BLE001
+        # Never crash app startup on schema adjustments; log and continue.
+        print(f"[schema] Unable to ensure flight columns: {exc}")
+
+
 @app.context_processor
 def inject_role():
     return {
@@ -385,6 +442,10 @@ orchestrator = BuildOrchestrator(outputs_dir=app.config["OUTPUTS_DIR"])
 fixer = FixService()
 knower = KnowledgeService(outputs_dir=app.config["OUTPUTS_DIR"])
 import_service = ImportService(db=db, ImportBatch=ImportBatch, ImportRow=ImportRow)
+
+# Ensure the latest Flight schema exists on startup (no-op if already applied)
+with app.app_context():
+    ensure_flight_schema()
 
 # ----- Pages -----
 @app.route("/")
@@ -751,6 +812,7 @@ def flight_create():
             else:
                 f = Flight(
                     flight_number=flight_number,
+                    time_local=eta_val or etd_val,
                     date=date_val,
                     origin=origin or None,
                     destination=destination or None,
@@ -815,6 +877,7 @@ def flight_edit(flight_id):
                 )
                 f.flight_number = flight_number
                 f.date = date_val
+                f.time_local = eta_val or etd_val
                 f.origin = origin or None
                 f.destination = destination or None
                 f.eta_local = eta_val
@@ -976,6 +1039,9 @@ def admin_import_commit(batch_id):
         flash("Batch already processed.", "warning")
         return redirect(url_for("admin_import_index"))
 
+    # Ensure the flights table has the latest columns before inserting rows
+    ensure_flight_columns(db.engine)
+
     errors = 0
     imported = 0
 
@@ -987,12 +1053,24 @@ def admin_import_commit(batch_id):
         data = row.data or {}
         try:
             if batch.import_type == "flights":
+                time_val = _parse_time(
+                    data.get("time_local") or data.get("eta_local") or data.get("etd_local")
+                )
+                is_international = _parse_bool(data.get("is_international"))
                 f = Flight(
                     flight_number=data.get("flight_number", "").strip(),
+                    time_local=time_val,
                     date=_parse_date(data.get("date")),
                     origin=data.get("origin"),
                     destination=data.get("destination"),
-                    eta_local=_parse_time(data.get("eta_local")),
+                    operator_code=data.get("operator_code"),
+                    aircraft_type=data.get("aircraft_type"),
+                    service_profile_code=data.get("service_profile_code"),
+                    bay=data.get("bay"),
+                    registration=data.get("registration"),
+                    status_code=data.get("status_code") or data.get("status"),
+                    is_international=is_international if is_international is not None else False,
+                    eta_local=time_val or _parse_time(data.get("eta_local")),
                     etd_local=_parse_time(data.get("etd_local")),
                     tail_number=data.get("tail_number"),
                     truck_assignment=data.get("truck_assignment"),
@@ -1203,7 +1281,7 @@ def render_machine_room_template():
 
     recent_employees = Employee.query.order_by(Employee.id.desc()).limit(5).all()
     recent_flights = (
-        Flight.query.order_by(Flight.date.desc(), Flight.eta_local.desc())
+        Flight.query.order_by(Flight.date.desc(), Flight.time_local.desc(), Flight.eta_local.desc())
         .limit(5)
         .all()
     )
@@ -1319,6 +1397,143 @@ def admin_dev_seed():
         flash(f"Error seeding dev data: {exc}", "danger")
 
     return redirect(url_for("settings_page"))
+
+
+# ----- API: Flights -----
+
+
+@app.route("/api/flights", methods=["GET"])
+@require_role("refueler", "supervisor", "admin")
+def api_flights():
+    """Return flights for a specific date as JSON for the SPA views."""
+
+    ensure_flight_schema()
+
+    date_str = request.args.get("date")
+    if not date_str:
+        return jsonify({"ok": False, "error": "date query param is required"}), 400
+
+    date_val = _parse_date(date_str)
+    if not date_val:
+        return jsonify({"ok": False, "error": "Invalid date format"}), 400
+
+    flights = (
+        Flight.query.filter(Flight.date == date_val)
+        .order_by(Flight.time_local.asc(), Flight.eta_local.asc(), Flight.flight_number.asc())
+        .all()
+    )
+
+    return jsonify({"ok": True, "flights": [flight_to_dict(f) for f in flights]})
+
+
+@app.route("/api/flights/import", methods=["POST"])
+@require_role("supervisor", "admin")
+def api_import_flights():
+    """Import flights (idempotent upsert) from JSON payloads."""
+
+    ensure_flight_schema()
+
+    payload = request.get_json(silent=True) or {}
+    base_date = payload.get("date")
+    flights_data = payload.get("flights")
+
+    if flights_data is None:
+        if isinstance(payload, list):
+            flights_data = payload
+        else:
+            flights_data = [payload]
+
+    if not isinstance(flights_data, list):
+        return jsonify({"ok": False, "error": "flights must be a list"}), 400
+
+    created = 0
+    updated = 0
+    errors: list[str] = []
+
+    for idx, row in enumerate(flights_data, start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Row {idx} is not an object")
+            continue
+
+        flight_number = (row.get("flight_number") or "").strip()
+        dest = (row.get("destination") or "").strip()
+        date_val = _parse_date(row.get("date") or base_date)
+        time_val = _parse_time(row.get("time_local") or row.get("time"))
+
+        if not flight_number or not dest or not date_val:
+            errors.append(f"Row {idx} missing required fields (flight_number, destination, date)")
+            continue
+
+        operator_code = (row.get("operator_code") or "").strip() or None
+        aircraft_type = (row.get("aircraft_type") or "").strip() or None
+        service_profile_code = (row.get("service_profile_code") or "").strip() or None
+        bay = (row.get("bay") or "").strip() or None
+        registration = (row.get("registration") or "").strip() or None
+        status_code = (row.get("status_code") or row.get("status") or "").strip() or None
+        is_international = _parse_bool(row.get("is_international"))
+
+        eta_val = time_val or _parse_time(row.get("eta_local"))
+        etd_val = _parse_time(row.get("etd_local"))
+
+        existing = (
+            Flight.query.filter(
+                Flight.date == date_val,
+                Flight.flight_number == flight_number,
+                Flight.time_local == time_val,
+            )
+            .order_by(Flight.id.asc())
+            .first()
+        )
+
+        if existing:
+            f = existing
+            updated += 1
+        else:
+            f = Flight(flight_number=flight_number, date=date_val)
+            created += 1
+            db.session.add(f)
+
+        f.time_local = time_val
+        f.origin = (row.get("origin") or "").strip() or None
+        f.destination = dest
+        f.operator_code = operator_code
+        f.aircraft_type = aircraft_type
+        f.service_profile_code = service_profile_code
+        f.bay = bay
+        f.registration = registration
+        f.status_code = status_code
+        f.is_international = is_international if is_international is not None else False
+        f.eta_local = eta_val
+        f.etd_local = etd_val
+        f.tail_number = (row.get("tail_number") or "").strip() or None
+        f.truck_assignment = (row.get("truck_assignment") or "").strip() or None
+        f.status = (row.get("status") or "").strip() or None
+        f.notes = (row.get("notes") or "").strip() or None
+
+    db.session.commit()
+
+    return jsonify({"ok": True, "created": created, "updated": updated, "errors": errors})
+
+
+@app.route("/api/dev/seed_dec24_schedule", methods=["POST"])
+@require_role("admin")
+def api_seed_dec24_schedule():
+    """Dev helper to seed the canonical Dec24 schedule."""
+
+    ensure_flight_schema()
+
+    date_filter = request.args.get("date")
+    wipe = request.args.get("wipe") in ("1", "true", "yes", "on")
+
+    try:
+        from dev_seed_dec24_schedule import seed_dec24_schedule
+
+        with app.app_context():
+            result = seed_dec24_schedule(date_filter=date_filter, wipe=wipe)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    return jsonify({"ok": True, "date": date_filter, **result})
 
 # ----- API: Build -----
 @app.route("/api/build/plan", methods=["POST"])

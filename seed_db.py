@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 
-from app import User, app, db, Employee, Flight
+from app import User, app, db, Employee, Flight, ensure_flight_schema
 
 
 def seed():
     with app.app_context():
         db.create_all()
+        ensure_flight_schema()
 
         if not User.query.filter_by(username="supervisor").first():
             sup = User(username="supervisor", role="supervisor")
@@ -33,6 +34,8 @@ def seed():
             flights = [
                 Flight(
                     flight_number="QF123",
+                    operator_code="QF",
+                    time_local=(now + timedelta(hours=1)).time(),
                     date=now.date(),
                     origin="MEL",
                     destination="SYD",
@@ -45,6 +48,8 @@ def seed():
                 ),
                 Flight(
                     flight_number="EK414",
+                    operator_code="EK",
+                    time_local=(now + timedelta(hours=3)).time(),
                     date=now.date(),
                     origin="SYD",
                     destination="DXB",

@@ -24,6 +24,7 @@ from app import (  # noqa: E402
     MaintenanceItem,
     AuditLog,
     log_audit,
+    ensure_flight_schema,
 )
 
 
@@ -35,6 +36,7 @@ def seed_office_data():
 
     with app.app_context():
         db.create_all()
+        ensure_flight_schema()
 
         # Seed employees
         if Employee.query.count() == 0:
@@ -47,6 +49,8 @@ def seed_office_data():
         if Flight.query.count() == 0:
             f1 = Flight(
                 flight_number="QF123",
+                operator_code="QF",
+                time_local=time(9, 30),
                 date=today,
                 origin="MEL",
                 destination="SYD",
@@ -59,6 +63,8 @@ def seed_office_data():
             )
             f2 = Flight(
                 flight_number="SQ222",
+                operator_code="SQ",
+                time_local=time(16, 45),
                 date=today + timedelta(days=1),
                 origin="SYD",
                 destination="SIN",
