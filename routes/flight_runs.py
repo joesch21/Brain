@@ -1,3 +1,9 @@
+"""Flight run API routes.
+
+This module keeps app-level imports inside request handlers to avoid circular
+imports when Flask initializes the application.
+"""
+
 from flask import Blueprint, jsonify, request
 
 flight_runs_bp = Blueprint("flight_runs_api", __name__, url_prefix="/api")
