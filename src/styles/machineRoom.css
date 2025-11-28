@@ -1,0 +1,70 @@
+.machine-room-page {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.machine-room-intro {
+  margin: 0;
+  color: #56616b;
+}
+
+.machine-room-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.machine-room-card {
+  background: #ffffff;
+  border: 1px solid #e0e4ea;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
+}
+
+.machine-room-card h3 {
+  margin-top: 0;
+}
+
+.machine-room-card ul {
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+
+.machine-room-card .muted,
+.machine-room-intro.muted,
+.machine-room-status-card .muted {
+  color: #6b7280;
+}
+
+.machine-room-status-card {
+  background: #ffffff;
+  border: 1px solid #e0e4ea;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
+}
+
+.machine-room-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.machine-room-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.machine-room-status-col {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
