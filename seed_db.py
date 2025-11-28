@@ -26,20 +26,32 @@ def seed():
             db.session.add_all(crew)
 
         if not Flight.query.first():
+            now = datetime.utcnow()
+
             flights = [
                 Flight(
                     flight_number="QF123",
-                    airline="Qantas",
-                    eta=datetime.utcnow() + timedelta(hours=1),
-                    bay="B12",
-                    fuel_tonnes=25.0,
+                    date=now.date(),
+                    origin="MEL",
+                    destination="SYD",
+                    eta_local=(now + timedelta(hours=1)).time(),
+                    etd_local=(now + timedelta(hours=1, minutes=45)).time(),
+                    tail_number="VH-QFA",
+                    truck_assignment="Truck-1",
+                    status="Scheduled",
+                    notes="Morning bank",
                 ),
                 Flight(
                     flight_number="EK414",
-                    airline="Emirates",
-                    eta=datetime.utcnow() + timedelta(hours=2),
-                    bay="C3",
-                    fuel_tonnes=60.0,
+                    date=now.date(),
+                    origin="SYD",
+                    destination="DXB",
+                    eta_local=(now + timedelta(hours=3)).time(),
+                    etd_local=(now + timedelta(hours=4)).time(),
+                    tail_number="A6-EKB",
+                    truck_assignment="Truck-2",
+                    status="Scheduled",
+                    notes="Afternoon departure",
                 ),
             ]
             db.session.add_all(flights)
