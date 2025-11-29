@@ -324,6 +324,9 @@ def proxy_to_codecrafter(path: str, method: str = "GET", params=None, json_body=
     """Forward a request from Brain to the Code_Crafter2 API."""
 
     base = app.config.get("CODE_CRAFTER2_API_BASE", CODE_CRAFTER2_API_BASE).rstrip("/")
+    if not base:
+        return jsonify({"error": "CODE_CRAFTER2_API_BASE not configured"}), 500
+
     url = f"{base}{path}"
 
     try:

@@ -168,13 +168,18 @@
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 1rem;
   }
+  .planner-footer {
+    margin-top: 1rem;
+    display: grid;
+    gap: 0.75rem;
+  }
 </style>
 
 <section class="cc-page cc-page--wide" id="planner-root">
   <header class="cc-page-header">
     <div>
       <h1 class="cc-h1">Daily Ops Planner</h1>
-      <p class="cc-body planner-muted">Plan and review today’s flights, runs, and run sheets.</p>
+      <p class="cc-body planner-muted">Plan and review daily flights, runs, and run sheets.</p>
     </div>
     <div class="cc-page-header__actions planner-inline">
       <button id="planner-auto-assign" class="cc-btn cc-btn--primary">Auto-assign runs</button>
@@ -182,44 +187,41 @@
     </div>
   </header>
 
-  <div class="cc-card cc-card--elev planner-filters" aria-label="Planner filters">
-    <div>
-      <label for="plannerDate">Date</label>
-      <input type="date" id="plannerDate" />
+  <section class="cc-grid cc-grid--planner">
+    <div class="cc-card cc-card--elev planner-filters" aria-label="Planner filters">
+      <div>
+        <label for="plannerDate">Date</label>
+        <input type="date" id="plannerDate" />
+      </div>
+      <div>
+        <label for="plannerAirline">Airline</label>
+        <select id="plannerAirline">
+          <option value="">All airlines</option>
+          <option value="JQ">JQ</option>
+          <option value="QF">QF</option>
+          <option value="VA">VA</option>
+          <option value="NZ">NZ</option>
+          <option value="SQ">SQ</option>
+        </select>
+      </div>
+      <div>
+        <label for="plannerShift">Shift band</label>
+        <select id="plannerShift">
+          <option value="">All</option>
+          <option value="am">AM (05:00–12:00)</option>
+          <option value="pm">PM (12:01–23:00)</option>
+        </select>
+      </div>
+      <div>
+        <p class="planner-legend planner-muted">
+          <span class="planner-pills">
+            <span class="planner-pill is-assigned">Assigned</span>
+            <span class="planner-pill is-unassigned">Unassigned</span>
+          </span>
+        </p>
+      </div>
     </div>
-    <div>
-      <label for="plannerAirline">Airline</label>
-      <select id="plannerAirline">
-        <option value="">All airlines</option>
-        <option value="JQ">JQ</option>
-        <option value="QF">QF</option>
-        <option value="VA">VA</option>
-        <option value="NZ">NZ</option>
-        <option value="SQ">SQ</option>
-      </select>
-    </div>
-    <div>
-      <label for="plannerShift">Shift band</label>
-      <select id="plannerShift">
-        <option value="">All</option>
-        <option value="am">AM (05:00–12:00)</option>
-        <option value="pm">PM (12:01–23:00)</option>
-      </select>
-    </div>
-    <div>
-      <p class="planner-legend planner-muted">
-        <span class="planner-pills">
-          <span class="planner-pill is-assigned">Assigned</span>
-          <span class="planner-pill is-unassigned">Unassigned</span>
-        </span>
-      </p>
-    </div>
-  </div>
 
-  <p id="plannerStatus" class="planner-status cc-text--danger"></p>
-  <div id="planner-summary" class="planner-summary cc-card cc-card--elev"></div>
-
-  <div class="cc-grid cc-grid--planner">
     <section class="cc-card cc-card--elev">
       <div class="planner-column__header">
         <div class="planner-section-title">
@@ -258,7 +260,12 @@
       </div>
       <div id="planner-run-sheet" class="planner-run-sheet"></div>
     </section>
-  </div>
+  </section>
+
+  <footer class="cc-page-footer planner-footer">
+    <div id="planner-summary" class="planner-summary cc-card cc-card--elev"></div>
+    <p id="plannerStatus" class="planner-status cc-text--danger"></p>
+  </footer>
 </section>
 
 <script src="{{ url_for('static', filename='js/planner.js') }}"></script>
