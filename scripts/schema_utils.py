@@ -11,6 +11,8 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 
+# ``is_international`` is handled by app.ensure_flight_schema with
+# database-specific defaults. Keep the rest of the lightweight columns here.
 FLIGHT_NEW_COLUMNS: dict[str, str] = {
     "time_local": "TIME",
     "operator_code": "VARCHAR(16)",
@@ -19,7 +21,6 @@ FLIGHT_NEW_COLUMNS: dict[str, str] = {
     "bay": "VARCHAR(32)",
     "registration": "VARCHAR(32)",
     "status_code": "VARCHAR(32)",
-    "is_international": "BOOLEAN DEFAULT 0",
 }
 
 
