@@ -1,18 +1,189 @@
 {% extends "_layout.html" %}
-{% block title %}Daily Ops Planner{% endblock %}
+{% block title %}Daily Ops Planner — Office Manager{% endblock %}
 {% block content %}
-<div class="cc-container" id="planner-root" data-api-base="{{ api_base_url | safe }}">
-  <div class="planner-header cc-card">
-    <div class="planner-header__title">
-      <h1>Daily Ops Planner</h1>
-      <p class="planner-subtitle">Plan runs, view assignments, and review run sheets in one place.</p>
-    </div>
-    <div class="planner-filters">
-      <label for="planner-date">Date</label>
-      <input type="date" id="planner-date" />
+<style>
+  .planner-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+  }
 
-      <label for="planner-airline">Airline</label>
-      <select id="planner-airline">
+  .planner-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .planner-table th,
+  .planner-table td {
+    padding: 0.45rem 0.35rem;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    font-size: 0.95rem;
+  }
+
+  .planner-table th {
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .planner-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .planner-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+  }
+
+  .planner-inline {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .planner-pills {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .planner-muted {
+    color: var(--muted);
+  }
+
+  .planner-legend {
+    font-size: 0.95rem;
+  }
+
+  .planner-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .planner-summary__stat {
+    background: var(--surface);
+    padding: 0.65rem;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+  }
+
+  .planner-summary__stat .label {
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  .planner-summary__stat .value {
+    font-size: 1.3rem;
+    font-weight: 700;
+  }
+
+  .planner-runs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .planner-run-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .planner-run-card:hover,
+  .planner-run-card:focus-visible {
+    border-color: var(--accent);
+    box-shadow: var(--shadow);
+  }
+
+  .planner-run-card.is-selected {
+    border-color: var(--accent);
+    box-shadow: var(--shadow);
+  }
+
+  .planner-run-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+
+  .planner-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .planner-pill.is-assigned {
+    background: rgba(74, 222, 128, 0.12);
+    color: #b0f0c8;
+    border-color: rgba(74, 222, 128, 0.35);
+  }
+
+  .planner-pill.is-unassigned {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ffb4b4;
+    border-color: rgba(239, 68, 68, 0.35);
+  }
+
+  .planner-empty {
+    text-align: center;
+    padding: 1rem;
+    color: var(--muted);
+  }
+
+  .planner-run-sheet {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    min-height: 220px;
+  }
+
+  .planner-status {
+    margin-top: 0.5rem;
+    min-height: 1.25rem;
+  }
+
+  .planner-section-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+</style>
+
+<section class="cc-container cc-page cc-page--wide" id="planner-root">
+  <header class="cc-page-header planner-inline">
+    <div>
+      <h1 class="cc-h1">Daily Ops Planner</h1>
+      <p class="cc-body planner-muted">Plan and review today’s flights, runs, and run sheets.</p>
+    </div>
+    <div class="planner-inline">
+      <button id="planner-auto-assign" class="cc-btn cc-btn--primary">Auto-assign runs</button>
+      <button id="planner-print" class="cc-btn">Print run sheets</button>
+    </div>
+  </header>
+
+  <div class="cc-card planner-filters" aria-label="Planner filters">
+    <div>
+      <label for="plannerDate">Date</label>
+      <input type="date" id="plannerDate" />
+    </div>
+    <div>
+      <label for="plannerAirline">Airline</label>
+      <select id="plannerAirline">
         <option value="">All airlines</option>
         <option value="JQ">JQ</option>
         <option value="QF">QF</option>
@@ -20,28 +191,35 @@
         <option value="NZ">NZ</option>
         <option value="SQ">SQ</option>
       </select>
-
-      <label for="planner-shift">Shift band</label>
-      <select id="planner-shift">
+    </div>
+    <div>
+      <label for="plannerShift">Shift band</label>
+      <select id="plannerShift">
         <option value="">All</option>
         <option value="am">AM (05:00–12:00)</option>
         <option value="pm">PM (12:01–23:00)</option>
       </select>
     </div>
-    <div class="planner-actions">
-      <button id="planner-auto-assign" class="cc-btn cc-btn--primary">Auto-assign runs</button>
-      <button id="planner-print" class="cc-btn">Print run sheets</button>
+    <div>
+      <p class="planner-legend planner-muted">
+        <span class="planner-pills">
+          <span class="planner-pill is-assigned">Assigned</span>
+          <span class="planner-pill is-unassigned">Unassigned</span>
+        </span>
+      </p>
     </div>
   </div>
 
-  <div id="planner-status" class="planner-status">Loading…</div>
+  <p id="plannerStatus" class="planner-status cc-text--danger"></p>
   <div id="planner-summary" class="planner-summary cc-card"></div>
 
   <div class="planner-grid">
-    <section class="planner-column">
+    <section class="cc-card">
       <div class="planner-column__header">
-        <h2>Master Flight Strip</h2>
-        <p class="planner-muted">Full flight list for the selected date.</p>
+        <div class="planner-section-title">
+          <h2 class="cc-h2">Flights</h2>
+          <p class="planner-muted">Full flight list for the selected date.</p>
+        </div>
       </div>
       <div class="planner-table-wrapper">
         <table class="planner-table">
@@ -59,23 +237,23 @@
       </div>
     </section>
 
-    <section class="planner-column">
+    <section class="cc-card">
       <div class="planner-column__header">
-        <h2>Runs Grid</h2>
+        <h2 class="cc-h2">Runs</h2>
         <p class="planner-muted">Grouped by shift; click a card to open its run sheet.</p>
       </div>
       <div id="planner-runs-grid" class="planner-runs-grid"></div>
     </section>
 
-    <section class="planner-column">
+    <section class="cc-card">
       <div class="planner-column__header">
-        <h2>Run Sheet</h2>
-        <p class="planner-muted">Skytanking style preview for the selected run.</p>
+        <h2 class="cc-h2">Run sheet</h2>
+        <p class="planner-muted">Preview assignments for the selected run.</p>
       </div>
-      <div id="planner-run-sheet" class="planner-run-sheet cc-card"></div>
+      <div id="planner-run-sheet" class="planner-run-sheet"></div>
     </section>
   </div>
-</div>
+</section>
 
 <script src="{{ url_for('static', filename='js/planner.js') }}"></script>
 {% endblock %}

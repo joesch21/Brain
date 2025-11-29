@@ -5,12 +5,10 @@
   const root = document.getElementById("planner-root");
   if (!root) return;
 
-  const apiBase = (root.getAttribute("data-api-base") || "").replace(/\/$/, "");
-
-  const dateInput = document.getElementById("planner-date");
-  const airlineSelect = document.getElementById("planner-airline");
-  const shiftSelect = document.getElementById("planner-shift");
-  const statusDiv = document.getElementById("planner-status");
+  const dateInput = document.getElementById("plannerDate");
+  const airlineSelect = document.getElementById("plannerAirline");
+  const shiftSelect = document.getElementById("plannerShift");
+  const statusDiv = document.getElementById("plannerStatus");
   const summaryDiv = document.getElementById("planner-summary");
 
   const flightsBody = document.getElementById("planner-flights-body");
@@ -79,28 +77,38 @@
     const dateVal = dateInput.value;
     if (!dateVal) return [];
 
-    const url = `${apiBase}/api/flights?date=${encodeURIComponent(dateVal)}`;
+    const url = `/api/flights?date=${encodeURIComponent(dateVal)}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Flights ${res.status}: ${text}`);
+    }
 
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || "Unknown error from flights API");
+    if (data && data.ok === false) {
+      throw new Error(data.error || "Unknown error from flights API");
+    }
 
-    return data.flights || [];
+    return data.flights || data || [];
   }
 
   async function loadRuns() {
     const dateVal = dateInput.value;
     if (!dateVal) return [];
 
-    const url = `${apiBase}/api/runs?date=${encodeURIComponent(dateVal)}`;
+    const url = `/api/runs?date=${encodeURIComponent(dateVal)}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Runs ${res.status}: ${text}`);
+    }
 
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || "Unknown error from runs API");
+    if (data && data.ok === false) {
+      throw new Error(data.error || "Unknown error from runs API");
+    }
 
-    return data.runs || [];
+    return data.runs || data || [];
   }
 
   async function refreshData() {
@@ -123,7 +131,7 @@
       renderAll();
     } catch (err) {
       console.error("Failed to load planner data", err);
-      statusDiv.textContent = "Error loading planner data. Check connection or try again.";
+      statusDiv.textContent = `Error loading planner data: ${err.message || err}`;
       flights = [];
       runs = [];
       renderAll();
@@ -455,7 +463,7 @@
     autoAssignButton.disabled = true;
     autoAssignButton.textContent = "Assigning…";
     try {
-      const res = await fetch(`${apiBase}/api/assignments/generate`, {
+      const res = await fetch(`/api/assignments/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: dateVal }),

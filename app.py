@@ -6,6 +6,7 @@ from functools import wraps
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
+import requests
 from flask import (
     Flask,
     abort,
@@ -317,6 +318,30 @@ def require_role(*roles):
 
 def requires_supervisor(f):
     return require_role("supervisor")(f)
+
+
+def proxy_to_codecrafter(path: str, method: str = "GET", params=None, json_body=None):
+    """Forward a request from Brain to the Code_Crafter2 API."""
+
+    base = app.config.get("CODE_CRAFTER2_API_BASE", CODE_CRAFTER2_API_BASE).rstrip("/")
+    url = f"{base}{path}"
+
+    try:
+        if method.upper() == "GET":
+            resp = requests.get(url, params=params or {}, timeout=10)
+        else:
+            resp = requests.post(
+                url, params=params or {}, json=json_body or {}, timeout=15
+            )
+    except requests.RequestException as exc:
+        print(f"[Proxy] Error calling {url}: {exc}")
+        return (
+            jsonify({"ok": False, "error": "Upstream scheduling backend unavailable"}),
+            502,
+        )
+
+    content_type = resp.headers.get("Content-Type", "application/json")
+    return resp.content, resp.status_code, {"Content-Type": content_type}
 
 
 def detect_db_type(uri: str) -> str:
@@ -793,20 +818,15 @@ def schedule_page():
 
 
 def render_planner_template():
-    api_base = app.config.get("CODE_CRAFTER2_API_BASE", "")
-
-    return render_template(
-        "planner.html",
-        api_base_url=api_base,
-    )
+    return render_template("planner.html")
 
 
 @app.route("/planner")
 @require_role("refueler", "supervisor", "admin")
 def planner_page():
-    """Daily Ops Planner SPA entry point."""
+    """Daily Ops Planner entry point."""
 
-    return serve_frontend_spa()
+    return render_planner_template()
 
 
 @app.route("/legacy/planner")
@@ -1450,25 +1470,41 @@ def admin_dev_seed():
 @app.route("/api/flights", methods=["GET"])
 @require_role("refueler", "supervisor", "admin")
 def api_flights():
-    """Return flights for a specific date as JSON for the SPA views."""
-
-    ensure_flight_schema()
+    """Proxy flights for a specific date via Code_Crafter2."""
 
     date_str = request.args.get("date")
-    if not date_str:
-        return jsonify({"ok": False, "error": "date query param is required"}), 400
+    params = {}
+    if date_str:
+        params["date"] = date_str
 
-    date_val = _parse_date(date_str)
-    if not date_val:
-        return jsonify({"ok": False, "error": "Invalid date format"}), 400
+    return proxy_to_codecrafter("/api/flights", method="GET", params=params)
 
-    flights = (
-        Flight.query.filter(Flight.date == date_val)
-        .order_by(Flight.time_local.asc(), Flight.eta_local.asc(), Flight.flight_number.asc())
-        .all()
+
+@app.route("/api/runs", methods=["GET"])
+@require_role("refueler", "supervisor", "admin")
+def api_runs_proxy():
+    """Proxy runs for the given date via Code_Crafter2."""
+
+    date_str = request.args.get("date")
+    params = {}
+    if date_str:
+        params["date"] = date_str
+
+    return proxy_to_codecrafter("/api/runs", method="GET", params=params)
+
+
+@app.route("/api/assignments/generate", methods=["POST"])
+@require_role("refueler", "supervisor", "admin")
+def api_assignments_generate_proxy():
+    """Proxy run assignment generation to Code_Crafter2."""
+
+    payload = request.get_json(silent=True) or {}
+
+    return proxy_to_codecrafter(
+        "/api/assignments/generate",
+        method="POST",
+        json_body=payload,
     )
-
-    return jsonify({"ok": True, "flights": [flight_to_dict(f) for f in flights]})
 
 
 @app.route("/api/flights/import", methods=["POST"])
