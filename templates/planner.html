@@ -162,21 +162,27 @@
     align-items: center;
     gap: 0.5rem;
   }
+
+  .cc-grid--planner {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
 </style>
 
-<section class="cc-container cc-page cc-page--wide" id="planner-root">
-  <header class="cc-page-header planner-inline">
+<section class="cc-page cc-page--wide" id="planner-root">
+  <header class="cc-page-header">
     <div>
       <h1 class="cc-h1">Daily Ops Planner</h1>
       <p class="cc-body planner-muted">Plan and review today’s flights, runs, and run sheets.</p>
     </div>
-    <div class="planner-inline">
+    <div class="cc-page-header__actions planner-inline">
       <button id="planner-auto-assign" class="cc-btn cc-btn--primary">Auto-assign runs</button>
       <button id="planner-print" class="cc-btn">Print run sheets</button>
     </div>
   </header>
 
-  <div class="cc-card planner-filters" aria-label="Planner filters">
+  <div class="cc-card cc-card--elev planner-filters" aria-label="Planner filters">
     <div>
       <label for="plannerDate">Date</label>
       <input type="date" id="plannerDate" />
@@ -211,10 +217,10 @@
   </div>
 
   <p id="plannerStatus" class="planner-status cc-text--danger"></p>
-  <div id="planner-summary" class="planner-summary cc-card"></div>
+  <div id="planner-summary" class="planner-summary cc-card cc-card--elev"></div>
 
-  <div class="planner-grid">
-    <section class="cc-card">
+  <div class="cc-grid cc-grid--planner">
+    <section class="cc-card cc-card--elev">
       <div class="planner-column__header">
         <div class="planner-section-title">
           <h2 class="cc-h2">Flights</h2>
@@ -237,7 +243,7 @@
       </div>
     </section>
 
-    <section class="cc-card">
+    <section class="cc-card cc-card--elev">
       <div class="planner-column__header">
         <h2 class="cc-h2">Runs</h2>
         <p class="planner-muted">Grouped by shift; click a card to open its run sheet.</p>
@@ -245,7 +251,7 @@
       <div id="planner-runs-grid" class="planner-runs-grid"></div>
     </section>
 
-    <section class="cc-card">
+    <section class="cc-card cc-card--elev">
       <div class="planner-column__header">
         <h2 class="cc-h2">Run sheet</h2>
         <p class="planner-muted">Preview assignments for the selected run.</p>
