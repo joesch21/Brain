@@ -23,6 +23,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from dotenv import load_dotenv
+from sqlalchemy import inspect, text
 
 load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
 
@@ -320,12 +321,55 @@ def requires_supervisor(f):
 
 def detect_db_type(uri: str) -> str:
     if not uri:
-        return "Unknown"
-    if uri.startswith("postgres"):
-        return "PostgreSQL"
-    if uri.startswith("sqlite"):
-        return "SQLite"
-    return "Unknown"
+        return "unknown"
+
+    uri_lower = uri.lower()
+    if uri_lower.startswith("postgres"):
+        return "postgres"
+    if uri_lower.startswith("sqlite"):
+        return "sqlite"
+    return "unknown"
+
+
+def ensure_flight_schema():
+    """
+    Ensure the Brain 'flights' table matches the Flight model for key fields.
+
+    Currently adds ``flights.is_international`` if it is missing. Safe to run
+    multiple times across SQLite and PostgreSQL databases.
+    """
+
+    try:
+        db.create_all()
+
+        inspector = inspect(db.engine)
+        columns = {col["name"] for col in inspector.get_columns("flights")}
+
+        if "is_international" not in columns:
+            db_type = detect_db_type(app.config["SQLALCHEMY_DATABASE_URI"])
+            if db_type == "postgres":
+                ddl = text(
+                    "ALTER TABLE flights ADD COLUMN is_international BOOLEAN DEFAULT FALSE"
+                )
+            else:
+                ddl = text(
+                    "ALTER TABLE flights ADD COLUMN is_international INTEGER DEFAULT 0"
+                )
+
+            with db.engine.begin() as conn:
+                conn.execute(ddl)
+
+            print("[Upgrade] Added flights.is_international column to database.")
+        else:
+            print(
+                "[Upgrade] flights.is_international already present; no changes made."
+            )
+
+        # Keep other lightweight column checks for legacy databases.
+        ensure_flight_columns(db.engine)
+    except Exception as exc:  # noqa: BLE001
+        # Never crash app startup on schema adjustments; log and continue.
+        print(f"[schema] Unable to ensure flight columns: {exc}")
 
 
 def log_audit(entity_type, entity_id, action, description=None):
@@ -413,17 +457,6 @@ def flight_to_dict(f: Flight) -> dict:
         "status": f.status,
         "notes": f.notes,
     }
-
-
-def ensure_flight_schema():
-    """Create tables and ensure the flights schema carries the new columns."""
-
-    try:
-        db.create_all()
-        ensure_flight_columns(db.engine)
-    except Exception as exc:  # noqa: BLE001
-        # Never crash app startup on schema adjustments; log and continue.
-        print(f"[schema] Unable to ensure flight columns: {exc}")
 
 
 @app.context_processor
@@ -1372,6 +1405,16 @@ def settings_page():
     }
 
     return render_template("settings.html", settings=settings)
+
+
+@app.route("/admin/upgrade-db")
+@require_role("admin")
+def admin_upgrade_db():
+    """Admin-only endpoint to trigger lightweight schema upgrades."""
+
+    ensure_flight_schema()
+    flash("Database schema upgrade completed.", "success")
+    return redirect(url_for("machine_room"))
 
 
 @app.route("/admin/dev-seed", methods=["POST"])
