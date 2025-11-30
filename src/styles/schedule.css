@@ -1,0 +1,113 @@
+.schedule-page {
+  padding: 1.5rem;
+  color: #e8f0f7;
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% 20%, #0f1a2f, #0b1222 45%);
+}
+
+.schedule-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.schedule-header-left h2 {
+  margin: 0 0 0.4rem 0;
+}
+
+.schedule-header label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.schedule-header input,
+.schedule-header select {
+  background: #0f1a2f;
+  border: 1px solid #1f2d45;
+  color: #e8f0f7;
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+}
+
+.schedule-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Row containing SystemHealthBar and Test API button (CWO-13B) */
+.schedule-system-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.schedule-system-row > .system-health-bar {
+  flex: 1;
+}
+
+.schedule-status {
+  margin: 0.5rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #122034;
+  color: #d0deff;
+}
+
+.schedule-status--error {
+  border: 1px solid #f28b82;
+  color: #ffd9d6;
+  background: #2a0f14;
+}
+
+.schedule-status--warn {
+  border: 1px solid #f6c453;
+  color: #ffe9b3;
+  background: #302000;
+}
+
+.schedule-table-wrapper {
+  margin-top: 0.5rem;
+  background: #0f1a2f;
+  border: 1px solid #1f2d45;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #e8f0f7;
+}
+
+.schedule-table th,
+.schedule-table td {
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid #1f2d45;
+}
+
+.schedule-table th {
+  background: #0b1426;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+  color: #8fa7c4;
+}
+
+.schedule-table tbody tr:nth-child(odd) {
+  background: #0d1930;
+}
+
+.schedule-table tbody tr:hover {
+  background: #132340;
+}
+
+.schedule-table td {
+  font-size: 0.95rem;
+}
