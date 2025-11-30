@@ -137,7 +137,9 @@ const ApiTestButton = ({ date }) => {
 
       {open && (
         <div className="api-test__panel">
-          <div className="api-test__summary">{summary}</div>
+          <div className="api-test__summary" aria-live="polite">
+            {summary}
+          </div>
           {details && (
             <pre className="api-test__details">{details}</pre>
           )}
