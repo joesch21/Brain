@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "../styles/planner.css";
 import SystemHealthBar from "../components/SystemHealthBar";
+import ApiTestButton from "../components/ApiTestButton";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 
 // --- small helpers ---------------------------------------------------------
@@ -1044,12 +1045,41 @@ const PlannerPage = () => {
         </div>
       </header>
 
-      <SystemHealthBar date={date} />
+      {/* System status + diagnostics row */}
+      <div className="planner-system-row">
+        <SystemHealthBar date={date} />
+        <ApiTestButton date={date} />
+      </div>
 
       {(loading || loadingRuns) && (
         <div className="planner-status">Loading data…</div>
       )}
-      {error && <div className="planner-status planner-status--error">{error}</div>}
+      {error && (
+        <div className="planner-status planner-status--error">
+          {error}
+        </div>
+      )}
+
+      {/* CWO-12: page-specific missing-data indicators */}
+      {!loading &&
+        !loadingRuns &&
+        !error &&
+        flights.length === 0 && (
+          <div className="planner-status planner-status--warn">
+            No flights returned for this date from the backend.
+            If this looks wrong, check the office system export or DB adapter.
+          </div>
+        )}
+
+      {!loading &&
+        !loadingRuns &&
+        !error &&
+        runs.length === 0 && (
+          <div className="planner-status planner-status--warn">
+            No runs returned for this date from the backend.
+            If this looks wrong, check the office runs configuration.
+          </div>
+        )}
 
       <main className="planner-main">
         <FlightListColumn
