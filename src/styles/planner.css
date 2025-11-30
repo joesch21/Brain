@@ -122,11 +122,34 @@
 
 .planner-status {
   padding: 0.35rem 1rem;
+  margin-bottom: 0.5rem;
   font-size: 0.85rem;
+  border-radius: 4px;
 }
 
 .planner-status--error {
+  background: rgba(244, 67, 54, 0.08);
+  border-left: 3px solid rgba(244, 67, 54, 0.9);
   color: #b71c1c;
+}
+
+/* CWO-12: softer warning style for missing data */
+.planner-status--warn {
+  background: rgba(255, 193, 7, 0.12);
+  border-left: 3px solid rgba(255, 193, 7, 0.9);
+  color: #795548;
+}
+
+/* CWO-12/CWO-13: row containing SystemHealthBar + API test button */
+.planner-system-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.planner-system-row > .system-health-bar {
+  flex: 1;
 }
 
 .tag {
