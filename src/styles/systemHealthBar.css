@@ -1,0 +1,106 @@
+/* System Health Bar */
+.system-health-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.system-health-bar--ok {
+  background: rgba(76, 175, 80, 0.08);
+  border: 1px solid rgba(76, 175, 80, 0.5);
+}
+
+.system-health-bar--warn {
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.6);
+}
+
+.system-health-bar--error {
+  background: rgba(244, 67, 54, 0.08);
+  border: 1px solid rgba(244, 67, 54, 0.6);
+}
+
+.system-health-bar__left,
+.system-health-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.system-health-bar__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(2px);
+}
+
+.system-health-bar__pill--ok {
+  background: rgba(76, 175, 80, 0.12);
+}
+
+.system-health-bar__pill--warn {
+  background: rgba(255, 193, 7, 0.16);
+}
+
+.system-health-bar__pill--error {
+  background: rgba(244, 67, 54, 0.18);
+}
+
+.system-health-bar__pill--loading {
+  background: rgba(158, 158, 158, 0.18);
+}
+
+.system-health-bar__metric {
+  opacity: 0.85;
+}
+
+.system-health-bar__metric strong {
+  font-weight: 600;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot--ok {
+  background: #4caf50;
+}
+
+.dot--warn {
+  background: #ffc107;
+}
+
+.dot--error {
+  background: #f44336;
+}
+
+.dot--pulse {
+  background: #9e9e9e;
+  animation: pulse 1s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+}
+
