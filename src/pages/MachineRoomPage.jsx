@@ -1,5 +1,6 @@
 // Machine Room page with inline system status + seed/test tools
 import React, { useEffect, useState } from "react";
+import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 
 function todayISO() {
   const d = new Date();
@@ -40,17 +41,22 @@ const SystemStatusCard = () => {
     try {
       setLoading(true);
       setError("");
-      const resp = await fetch(
+      const resp = await fetchApiStatus(
         `/api/status?date=${encodeURIComponent(targetDate)}`
       );
+
       if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(
-          `Status failed (${resp.status}): ${text || "Unknown error"}`
+        throw new Error(formatApiError("Status", resp));
+      }
+
+      const data = resp.data || {};
+      setStatus(data);
+
+      if (data.ok === false || data.database_ok === false) {
+        setError(
+          "Scheduling backend unavailable – check Code_Crafter2 / database."
         );
       }
-      const data = await resp.json();
-      setStatus(data);
     } catch (err) {
       console.error(err);
       setError(err.message || "Error checking backend status.");
@@ -88,41 +94,17 @@ const SystemStatusCard = () => {
 
       for (const t of tests) {
         const started = performance.now();
-        try {
-          const resp = await fetch(t.url);
-          const millis = Math.round(performance.now() - started);
+        const resp = await fetchApiStatus(t.url);
+        const millis = Math.round(performance.now() - started);
 
-          if (!resp.ok) {
-            const text = await resp.text();
-            results.push({
-              name: t.name,
-              url: t.url,
-              ok: false,
-              status: resp.status,
-              millis,
-              message: text?.slice(0, 120) || "HTTP error",
-            });
-          } else {
-            results.push({
-              name: t.name,
-              url: t.url,
-              ok: true,
-              status: resp.status,
-              millis,
-              message: "OK",
-            });
-          }
-        } catch (err) {
-          const millis = Math.round(performance.now() - started);
-          results.push({
-            name: t.name,
-            url: t.url,
-            ok: false,
-            status: "NETWORK",
-            millis,
-            message: (err && err.message) || "Network error",
-          });
-        }
+        results.push({
+          name: t.name,
+          url: t.url,
+          ok: resp.ok,
+          status: resp.ok ? resp.status : resp.status || "NETWORK",
+          millis,
+          message: resp.ok ? "OK" : resp.error || "Request failed",
+        });
       }
 
       setApiTests(results);
@@ -230,7 +212,7 @@ const SystemStatusCard = () => {
       {loading && <p>Checking backend…</p>}
       {error && <p style={{ color: "#ff8a80" }}>{error}</p>}
 
-      {!loading && !error && status && (
+      {!loading && status && (
         <>
           <div style={{ marginBottom: "0.5rem" }}>
             <strong>Backend:</strong>
