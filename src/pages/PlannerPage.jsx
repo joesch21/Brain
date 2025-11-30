@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "../styles/planner.css";
+import SystemHealthBar from "../components/SystemHealthBar";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 
 // --- small helpers ---------------------------------------------------------
@@ -1042,6 +1043,8 @@ const PlannerPage = () => {
           </button>
         </div>
       </header>
+
+      <SystemHealthBar date={date} />
 
       {(loading || loadingRuns) && (
         <div className="planner-status">Loading data…</div>
