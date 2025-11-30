@@ -13,6 +13,50 @@
   const summaryDiv = document.getElementById("daily-flight-summary");
   const tableBody = document.querySelector("#schedule-table tbody");
 
+  function setStatus(message, isError = false) {
+    statusDiv.textContent = message || "";
+    statusDiv.classList.toggle("is-error", Boolean(isError));
+  }
+
+  async function fetchApiStatus(url, options = {}) {
+    try {
+      const res = await fetch(url, options);
+      const status = res.status;
+      const contentType = res.headers?.get("content-type") || "";
+      let body;
+
+      try {
+        if (contentType.includes("application/json")) {
+          body = await res.json();
+        } else {
+          body = await res.text();
+        }
+      } catch (err) {
+        body = undefined;
+      }
+
+      if (res.ok) {
+        return { ok: true, status, data: body };
+      }
+
+      const error = (() => {
+        if (body && typeof body === "object" && body.error) return body.error;
+        if (typeof body === "string" && body.trim()) return body.trim();
+        if (status >= 500) return "upstream scheduling backend unavailable";
+        return "Request failed";
+      })();
+
+      return { ok: false, status, error };
+    } catch (err) {
+      return { ok: false, status: 0, error: err?.message || "Network error" };
+    }
+  }
+
+  function formatApiError(label, result) {
+    const statusLabel = result.status === 0 ? "network" : result.status;
+    return `${label} ${statusLabel} – ${result.error || "Unknown error"}`;
+  }
+
   function extractAirlineCode(flightNumber) {
     const match = (flightNumber || "").match(/^[A-Za-z]+/);
     return match ? match[0].toUpperCase() : "Unknown";
@@ -134,30 +178,38 @@
   async function loadSchedule() {
     const dateVal = dateInput.value;
     if (!dateVal) {
-      statusDiv.textContent = "Please select a date.";
+      setStatus("Please select a date.");
       return;
     }
 
-    statusDiv.textContent = "Loading…";
+    setStatus("Loading…");
     clearSummary();
 
     try {
       const url = `${apiBase}/api/flights?date=${encodeURIComponent(dateVal)}`;
-      const res = await fetch(url);
+      const res = await fetchApiStatus(url);
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw new Error(formatApiError("Flights", res));
       }
 
-      const data = await res.json();
-      if (!data.ok) {
-        throw new Error(data.error || "Unknown error");
+      const data = res.data || {};
+      if (data.ok === false) {
+        throw new Error(formatApiError("Flights", { status: 500, error: data.error }));
       }
 
-      renderRows(data.flights || []);
+      const flights = data.flights || [];
+      renderRows(flights);
+      if (flights.length === 0) {
+        setStatus("No flights for this date.");
+      }
     } catch (err) {
       console.error("Failed to load schedule", err);
-      statusDiv.textContent = "Error loading schedule. Check connection or try again.";
-      tableBody.innerHTML = "";
+      setStatus(
+        `Error loading schedule (${err.message || "Unknown error"}).`,
+        true
+      );
+      tableBody.innerHTML =
+        '<tr><td colspan="5" class="schedule-empty">No flights for this date.</td></tr>';
       renderSummary([]);
     }
   }
@@ -180,12 +232,14 @@
     });
 
     if (filtered.length === 0) {
-      statusDiv.textContent = "No flights found for this date / operator.";
+      setStatus("No flights for this date.");
+      tableBody.innerHTML =
+        '<tr><td colspan="5" class="schedule-empty">No flights for this date.</td></tr>';
       renderSummary([]);
       return;
     }
 
-    statusDiv.textContent = `Showing ${filtered.length} flights.`;
+    setStatus(`Showing ${filtered.length} flights.`);
     renderSummary(filtered);
 
     for (const f of filtered) {

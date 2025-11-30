@@ -57,8 +57,48 @@
     dateInput.value = formatDateForApi(today);
   }
 
-  function clearStatus(message) {
+  function setStatus(message, isError = false) {
     statusDiv.textContent = message || "";
+    statusDiv.classList.toggle("is-error", Boolean(isError));
+  }
+
+  async function fetchApiStatus(url, options = {}) {
+    try {
+      const res = await fetch(url, options);
+      const status = res.status;
+      const contentType = res.headers?.get("content-type") || "";
+      let body;
+
+      try {
+        if (contentType.includes("application/json")) {
+          body = await res.json();
+        } else {
+          body = await res.text();
+        }
+      } catch (err) {
+        body = undefined;
+      }
+
+      if (res.ok) {
+        return { ok: true, status, data: body };
+      }
+
+      const error = (() => {
+        if (body && typeof body === "object" && body.error) return body.error;
+        if (typeof body === "string" && body.trim()) return body.trim();
+        if (status >= 500) return "upstream scheduling backend unavailable";
+        return "Request failed";
+      })();
+
+      return { ok: false, status, error };
+    } catch (err) {
+      return { ok: false, status: 0, error: err?.message || "Network error" };
+    }
+  }
+
+  function formatApiError(label, result) {
+    const statusLabel = result.status === 0 ? "network" : result.status;
+    return `${label} ${statusLabel} – ${result.error || "Unknown error"}`;
   }
 
   function buildFlightAssignmentMap() {
@@ -78,18 +118,25 @@
     if (!dateVal) return [];
 
     const url = `/api/flights?date=${encodeURIComponent(dateVal)}`;
-    const res = await fetch(url);
+    const res = await fetchApiStatus(url);
     if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Flights ${res.status}: ${text}`);
+      return {
+        ok: false,
+        flights: [],
+        message: formatApiError("Flights", res),
+      };
     }
 
-    const data = await res.json();
+    const data = res.data || {};
     if (data && data.ok === false) {
-      throw new Error(data.error || "Unknown error from flights API");
+      return {
+        ok: false,
+        flights: [],
+        message: formatApiError("Flights", { status: res.status, error: data.error }),
+      };
     }
 
-    return data.flights || data || [];
+    return { ok: true, flights: data.flights || data || [] };
   }
 
   async function loadRuns() {
@@ -97,41 +144,64 @@
     if (!dateVal) return [];
 
     const url = `/api/runs?date=${encodeURIComponent(dateVal)}`;
-    const res = await fetch(url);
+    const res = await fetchApiStatus(url);
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Runs ${res.status}: ${text}`);
+      return {
+        ok: false,
+        runs: [],
+        message: formatApiError("Runs", res),
+      };
     }
 
-    const data = await res.json();
+    const data = res.data || {};
     if (data && data.ok === false) {
-      throw new Error(data.error || "Unknown error from runs API");
+      return {
+        ok: false,
+        runs: [],
+        message: formatApiError("Runs", { status: res.status, error: data.error }),
+      };
     }
 
-    return data.runs || data || [];
+    return { ok: true, runs: data.runs || data || [] };
   }
 
   async function refreshData() {
     const dateVal = dateInput.value;
     if (!dateVal) {
-      statusDiv.textContent = "Please select a date.";
+      setStatus("Please select a date.");
       return;
     }
 
-    statusDiv.textContent = "Loading planner…";
+    setStatus("Loading planner…");
     flightsBody.innerHTML = "";
     runsGrid.innerHTML = "";
     runSheet.innerHTML = "";
 
     try {
-      const [flightData, runData] = await Promise.all([loadFlights(), loadRuns()]);
-      flights = flightData;
-      runs = runData;
-      statusDiv.textContent = `Loaded ${flights.length} flights and ${runs.length} runs.`;
+      const [flightResult, runResult] = await Promise.all([
+        loadFlights(),
+        loadRuns(),
+      ]);
+
+      flights = flightResult.flights || [];
+      runs = runResult.runs || [];
+
+      const errors = [];
+      if (!flightResult.ok) errors.push(flightResult.message);
+      if (!runResult.ok) errors.push(runResult.message);
+
+      if (errors.length) {
+        setStatus(`Error loading planner data: ${errors.join("; ")}`, true);
+      } else {
+        setStatus(`Loaded ${flights.length} flights and ${runs.length} runs.`);
+      }
       renderAll();
     } catch (err) {
       console.error("Failed to load planner data", err);
-      statusDiv.textContent = `Error loading planner data: ${err.message || err}`;
+      setStatus(
+        `Error loading planner data: ${err.message || err}`,
+        true
+      );
       flights = [];
       runs = [];
       renderAll();
@@ -473,7 +543,7 @@
       await refreshData();
     } catch (err) {
       console.error("Auto-assign failed", err);
-      statusDiv.textContent = "Auto-assign failed. Check console for details.";
+      setStatus("Auto-assign failed. Check console for details.", true);
     } finally {
       autoAssignButton.disabled = false;
       autoAssignButton.textContent = "Auto-assign runs";

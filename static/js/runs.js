@@ -31,6 +31,50 @@
   let draggedItem = null;
   let draggedItemType = null; // "run-item" or "unassigned"
 
+  function setStatus(message, isError = false) {
+    statusDiv.textContent = message || "";
+    statusDiv.classList.toggle("is-error", Boolean(isError));
+  }
+
+  async function fetchApiStatus(url, options = {}) {
+    try {
+      const res = await fetch(url, options);
+      const status = res.status;
+      const contentType = res.headers?.get("content-type") || "";
+      let body;
+
+      try {
+        if (contentType.includes("application/json")) {
+          body = await res.json();
+        } else {
+          body = await res.text();
+        }
+      } catch (err) {
+        body = undefined;
+      }
+
+      if (res.ok) {
+        return { ok: true, status, data: body };
+      }
+
+      const error = (() => {
+        if (body && typeof body === "object" && body.error) return body.error;
+        if (typeof body === "string" && body.trim()) return body.trim();
+        if (status >= 500) return "upstream scheduling backend unavailable";
+        return "Request failed";
+      })();
+
+      return { ok: false, status, error };
+    } catch (err) {
+      return { ok: false, status: 0, error: err?.message || "Network error" };
+    }
+  }
+
+  function formatApiError(label, result) {
+    const statusLabel = result.status === 0 ? "network" : result.status;
+    return `${label} ${statusLabel} – ${result.error || "Unknown error"}`;
+  }
+
   function formatDateForApi(date) {
     // EWOT: Converts a Date object to YYYY-MM-DD for the API query.
     const year = date.getFullYear();
@@ -49,31 +93,36 @@
     // EWOT: Fetches runs for the selected date and updates currentRuns and cards.
     const dateVal = dateInput.value;
     if (!dateVal) {
-      statusDiv.textContent = "Please select a date.";
+      setStatus("Please select a date.");
       return;
     }
 
-    statusDiv.textContent = "Loading runs…";
+    setStatus("Loading runs…");
     cardsContainer.innerHTML = "";
     hideRunSheet();
 
     try {
       const url = `${apiBase}/api/runs?date=${encodeURIComponent(dateVal)}`;
-      const res = await fetch(url);
+      const res = await fetchApiStatus(url);
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw new Error(formatApiError("Runs", res));
       }
 
-      const data = await res.json();
+      const data = res.data || {};
       if (!data.ok) {
-        throw new Error(data.error || "Unknown error from runs API");
+        throw new Error(
+          formatApiError("Runs", { status: res.status, error: data.error })
+        );
       }
 
       currentRuns = data.runs || [];
       renderRunCards();
     } catch (err) {
       console.error("Failed to load runs", err);
-      statusDiv.textContent = "Error loading runs. Check connection or try again.";
+      setStatus(
+        `Error loading runs (${err.message || "Unknown error"}).`,
+        true
+      );
       currentRuns = [];
       cardsContainer.innerHTML = "";
     }
@@ -90,11 +139,11 @@
     });
 
     if (filtered.length === 0) {
-      statusDiv.textContent = "No runs found for this date / operator.";
+      setStatus("No runs found for this date / operator.");
       return;
     }
 
-    statusDiv.textContent = `Showing ${filtered.length} runs.`;
+    setStatus(`Showing ${filtered.length} runs.`);
 
     filtered.forEach((run) => {
       const card = document.createElement("div");
@@ -349,7 +398,7 @@
       runs: runsPayload,
     };
 
-    statusDiv.textContent = "Saving layout…";
+    setStatus("Saving layout…");
 
     try {
       const url = `${apiBase}/api/runs/update_layout`;
@@ -365,7 +414,9 @@
       if (!data.ok) {
         throw new Error(data.error || "Unknown error from update_layout");
       }
-      statusDiv.textContent = `Layout saved (${data.updated_flight_runs} flight runs updated).`;
+      setStatus(
+        `Layout saved (${data.updated_flight_runs} flight runs updated).`
+      );
       await loadRuns();
       renderRunCards();
       if (editToggle.checked) {
@@ -374,7 +425,7 @@
       await updateUnassignedFlights(dateVal);
     } catch (err) {
       console.error("Failed to save layout", err);
-      statusDiv.textContent = "Error saving layout.";
+      setStatus("Error saving layout.", true);
     }
   }
 
@@ -382,7 +433,7 @@
     // EWOT: Calls /api/flight_runs/assign to add an unassigned flight into a run, then reloads runs and unassigned list.
     if (!runId || !flightId) return;
     const dateVal = dateInput.value;
-    statusDiv.textContent = `Assigning flight ${flightId} to run ${runId}…`;
+    setStatus(`Assigning flight ${flightId} to run ${runId}…`);
 
     try {
       const url = `${apiBase}/api/flight_runs/assign`;
@@ -406,7 +457,7 @@
         throw new Error(data.error || "Unknown error from assign endpoint");
       }
 
-      statusDiv.textContent = `Flight assigned to run. Reloading…`;
+      setStatus(`Flight assigned to run. Reloading…`);
 
       await loadRuns();
       renderRunCards();
@@ -416,7 +467,7 @@
       await updateUnassignedFlights(dateVal);
     } catch (err) {
       console.error("Failed to assign unassigned flight", err);
-      statusDiv.textContent = "Error assigning flight. Check backend logs.";
+      setStatus("Error assigning flight. Check backend logs.", true);
     }
   }
 
@@ -430,13 +481,15 @@
 
     try {
       const url = `${apiBase}/api/flights?date=${encodeURIComponent(dateVal)}`;
-      const res = await fetch(url);
+      const res = await fetchApiStatus(url);
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw new Error(formatApiError("Flights", res));
       }
-      const data = await res.json();
+      const data = res.data || {};
       if (!data.ok) {
-        throw new Error(data.error || "Unknown error from flights API");
+        throw new Error(
+          formatApiError("Flights", { status: res.status, error: data.error })
+        );
       }
 
       const flights = data.flights || [];
@@ -520,7 +573,7 @@
     // EWOT: Calls backend auto-assignment for the day, then reloads runs and unassigned panel.
     const dateVal = dateInput.value;
     if (!dateVal) {
-      statusDiv.textContent = "Please select a date before auto-assigning.";
+      setStatus("Please select a date before auto-assigning.");
       return;
     }
 
@@ -529,7 +582,7 @@
     const ok = window.confirm(confirmMsg);
     if (!ok) return;
 
-    statusDiv.textContent = "Auto-assigning runs…";
+    setStatus("Auto-assigning runs…");
 
     try {
       const url = `${apiBase}/api/assignments/generate`;
@@ -555,8 +608,9 @@
 
       const assigned = data.assigned ?? 0;
       const unassignedCount = (data.unassigned_flight_ids || []).length;
-      statusDiv.textContent =
-        `Auto-assigned ${assigned} flights. Unassigned: ${unassignedCount}. Reloading runs…`;
+      setStatus(
+        `Auto-assigned ${assigned} flights. Unassigned: ${unassignedCount}. Reloading runs…`
+      );
 
       await loadRuns();
       renderRunCards();
@@ -566,7 +620,7 @@
       await updateUnassignedFlights(dateVal);
     } catch (err) {
       console.error("Failed to auto-assign runs", err);
-      statusDiv.textContent = "Error during auto-assignment. Check backend logs.";
+      setStatus("Error during auto-assignment. Check backend logs.", true);
     }
   }
 

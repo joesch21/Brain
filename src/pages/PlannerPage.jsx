@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "../styles/planner.css";
+import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 
 // --- small helpers ---------------------------------------------------------
 
@@ -738,67 +739,53 @@ const PlannerPage = () => {
     if (!date) return undefined;
     const controller = new AbortController();
 
-    async function loadFlights() {
+    async function loadPlannerData() {
       try {
         setLoading(true);
-        setError("");
-        const resp = await fetch(`/api/flights?date=${encodeURIComponent(date)}`, {
-          signal: controller.signal,
-        });
-        if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(
-            `Failed to load flights (${resp.status}): ${text || "Unknown error"}`
-          );
-        }
-        const data = await resp.json();
-        const list = Array.isArray(data.flights) ? data.flights : data;
-        setFlights(list || []);
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        console.error(err);
-        setError(err.message || "Error loading flights");
-        setFlights([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadFlights();
-    return () => controller.abort();
-  }, [date]);
-
-  useEffect(() => {
-    if (!date) return undefined;
-    const controller = new AbortController();
-
-    async function loadRuns() {
-      try {
         setLoadingRuns(true);
         setError("");
-        const resp = await fetch(`/api/runs?date=${encodeURIComponent(date)}`, {
-          signal: controller.signal,
-        });
-        if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(
-            `Failed to load runs (${resp.status}): ${text || "Unknown error"}`
-          );
+
+        const [flightsResp, runsResp] = await Promise.all([
+          fetchApiStatus(`/api/flights?date=${encodeURIComponent(date)}`, {
+            signal: controller.signal,
+          }),
+          fetchApiStatus(`/api/runs?date=${encodeURIComponent(date)}`, {
+            signal: controller.signal,
+          }),
+        ]);
+
+        if (controller.signal.aborted) return;
+
+        const errors = [];
+
+        if (flightsResp.ok) {
+          const data = flightsResp.data || {};
+          const list = Array.isArray(data.flights) ? data.flights : data;
+          setFlights(list || []);
+        } else {
+          errors.push(formatApiError("Flights", flightsResp));
+          setFlights([]);
         }
-        const data = await resp.json();
-        const list = Array.isArray(data.runs) ? data.runs : data;
-        setRuns(list || []);
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        console.error(err);
-        setError(err.message || "Error loading runs");
-        setRuns([]);
+
+        if (runsResp.ok) {
+          const data = runsResp.data || {};
+          const list = Array.isArray(data.runs) ? data.runs : data;
+          setRuns(list || []);
+        } else {
+          errors.push(formatApiError("Runs", runsResp));
+          setRuns([]);
+        }
+
+        setError(
+          errors.length ? `Error loading planner data: ${errors.join("; ")}` : ""
+        );
       } finally {
+        setLoading(false);
         setLoadingRuns(false);
       }
     }
 
-    loadRuns();
+    loadPlannerData();
     return () => controller.abort();
   }, [date]);
 
@@ -890,27 +877,23 @@ const PlannerPage = () => {
       }
 
       setLoadingRuns(true);
-      const runsResp = await fetch(`/api/runs?date=${encodeURIComponent(date)}`);
+      const runsResp = await fetchApiStatus(
+        `/api/runs?date=${encodeURIComponent(date)}`
+      );
       if (!runsResp.ok) {
-        const text = await runsResp.text();
-        throw new Error(
-          `Failed to refresh runs (${runsResp.status}): ${text || "Unknown error"}`
-        );
+        throw new Error(formatApiError("Runs", runsResp));
       }
-      const runsData = await runsResp.json();
+      const runsData = runsResp.data || {};
       setRuns(Array.isArray(runsData.runs) ? runsData.runs : runsData || []);
 
       setLoading(true);
-      const flightsResp = await fetch(
+      const flightsResp = await fetchApiStatus(
         `/api/flights?date=${encodeURIComponent(date)}`
       );
       if (!flightsResp.ok) {
-        const text = await flightsResp.text();
-        throw new Error(
-          `Failed to refresh flights (${flightsResp.status}): ${text || "Unknown error"}`
-        );
+        throw new Error(formatApiError("Flights", flightsResp));
       }
-      const flightsData = await flightsResp.json();
+      const flightsData = flightsResp.data || {};
       setFlights(
         Array.isArray(flightsData.flights)
           ? flightsData.flights
