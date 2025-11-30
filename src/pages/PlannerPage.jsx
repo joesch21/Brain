@@ -113,6 +113,11 @@ function FlightListColumn({
   onSelectFlight,
   onUnassignedDragStart,
   onUnassignedDrop,
+  // NEW:
+  isDraggingRunFlight,
+  isUnassignedHover,
+  onUnassignedDragEnter,
+  onUnassignedDragLeave,
 }) {
   const safeUnassigned = Array.isArray(unassignedFlights)
     ? unassignedFlights
@@ -124,17 +129,33 @@ function FlightListColumn({
 
       {/* Unassigned panel is also a drop target for flights dragged from runs */}
       <section
-        className="planner-subpanel planner-subpanel--unassigned"
+        className={
+          "planner-subpanel planner-subpanel--unassigned" +
+          (isDraggingRunFlight && isUnassignedHover
+            ? " planner-subpanel--droptarget"
+            : "")
+        }
         onDragOver={(event) => {
-          if (onUnassignedDrop) {
+          if (onUnassignedDrop && isDraggingRunFlight) {
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
           }
         }}
+        onDragEnter={(event) => {
+          if (onUnassignedDragEnter && isDraggingRunFlight) {
+            onUnassignedDragEnter();
+          }
+        }}
+        onDragLeave={(event) => {
+          if (onUnassignedDragLeave && isDraggingRunFlight) {
+            onUnassignedDragLeave();
+          }
+        }}
         onDrop={(event) => {
-          if (onUnassignedDrop) {
+          if (onUnassignedDrop && isDraggingRunFlight) {
             event.preventDefault();
             onUnassignedDrop();
+            if (onUnassignedDragLeave) onUnassignedDragLeave();
           }
         }}
       >
@@ -260,6 +281,11 @@ function RunsGridColumn({
   onRunsReorder,
   onRunDropFromOutside,
   onRunFlightDragStart,
+  // NEW:
+  isDraggingUnassignedFlight,
+  hoverRunId,
+  onRunCardDragEnter,
+  onRunCardDragLeave,
 }) {
   const grouped = useMemo(() => {
     const groups = { AM: [], MIDDAY: [], EVENING: [], OTHER: [] };
@@ -372,20 +398,30 @@ function RunsGridColumn({
                         "planner-run-card" +
                         (selectedRunId === run.id
                           ? " planner-run-card--selected"
+                          : "") +
+                        (isDraggingUnassignedFlight && hoverRunId === run.id
+                          ? " planner-run-card--droptarget"
                           : "")
                       }
                       onClick={() => onSelectRun(run.id)}
                       onDragOver={(event) => {
                         // Allow drops from Unassigned onto the whole run card.
-                        if (onRunDropFromOutside) {
+                        if (onRunDropFromOutside && isDraggingUnassignedFlight) {
                           event.preventDefault();
                           event.dataTransfer.dropEffect = "move";
+                          if (onRunCardDragEnter) onRunCardDragEnter(run.id);
+                        }
+                      }}
+                      onDragLeave={(event) => {
+                        if (onRunCardDragLeave && isDraggingUnassignedFlight) {
+                          onRunCardDragLeave();
                         }
                       }}
                       onDrop={(event) => {
-                        if (onRunDropFromOutside) {
+                        if (onRunDropFromOutside && isDraggingUnassignedFlight) {
                           event.preventDefault();
                           onRunDropFromOutside(run.id);
+                          if (onRunCardDragLeave) onRunCardDragLeave();
                         }
                       }}
                     >
@@ -644,6 +680,14 @@ const PlannerPage = () => {
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [selectedFlightKey, setSelectedFlightKey] = useState(null);
   const [dragPayload, setDragPayload] = useState(null); // for cross-column DnD
+  // Which run card (if any) is currently hovered as a drop target
+  const [hoverRunId, setHoverRunId] = useState(null);
+  // Whether the Unassigned panel is currently hovered as a drop target
+  const [hoverUnassigned, setHoverUnassigned] = useState(false);
+
+  // Convenience flags based on dragPayload type
+  const isDraggingUnassignedFlight = dragPayload?.type === "UNASSIGNED_FLIGHT";
+  const isDraggingRunFlight = dragPayload?.type === "RUN_FLIGHT";
 
   const flightToRunMap = useMemo(() => {
     const map = {};
@@ -1030,6 +1074,10 @@ const PlannerPage = () => {
           onSelectFlight={handleSelectFlight}
           onUnassignedDragStart={handleUnassignedDragStart}
           onUnassignedDrop={handleDropOnUnassigned}
+          isDraggingRunFlight={isDraggingRunFlight}
+          isUnassignedHover={hoverUnassigned}
+          onUnassignedDragEnter={() => setHoverUnassigned(true)}
+          onUnassignedDragLeave={() => setHoverUnassigned(false)}
         />
         <RunsGridColumn
           runs={runs}
@@ -1038,6 +1086,10 @@ const PlannerPage = () => {
           onRunsReorder={handleRunsReorder}
           onRunDropFromOutside={handleDropOnRunCard}
           onRunFlightDragStart={handleRunFlightDragStart}
+          isDraggingUnassignedFlight={isDraggingUnassignedFlight}
+          hoverRunId={hoverRunId}
+          onRunCardDragEnter={setHoverRunId}
+          onRunCardDragLeave={() => setHoverRunId(null)}
         />
         <RunSheetColumn
           runs={runs}

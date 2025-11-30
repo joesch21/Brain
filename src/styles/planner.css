@@ -153,3 +153,17 @@
   margin-bottom: 0.5rem;
   font-size: 0.85rem;
 }
+
+/* Run card highlight when it's an active drop target for an unassigned flight */
+.planner-run-card--droptarget {
+  outline: 2px dashed rgba(76, 175, 80, 0.8);
+  background-color: rgba(76, 175, 80, 0.08);
+  transition: background-color 120ms ease-out, outline-color 120ms ease-out;
+}
+
+/* Unassigned panel highlight when a run-flight is hovering over it */
+.planner-subpanel--unassigned.planner-subpanel--droptarget {
+  outline: 2px dashed rgba(33, 150, 243, 0.8);
+  background-color: rgba(33, 150, 243, 0.06);
+  transition: background-color 120ms ease-out, outline-color 120ms ease-out;
+}
