@@ -103,17 +103,100 @@ function formatByAirline(byAirline) {
 // --- subcomponents ----------------------------------------------------------
 
 /**
- * Left column: list of all flights for the day.
+ * Left column: list of all flights for the day + Unassigned panel.
  */
 function FlightListColumn({
   flights,
+  unassignedFlights,
   flightToRunMap,
   selectedFlightKey,
   onSelectFlight,
+  onUnassignedDragStart,
+  onUnassignedDrop,
 }) {
+  const safeUnassigned = Array.isArray(unassignedFlights)
+    ? unassignedFlights
+    : [];
+
   return (
     <section className="planner-column planner-column--left">
       <h3>Flights</h3>
+
+      {/* Unassigned panel is also a drop target for flights dragged from runs */}
+      <section
+        className="planner-subpanel planner-subpanel--unassigned"
+        onDragOver={(event) => {
+          if (onUnassignedDrop) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          }
+        }}
+        onDrop={(event) => {
+          if (onUnassignedDrop) {
+            event.preventDefault();
+            onUnassignedDrop();
+          }
+        }}
+      >
+        <h4>
+          Unassigned flights{" "}
+          <span className="tag tag--unassigned">{safeUnassigned.length}</span>
+        </h4>
+        <div className="planner-list">
+          <table className="planner-table planner-table--compact">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Flight</th>
+                <th>Dest</th>
+                <th>Airline</th>
+              </tr>
+            </thead>
+            <tbody>
+              {safeUnassigned.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ fontStyle: "italic" }}>
+                    All flights assigned for this day.
+                  </td>
+                </tr>
+              ) : (
+                safeUnassigned.map((f) => {
+                  const flightNumber = f.flight_number || f.flightNumber;
+                  const timeStr = f.time_local || f.timeLocal || "";
+                  const dest = f.destination || f.dest || "";
+                  const airline = getAirlineCode(flightNumber);
+                  const key = `${flightNumber}|${timeStr}`;
+                  const isSelected = selectedFlightKey === key;
+
+                  return (
+                    <tr
+                      key={key}
+                      className={
+                        "planner-row" +
+                        (isSelected ? " planner-row--selected" : "")
+                      }
+                      draggable={Boolean(onUnassignedDragStart)}
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        if (onUnassignedDragStart && f.id != null) {
+                          onUnassignedDragStart(f.id);
+                        }
+                      }}
+                      onClick={() => onSelectFlight(key, undefined)}
+                    >
+                      <td>{timeStr}</td>
+                      <td>{flightNumber}</td>
+                      <td>{dest}</td>
+                      <td>{airline}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <div className="planner-list">
         <table className="planner-table">
           <thead>
@@ -170,7 +253,14 @@ function FlightListColumn({
 /**
  * Center column: run cards grouped by shift band.
  */
-function RunsGridColumn({ runs, selectedRunId, onSelectRun, onRunsReorder }) {
+function RunsGridColumn({
+  runs,
+  selectedRunId,
+  onSelectRun,
+  onRunsReorder,
+  onRunDropFromOutside,
+  onRunFlightDragStart,
+}) {
   const grouped = useMemo(() => {
     const groups = { AM: [], MIDDAY: [], EVENING: [], OTHER: [] };
     for (const run of runs) {
@@ -285,6 +375,19 @@ function RunsGridColumn({ runs, selectedRunId, onSelectRun, onRunsReorder }) {
                           : "")
                       }
                       onClick={() => onSelectRun(run.id)}
+                      onDragOver={(event) => {
+                        // Allow drops from Unassigned onto the whole run card.
+                        if (onRunDropFromOutside) {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                        }
+                      }}
+                      onDrop={(event) => {
+                        if (onRunDropFromOutside) {
+                          event.preventDefault();
+                          onRunDropFromOutside(run.id);
+                        }
+                      }}
                     >
                       <div className="planner-run-card-header">
                         <div>
@@ -307,17 +410,28 @@ function RunsGridColumn({ runs, selectedRunId, onSelectRun, onRunsReorder }) {
                         <tbody>
                           {flights.map((fr, index) => {
                             const flt = fr.flight || fr;
-                            const fn =
-                              flt.flight_number || flt.flightNumber || "";
-                            const time =
-                              flt.time_local || flt.timeLocal || "";
-                            const dest = flt.destination || flt.dest || "";
+            const fn =
+              flt.flight_number || flt.flightNumber || "";
+            const time =
+              flt.time_local || flt.timeLocal || "";
+            const dest = flt.destination || flt.dest || "";
                             const key = fr.id || `${fn}|${time}`;
                             return (
                               <tr
                                 key={key}
                                 draggable
-                                onDragStart={handleDragStart(run.id, index)}
+                                onDragStart={(event) => {
+                                  // Existing run→run reordering
+                                  handleDragStart(run.id, index)(event);
+                                  // Global drag state for run→Unassigned drops
+                                  if (
+                                    onRunFlightDragStart &&
+                                    flt.id != null &&
+                                    fr.id != null
+                                  ) {
+                                    onRunFlightDragStart(run.id, fr.id, flt.id);
+                                  }
+                                }}
                                 onDragOver={handleDragOver(run.id, index)}
                                 onDrop={handleDrop(run.id, index)}
                               >
@@ -529,6 +643,7 @@ const PlannerPage = () => {
   const [error, setError] = useState("");
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [selectedFlightKey, setSelectedFlightKey] = useState(null);
+  const [dragPayload, setDragPayload] = useState(null); // for cross-column DnD
 
   const flightToRunMap = useMemo(() => {
     const map = {};
@@ -553,6 +668,27 @@ const PlannerPage = () => {
     () => computeSummary(flights, flightToRunMap),
     [flights, flightToRunMap]
   );
+
+  // Flights that are NOT present in any run -> Unassigned pool
+  const unassignedFlights = useMemo(() => {
+    if (!Array.isArray(flights) || !flights.length) return [];
+
+    const assignedIds = new Set();
+    for (const run of runs) {
+      const flightsArr =
+        run.flights || run.flight_runs || run.flightRuns || [];
+      for (const fr of flightsArr) {
+        const flt = fr.flight || fr;
+        if (flt && flt.id != null) {
+          assignedIds.add(flt.id);
+        }
+      }
+    }
+
+    return flights.filter(
+      (f) => f && f.id != null && !assignedIds.has(f.id)
+    );
+  }, [flights, runs]);
 
   useEffect(() => {
     if (!date) return undefined;
@@ -754,6 +890,111 @@ const PlannerPage = () => {
     setSelectedRunId(runId);
   }
 
+  // --- Drag & Drop: Unassigned <-> Runs ------------------------------------
+
+  // Start dragging a flight from a run row.
+  function handleRunFlightDragStart(runId, flightRunId, flightId) {
+    setDragPayload({
+      type: "RUN_FLIGHT",
+      runId,
+      flightRunId,
+      flightId,
+    });
+  }
+
+  // Start dragging a flight from the Unassigned panel.
+  function handleUnassignedDragStart(flightId) {
+    setDragPayload({
+      type: "UNASSIGNED_FLIGHT",
+      flightId,
+    });
+  }
+
+  // Drop from Unassigned onto a run card: call /api/flight_runs/assign
+  async function handleDropOnRunCard(targetRunId) {
+    if (!dragPayload || dragPayload.type !== "UNASSIGNED_FLIGHT") return;
+    const { flightId } = dragPayload;
+    if (flightId == null) return;
+
+    try {
+      const resp = await fetch("/api/flight_runs/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run_id: targetRunId, flight_id: flightId }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(
+          `Assign failed (${resp.status}): ${text || "Unknown error"}`
+        );
+      }
+      const data = await resp.json();
+      const newFR = data.flight_run || data;
+
+      // Optimistically append to the target run's flights list
+      setRuns((prevRuns) =>
+        prevRuns.map((run) => {
+          if (run.id !== targetRunId) return run;
+
+          const flightsArr =
+            run.flights || run.flight_runs || run.flightRuns || [];
+
+          const updatedArr = [...flightsArr, newFR];
+
+          if (run.flights) return { ...run, flights: updatedArr };
+          if (run.flight_runs) return { ...run, flight_runs: updatedArr };
+          if (run.flightRuns) return { ...run, flightRuns: updatedArr };
+          return run;
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Error assigning flight to run.");
+    } finally {
+      setDragPayload(null);
+    }
+  }
+
+  // Drop a run-flight onto the Unassigned panel: call /api/flight_runs/unassign
+  async function handleDropOnUnassigned() {
+    if (!dragPayload || dragPayload.type !== "RUN_FLIGHT") return;
+    const { flightRunId } = dragPayload;
+    if (flightRunId == null) return;
+
+    try {
+      const resp = await fetch("/api/flight_runs/unassign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flight_run_id: flightRunId }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(
+          `Unassign failed (${resp.status}): ${text || "Unknown error"}`
+        );
+      }
+
+      // Remove this FlightRun from whichever run currently contains it.
+      setRuns((prevRuns) =>
+        prevRuns.map((run) => {
+          const flightsArr =
+            run.flights || run.flight_runs || run.flightRuns || [];
+          const filtered = flightsArr.filter((fr) => fr.id !== flightRunId);
+
+          if (run.flights) return { ...run, flights: filtered };
+          if (run.flight_runs) return { ...run, flight_runs: filtered };
+          if (run.flightRuns) return { ...run, flightRuns: filtered };
+          return run;
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Error unassigning flight.");
+    } finally {
+      setDragPayload(null);
+    }
+  }
+
   return (
     <div className="planner-page">
       <header className="planner-header">
@@ -783,15 +1024,20 @@ const PlannerPage = () => {
       <main className="planner-main">
         <FlightListColumn
           flights={flights}
+          unassignedFlights={unassignedFlights}
           flightToRunMap={flightToRunMap}
           selectedFlightKey={selectedFlightKey}
           onSelectFlight={handleSelectFlight}
+          onUnassignedDragStart={handleUnassignedDragStart}
+          onUnassignedDrop={handleDropOnUnassigned}
         />
         <RunsGridColumn
           runs={runs}
           selectedRunId={selectedRunId}
           onSelectRun={handleSelectRun}
           onRunsReorder={handleRunsReorder}
+          onRunDropFromOutside={handleDropOnRunCard}
+          onRunFlightDragStart={handleRunFlightDragStart}
         />
         <RunSheetColumn
           runs={runs}
