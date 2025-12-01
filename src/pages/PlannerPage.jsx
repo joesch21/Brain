@@ -737,57 +737,61 @@ const PlannerPage = () => {
     );
   }, [flights, runs]);
 
-  useEffect(() => {
-    if (!date) return undefined;
-    const controller = new AbortController();
+  async function loadPlannerData(signal) {
+    if (!date) return;
 
-    async function loadPlannerData() {
-      try {
-        setLoading(true);
-        setLoadingRuns(true);
-        setError("");
+    try {
+      setLoading(true);
+      setLoadingRuns(true);
+      setError("");
 
-        const [flightsResp, runsResp] = await Promise.all([
-          fetchApiStatus(`/api/flights?date=${encodeURIComponent(date)}`, {
-            signal: controller.signal,
-          }),
-          fetchApiStatus(`/api/runs?date=${encodeURIComponent(date)}`, {
-            signal: controller.signal,
-          }),
-        ]);
+      const [flightsResp, runsResp] = await Promise.all([
+        fetchApiStatus(`/api/flights?date=${encodeURIComponent(date)}`, {
+          signal,
+        }),
+        fetchApiStatus(`/api/runs?date=${encodeURIComponent(date)}`, {
+          signal,
+        }),
+      ]);
 
-        if (controller.signal.aborted) return;
+      if (signal?.aborted) return;
 
-        const errors = [];
+      const errors = [];
 
-        if (flightsResp.ok) {
-          const data = flightsResp.data || {};
-          const list = Array.isArray(data.flights) ? data.flights : data;
-          setFlights(list || []);
-        } else {
-          errors.push(formatApiError("Flights", flightsResp));
-          setFlights([]);
-        }
+      if (flightsResp.ok) {
+        const data = flightsResp.data || {};
+        const list = Array.isArray(data.flights) ? data.flights : data;
+        setFlights(list || []);
+      } else {
+        errors.push(formatApiError("Flights", flightsResp));
+        setFlights([]);
+      }
 
-        if (runsResp.ok) {
-          const data = runsResp.data || {};
-          const list = Array.isArray(data.runs) ? data.runs : data;
-          setRuns(list || []);
-        } else {
-          errors.push(formatApiError("Runs", runsResp));
-          setRuns([]);
-        }
+      if (runsResp.ok) {
+        const data = runsResp.data || {};
+        const list = Array.isArray(data.runs) ? data.runs : data;
+        setRuns(list || []);
+      } else {
+        errors.push(formatApiError("Runs", runsResp));
+        setRuns([]);
+      }
 
-        setError(
-          errors.length ? `Error loading planner data: ${errors.join("; ")}` : ""
-        );
-      } finally {
+      setError(
+        errors.length ? `Error loading planner data: ${errors.join("; ")}` : ""
+      );
+    } finally {
+      if (!signal?.aborted) {
         setLoading(false);
         setLoadingRuns(false);
       }
     }
+  }
 
-    loadPlannerData();
+  useEffect(() => {
+    if (!date) return undefined;
+    const controller = new AbortController();
+
+    loadPlannerData(controller.signal);
     return () => controller.abort();
   }, [date]);
 
@@ -1048,7 +1052,7 @@ const PlannerPage = () => {
       {/* System status + diagnostics row */}
       <div className="planner-system-row">
         <SystemHealthBar date={date} />
-        <ApiTestButton date={date} />
+        <ApiTestButton date={date} onAfterSeed={loadPlannerData} />
       </div>
 
       {(loading || loadingRuns) && (

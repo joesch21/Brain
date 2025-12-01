@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { fetchJson } from "../utils/api";
 import "../styles/apiTest.css";
 
+const ENABLE_DEV_SEED = import.meta.env.VITE_ENABLE_DEV_SEED !== "0";
+
 /**
  * CWO-13: One-click API diagnostics for a given date.
  *
@@ -12,7 +14,7 @@ import "../styles/apiTest.css";
  *
  * and shows a short summary plus optional detail.
  */
-const ApiTestButton = ({ date }) => {
+const ApiTestButton = ({ date, onAfterSeed }) => {
   const [running, setRunning] = useState(false);
   const [open, setOpen] = useState(false);
   const [summary, setSummary] = useState("");
@@ -123,6 +125,44 @@ const ApiTestButton = ({ date }) => {
     }
   }
 
+  async function handleSeedDemoDay() {
+    if (!ENABLE_DEV_SEED || !date || running) return;
+
+    setRunning(true);
+    setOpen(true);
+    setSummary("Seeding demo day…");
+    setDetails("");
+
+    try {
+      const qs = `?date=${encodeURIComponent(date)}`;
+      const res = await fetchJson(`/api/dev/seed_demo_day${qs}`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        setSummary(
+          `Seed failed (${res.status || "?"}) – ${
+            res.error || "Unable to seed demo day"
+          }`
+        );
+        setDetails(res.error || "");
+        return;
+      }
+
+      setSummary("Seeded demo day successfully.");
+      setDetails(res.data ? JSON.stringify(res.data, null, 2) : "");
+
+      if (typeof onAfterSeed === "function") {
+        await onAfterSeed();
+      }
+    } catch (err) {
+      setSummary("Seed failed – see details.");
+      setDetails(err?.message || String(err));
+    } finally {
+      setRunning(false);
+    }
+  }
+
   return (
     <div className="api-test">
       <button
@@ -134,6 +174,18 @@ const ApiTestButton = ({ date }) => {
       >
         {running ? "Testing…" : "Test API"}
       </button>
+
+      {ENABLE_DEV_SEED && (
+        <button
+          type="button"
+          className="api-test__button api-test__button--secondary"
+          onClick={handleSeedDemoDay}
+          disabled={running || !date}
+          title="Seed demo flights/runs for this date"
+        >
+          {running ? "Working…" : "Seed demo day"}
+        </button>
+      )}
 
       {open && (
         <div className="api-test__panel">
