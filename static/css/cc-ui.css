@@ -533,3 +533,24 @@ select{width:100%;background:var(--surface);color:var(--text);border:1px solid v
   .planner-actions{justify-content:flex-start;flex-wrap:wrap;}
   .planner-run-sheet__header{flex-direction:column;}
 }
+
+
+/* CWO-13B: schedule diagnostics strip */
+.schedule-api-diagnostics {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(33, 150, 243, 0.05);
+  border: 1px solid rgba(33, 150, 243, 0.45);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.schedule-api-diagnostics.is-error {
+  background: rgba(244, 67, 54, 0.06);
+  border-color: rgba(244, 67, 54, 0.8);
+}
+
+.schedule-api-diagnostics.is-hidden {
+  display: none;
+}

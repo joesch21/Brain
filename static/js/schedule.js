@@ -10,12 +10,21 @@
   const operatorSelect = document.getElementById("operator-filter");
   const refreshButton = document.getElementById("refresh-schedule");
   const statusDiv = document.getElementById("schedule-status");
+  const testApiButton = document.getElementById("schedule-test-api");
+  const diagnosticsDiv = document.getElementById("schedule-api-diagnostics");
   const summaryDiv = document.getElementById("daily-flight-summary");
   const tableBody = document.querySelector("#schedule-table tbody");
 
   function setStatus(message, isError = false) {
     statusDiv.textContent = message || "";
     statusDiv.classList.toggle("is-error", Boolean(isError));
+  }
+
+  function setDiagnostics(message, isError = false) {
+    if (!diagnosticsDiv) return;
+    diagnosticsDiv.textContent = message || "";
+    diagnosticsDiv.classList.toggle("is-error", Boolean(isError));
+    diagnosticsDiv.classList.toggle("is-hidden", !message);
   }
 
   async function fetchApiStatus(url, options = {}) {
@@ -55,6 +64,122 @@
   function formatApiError(label, result) {
     const statusLabel = result.status === 0 ? "network" : result.status;
     return `${label} ${statusLabel} – ${result.error || "Unknown error"}`;
+  }
+
+  // CWO-13B: one-click diagnostics for this date from the Schedule page.
+  async function runDiagnostics() {
+    if (!testApiButton) return;
+
+    const dateVal = dateInput.value;
+    if (!dateVal) {
+      setDiagnostics("Please select a date to test.", true);
+      return;
+    }
+
+    setDiagnostics("Running diagnostics…", false);
+    testApiButton.disabled = true;
+
+    const qs = `?date=${encodeURIComponent(dateVal)}`;
+
+    try {
+      const [statusRes, flightsRes, runsRes] = await Promise.all([
+        fetchApiStatus(`${apiBase}/api/status${qs}`),
+        fetchApiStatus(`${apiBase}/api/flights${qs}`),
+        fetchApiStatus(`${apiBase}/api/runs${qs}`),
+      ]);
+
+      const flightsCount = Array.isArray(flightsRes.data)
+        ? flightsRes.data.length
+        : 0;
+      const runsCount = Array.isArray(runsRes.data)
+        ? runsRes.data.length
+        : 0;
+
+      const statusData = statusRes.data || {};
+      const backendOk =
+        (statusData &&
+          (statusData.ok === true ||
+            statusData.backend_ok === true ||
+            (statusData.backend && statusData.backend.ok === true))) ||
+        false;
+      const dbOk =
+        (statusData &&
+          (statusData.db_ok === true ||
+            statusData.database_ok === true ||
+            (statusData.database && statusData.database.ok === true))) ||
+        false;
+
+      const parts = [];
+
+      if (statusRes.ok) {
+        parts.push(
+          `Status: OK (backend ${backendOk ? "OK" : "ISSUE"}, DB ${
+            dbOk ? "OK" : "ISSUE"
+          })`
+        );
+      } else {
+        parts.push(
+          `Status: ERROR (${statusRes.status || "?"}) – ${
+            statusRes.error || "Unknown"
+          }`
+        );
+      }
+
+      if (flightsRes.ok) {
+        parts.push(`Flights: ${flightsCount}`);
+      } else {
+        parts.push(
+          `Flights: ERROR (${flightsRes.status || "?"}) – ${
+            flightsRes.error || "Unknown"
+          }`
+        );
+      }
+
+      if (runsRes.ok) {
+        parts.push(`Runs: ${runsCount}`);
+      } else {
+        parts.push(
+          `Runs: ERROR (${runsRes.status || "?"}) – ${
+            runsRes.error || "Unknown"
+          }`
+        );
+      }
+
+      const summary = parts.join(" · ");
+
+      const detailObj = {
+        date: dateVal,
+        status: {
+          ok: statusRes.ok,
+          httpStatus: statusRes.status,
+          error: statusRes.error,
+        },
+        flights: {
+          ok: flightsRes.ok,
+          httpStatus: flightsRes.status,
+          error: flightsRes.error,
+          count: flightsCount,
+        },
+        runs: {
+          ok: runsRes.ok,
+          httpStatus: runsRes.status,
+          error: runsRes.error,
+          count: runsCount,
+        },
+      };
+
+      const detailJson = JSON.stringify(detailObj, null, 2);
+      const allOk = statusRes.ok && flightsRes.ok && runsRes.ok;
+
+      setDiagnostics(`${summary}\n${detailJson}`, !allOk);
+    } catch (err) {
+      setDiagnostics(
+        `Diagnostics failed: ${err?.message || String(err)}`,
+        true
+      );
+    } finally {
+      testApiButton.disabled = false;
+    }
   }
 
   function extractAirlineCode(flightNumber) {
@@ -272,6 +397,10 @@
   refreshButton.addEventListener("click", loadSchedule);
   dateInput.addEventListener("change", loadSchedule);
   operatorSelect.addEventListener("change", loadSchedule);
+
+  if (testApiButton) {
+    testApiButton.addEventListener("click", runDiagnostics);
+  }
 
   setDefaultDate();
   loadSchedule();
