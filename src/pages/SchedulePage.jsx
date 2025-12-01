@@ -26,35 +26,36 @@ const SchedulePage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
+  async function loadFlights(signal) {
+    setLoading(true);
+    setError("");
 
-    async function loadFlights() {
-      setLoading(true);
-      setError("");
+    const qs = new URLSearchParams();
+    if (date) qs.set("date", date);
+    if (operator) qs.set("operator", operator);
 
-      const qs = new URLSearchParams();
-      if (date) qs.set("date", date);
-      if (operator) qs.set("operator", operator);
+    const resp = await fetchApiStatus(`/api/flights?${qs.toString()}`, {
+      signal,
+    });
 
-      const resp = await fetchApiStatus(`/api/flights?${qs.toString()}`);
+    if (signal?.aborted) return;
 
-      if (cancelled) return;
-
-      if (!resp.ok) {
-        setError(formatApiError("Flights", resp));
-        setFlights([]);
-      } else {
-        setFlights(normalizeFlights(resp.data));
-      }
-
-      setLoading(false);
+    if (!resp.ok) {
+      setError(formatApiError("Flights", resp));
+      setFlights([]);
+    } else {
+      setFlights(normalizeFlights(resp.data));
     }
 
-    loadFlights();
-    return () => {
-      cancelled = true;
-    };
+    if (!signal?.aborted) {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadFlights(controller.signal);
+    return () => controller.abort();
   }, [date, operator]);
 
   const operatorOptions = useMemo(() => {
@@ -115,7 +116,7 @@ const SchedulePage = () => {
       {/* System status + diagnostics row (CWO-13B) */}
       <div className="schedule-system-row">
         <SystemHealthBar date={date} />
-        <ApiTestButton date={date} />
+        <ApiTestButton date={date} onAfterSeed={loadFlights} />
       </div>
 
       {loading && <div className="schedule-status">Loading schedule…</div>}
