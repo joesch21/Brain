@@ -1,0 +1,124 @@
+.runsheets-page {
+  padding: 1rem 1.5rem;
+}
+
+.runsheets-header-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.runsheets-header-controls label {
+  font-size: 0.9rem;
+}
+
+.runsheets-header-controls input[type="date"] {
+  margin-left: 0.25rem;
+}
+
+.runsheets-print-button {
+  margin-left: auto;
+}
+
+.runsheets-status {
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.runsheets-status--error {
+  color: #ff6961;
+}
+
+.runsheets-main {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+/* Cards are close to A4 ratio when printed */
+.runsheet-card {
+  background: #11141c;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.75rem 0.9rem;
+  page-break-inside: avoid;
+}
+
+.runsheet-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.runsheet-card__title h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.runsheet-card__meta {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  opacity: 0.7;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.runsheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.runsheet-table th,
+.runsheet-table td {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.25rem 0.35rem;
+  text-align: left;
+}
+
+.runsheet-table th {
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 600;
+}
+
+.runsheet-table__empty {
+  text-align: center;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.runsheet-card__footer {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+/* Print tweaks: one card per page row, remove nav chrome etc. */
+@media print {
+  .main-nav,
+  .page-header,
+  .system-health-bar,
+  .runsheets-print-button {
+    display: none !important;
+  }
+
+  .runsheets-page {
+    padding: 0;
+  }
+
+  .runsheets-main {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .runsheet-card {
+    border: 1px solid #000;
+    border-radius: 0;
+    page-break-inside: avoid;
+  }
+}

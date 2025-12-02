@@ -1,0 +1,19 @@
+.main-nav {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: #0c0f17;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.main-nav__link {
+  color: #f2f3f7;
+  text-decoration: none;
+  font-weight: 600;
+  padding-bottom: 0.2rem;
+  border-bottom: 2px solid transparent;
+}
+
+.main-nav__link.active {
+  border-color: #4ac1e0;
+}
