@@ -1,30 +1,38 @@
+// /src/lib/apiClient.js
 export async function apiFetch(path, options = {}) {
-  const url = `${import.meta.env.VITE_API_BASE_URL}${path}`;
+  const baseUrl = import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "");
+  const url = `${baseUrl}${path}`;
 
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    });
 
-    // Capture non-OK status in a global debug store
     if (!response.ok) {
+      const text = await response.text();
+
       window.backendDebug = {
+        type: "http-error",
         timestamp: new Date().toISOString(),
         url,
         method: options.method || "GET",
         status: response.status,
         statusText: response.statusText,
-        body: await response.text()
+        body: text,
       };
-      console.error("[Backend Error]", window.backendDebug);
+
+      console.error("[Backend HTTP Error]", window.backendDebug);
     }
 
     return response;
   } catch (err) {
-    // Capture hard errors
     window.backendDebug = {
+      type: "network-crash",
       timestamp: new Date().toISOString(),
       url,
       method: options.method || "GET",
-      error: err.message
+      error: err.message,
     };
     console.error("[Backend Crash]", window.backendDebug);
     throw err;
