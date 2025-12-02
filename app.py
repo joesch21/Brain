@@ -1496,6 +1496,23 @@ def api_runs_proxy():
     return proxy_to_codecrafter("/api/runs", method="GET", params=params)
 
 
+@app.route("/api/dev/seed_demo_day", methods=["POST"])
+@require_role("admin")
+def api_seed_demo_day():
+    """Proxy seeding of demo-day flights/runs to CodeCrafter2."""
+
+    date_str = request.args.get("date")
+    params = {}
+    if date_str:
+        params["date"] = date_str
+
+    return proxy_to_codecrafter(
+        "/api/dev/seed_demo_day",
+        method="POST",
+        params=params,
+    )
+
+
 @app.route("/api/assignments/generate", methods=["POST"])
 @require_role("refueler", "supervisor", "admin")
 def api_assignments_generate_proxy():
