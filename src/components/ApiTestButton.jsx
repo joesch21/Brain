@@ -14,7 +14,7 @@ const ENABLE_DEV_SEED = import.meta.env.VITE_ENABLE_DEV_SEED !== "0";
  *
  * and shows a short summary plus optional detail.
  */
-const ApiTestButton = ({ date, onAfterSeed }) => {
+const ApiTestButton = ({ date, onAfterSeed, showSeedButton = true }) => {
   const [running, setRunning] = useState(false);
   const [open, setOpen] = useState(false);
   const [summary, setSummary] = useState("");
@@ -192,7 +192,7 @@ const ApiTestButton = ({ date, onAfterSeed }) => {
         {running ? "Testing…" : "Test API"}
       </button>
 
-      {ENABLE_DEV_SEED && (
+      {ENABLE_DEV_SEED && showSeedButton && (
         <button
           type="button"
           className="api-test__button api-test__button--secondary"

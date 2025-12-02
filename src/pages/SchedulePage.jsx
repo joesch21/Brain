@@ -3,6 +3,7 @@ import "../styles/schedule.css";
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
+import { fetchJson } from "../utils/api";
 
 function todayISO() {
   const d = new Date();
@@ -25,6 +26,7 @@ const SchedulePage = () => {
   const [flights, setFlights] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [seeding, setSeeding] = useState(false);
 
   async function loadFlights(signal) {
     setLoading(true);
@@ -49,6 +51,35 @@ const SchedulePage = () => {
 
     if (!signal?.aborted) {
       setLoading(false);
+    }
+  }
+
+  async function handleSeedDemoDay() {
+    if (!date || seeding) return;
+
+    setSeeding(true);
+    setError("");
+
+    try {
+      const qs = `?date=${encodeURIComponent(date)}`;
+      const res = await fetchJson(`/api/dev/seed_demo_day${qs}`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        setError(
+          `Seed demo day failed (${res.status ?? "?"} – ${
+            res.error || "Unable to seed demo data"
+          })`
+        );
+        return;
+      }
+
+      await loadFlights();
+    } catch (err) {
+      setError(`Seed demo day failed – ${err?.message || err}`);
+    } finally {
+      setSeeding(false);
     }
   }
 
@@ -113,10 +144,31 @@ const SchedulePage = () => {
         </div>
       </header>
 
+      <div className="schedule-actions">
+        <button
+          type="button"
+          onClick={() => loadFlights()}
+          disabled={loading || seeding}
+        >
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+        <ApiTestButton
+          date={date}
+          onAfterSeed={() => loadFlights()}
+          showSeedButton={false}
+        />
+        <button
+          type="button"
+          onClick={handleSeedDemoDay}
+          disabled={loading || seeding}
+        >
+          {seeding ? "Seeding…" : "Seed demo day"}
+        </button>
+      </div>
+
       {/* System status + diagnostics row (CWO-13B) */}
       <div className="schedule-system-row">
         <SystemHealthBar date={date} />
-        <ApiTestButton date={date} onAfterSeed={loadFlights} />
       </div>
 
       {loading && <div className="schedule-status">Loading schedule…</div>}
