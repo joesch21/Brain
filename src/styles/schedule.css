@@ -39,6 +39,37 @@
   gap: 0.5rem;
 }
 
+.schedule-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.schedule-actions button {
+  padding: 0.5rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid #1f2d45;
+  background: #102544;
+  color: #e8f0f7;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.schedule-actions button:hover:not(:disabled) {
+  background: #15325a;
+}
+
+.schedule-actions button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.schedule-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Row containing SystemHealthBar and Test API button (CWO-13B) */
 .schedule-system-row {
   display: flex;
