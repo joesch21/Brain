@@ -149,7 +149,24 @@ const ApiTestButton = ({ date, onAfterSeed }) => {
         return;
       }
 
-      setSummary("Seeded demo day successfully.");
+      const payload = res.data || {};
+      const flightsCreated =
+        payload.summary?.flights_created ?? payload.flights_created;
+      const runsCreated = payload.summary?.runs_created ?? payload.runs_created;
+
+      if (flightsCreated != null || runsCreated != null) {
+        const parts = [];
+        if (flightsCreated != null)
+          parts.push(`${flightsCreated} flight${
+            flightsCreated === 1 ? "" : "s"
+          }`);
+        if (runsCreated != null)
+          parts.push(`${runsCreated} run${runsCreated === 1 ? "" : "s"}`);
+        setSummary(`Seeded demo day successfully (${parts.join(", ")}).`);
+      } else {
+        setSummary("Seeded demo day successfully.");
+      }
+
       setDetails(res.data ? JSON.stringify(res.data, null, 2) : "");
 
       if (typeof onAfterSeed === "function") {
