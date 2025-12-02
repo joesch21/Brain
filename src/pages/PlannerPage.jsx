@@ -3,7 +3,6 @@ import "../styles/planner.css";
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
-import { fetchJson } from "../utils/api";
 
 // --- small helpers ---------------------------------------------------------
 
@@ -681,7 +680,6 @@ const PlannerPage = () => {
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [error, setError] = useState("");
-  const [seeding, setSeeding] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [selectedFlightKey, setSelectedFlightKey] = useState(null);
   const [dragPayload, setDragPayload] = useState(null); // for cross-column DnD
@@ -738,35 +736,6 @@ const PlannerPage = () => {
       (f) => f && f.id != null && !assignedIds.has(f.id)
     );
   }, [flights, runs]);
-
-  async function handleSeedDemoDay() {
-    if (!date || seeding) return;
-
-    setSeeding(true);
-    setError("");
-
-    try {
-      const qs = `?date=${encodeURIComponent(date)}`;
-      const res = await fetchJson(`/api/dev/seed_demo_day${qs}`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        setError(
-          `Seed demo day failed (${res.status ?? "?"} – ${
-            res.error || "Unable to seed demo data"
-          })`
-        );
-        return;
-      }
-
-      await loadPlannerData();
-    } catch (err) {
-      setError(`Seed demo day failed – ${err?.message || err}`);
-    } finally {
-      setSeeding(false);
-    }
-  }
 
   async function loadPlannerData(signal) {
     if (!date) return;
@@ -1076,14 +1045,6 @@ const PlannerPage = () => {
         <div className="planner-header-right">
           <button type="button" onClick={handleAutoAssign}>
             Auto-assign runs
-          </button>
-          <button
-            type="button"
-            onClick={handleSeedDemoDay}
-            disabled={seeding}
-            style={{ marginLeft: "0.5rem" }}
-          >
-            {seeding ? "Seeding…" : "Seed demo day"}
           </button>
         </div>
       </header>
