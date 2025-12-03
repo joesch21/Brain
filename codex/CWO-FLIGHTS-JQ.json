@@ -1,0 +1,197 @@
+{
+  "meta": {
+    "project": "Operations Manager APP - Brain",
+    "module": "Flights / Schedule Integration",
+    "work_order_name": "Fetch and store JQ flights by day for Schedule + Machine Room",
+    "priority": "high",
+    "status": "new"
+  },
+  "context": {
+    "description": "We currently scrape Rex (ZL) flights from Sydney Airport using infosyd direct-view endpoints and match arrival/departure by rego. We now want the Brain to fetch Jetstar (JQ) flights for a selected day (Today/Tomorrow/Day after tomorrow) and store them so the Schedule + Machine Room can use them for planning and later calculations.",
+    "existing_code": {
+      "scraper": "scraper.py – get_flight_details(url) scrapes infosyd HTML but hard-codes ZL-only filtering.",
+      "flight_matcher": "flight_matcher.py – filter_rex_flights() and match_flights_by_rego() currently only handle ZL.",
+      "backend_app": "app (20).py – Flask app exposes /api/flight-info that always fetches today's direct-view URLs with no airline or day parameters.",
+      "infra": "Standard Python stack (Flask, requests, BeautifulSoup) as per requirements.txt."
+    },
+    "brain_usage": {
+      "storage": "Flight data for a given airline + day should be stored in Brain storage under a stable key (e.g. flights:{airline}:{date}).",
+      "schedule": "Schedule can read the stored flights to build daily flight views and tasks.",
+      "machine_room": "Later, Machine Room jobs will read these stored flights to run calculations (turnaround, staffing, etc.)."
+    }
+  },
+  "goals": {
+    "primary": [
+      "Allow Brain to fetch Jetstar (JQ) domestic departure flights from Sydney Airport for a specific day: Today, Tomorrow, or Day after tomorrow.",
+      "Expose this via a parameterised backend endpoint the Schedule can call.",
+      "Store the resulting flight list in Brain storage so Machine Room and other tasks can reuse it without re-scraping."
+    ],
+    "future_extensibility": [
+      "Make airline handling generic so we can later add QF, VA, ZL, etc., with minimal change.",
+      "Make date handling generic so we can support arbitrary offsets or explicit dates later."
+    ]
+  },
+  "user_interface_changes": {
+    "brain_frontend": {
+      "controls": [
+        {
+          "type": "dropdown",
+          "label": "Airline",
+          "id": "airlineSelector",
+          "options": [
+            { "label": "Jetstar (JQ)", "value": "JQ", "default": true }
+          ],
+          "notes": "UI prepared to add more airlines later; value is IATA code."
+        },
+        {
+          "type": "dropdown",
+          "label": "Day",
+          "id": "daySelector",
+          "options": [
+            { "label": "Today", "value": 0, "default": true },
+            { "label": "Tomorrow", "value": 1 },
+            { "label": "Day after tomorrow", "value": 2 }
+          ],
+          "notes": "Value is integer dayOffset from 'today' in local SYD time."
+        }
+      ],
+      "interaction": "When user selects airline/day and hits 'Fetch flights', Brain sends a request to the backend endpoint described below, then stores the result in Brain storage and exposes it to Schedule."
+    }
+  },
+  "api_contracts": {
+    "backend_endpoint": {
+      "method": "GET",
+      "path": "/api/flight-info",
+      "query_params": {
+        "airline": {
+          "type": "string",
+          "example": "JQ",
+          "default": "JQ",
+          "description": "Airline IATA code. Currently only 'JQ' is supported."
+        },
+        "dayOffset": {
+          "type": "integer",
+          "example": 1,
+          "default": 0,
+          "allowed_values": [0, 1, 2],
+          "description": "0 = Today, 1 = Tomorrow, 2 = Day after tomorrow (local SYD date)."
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "body_example": [
+          {
+            "flight_number": "JQ123",
+            "rego": "VH-VGA",
+            "bay": "T3-10",
+            "status": "Scheduled",
+            "destination": "MEL",
+            "scheduled_time": "2025-12-04T08:15:00",
+            "raw_source": {}
+          }
+        ],
+        "notes": "Shape can follow what we already use for Rex; add fields like scheduled_time if available from the source."
+      }
+    },
+    "brain_storage": {
+      "key_pattern": "flights:{airline}:{iso_date}",
+      "value_type": "JSON array of flight objects as returned by /api/flight-info",
+      "examples": [
+        "flights:JQ:2025-12-04",
+        "flights:JQ:2025-12-05"
+      ]
+    }
+  },
+  "functional_requirements": [
+    {
+      "id": "FR1",
+      "description": "Generalise scraper.get_flight_details to support arbitrary airline prefixes instead of hard-coded ZL.",
+      "details": {
+        "file": "scraper.py",
+        "change": "Add optional airline_prefixes parameter; if provided, filter flights whose flight_number starts with any of the prefixes; if None, return all flights.",
+        "hint": "Replace in-function ZL check with a generic prefix check."
+      }
+    },
+    {
+      "id": "FR2",
+      "description": "Update flight_matcher to be airline-agnostic and stop hard-coding ZL.",
+      "details": {
+        "file": "flight_matcher.py",
+        "changes": [
+          "Remove or refactor filter_rex_flights into filter_flights_by_prefix(flights, prefix).",
+          "Update match_flights_by_rego to rely on pre-filtered flights, or parameterise the prefix check.",
+          "Ensure logic still matches arrival/departure by rego, but works for JQ instead of ZL."
+        ]
+      }
+    },
+    {
+      "id": "FR3",
+      "description": "Extend /api/flight-info to accept airline + dayOffset and compute the target date.",
+      "details": {
+        "file": "app (20).py",
+        "logic": [
+          "Read airline = request.args.get('airline', 'JQ').upper().",
+          "Read dayOffset = int(request.args.get('dayOffset', 0)) and clamp to [0,1,2].",
+          "Compute target_date = today + timedelta(days=dayOffset) using local SYD date.",
+          "Pass airline + target_date into a helper that fetches flights and applies prefix filtering."
+        ]
+      }
+    },
+    {
+      "id": "FR4",
+      "description": "Provide a helper to fetch flights for a specific date and airline.",
+      "details": {
+        "file": "new helper (can live in flight_matcher.py or new module)",
+        "signature_example": "get_domestic_departures_for_airline(airline_code: str, target_date: date) -> list[dict]",
+        "behaviour": [
+          "Use existing infosyd direct-view if date-based source cannot be easily parameterised yet, OR",
+          "If a JSON / date-enabled endpoint is identified, call it with the correct date param.",
+          "Filter flights by flight_number prefix == airline_code (e.g. 'JQ').",
+          "Return flights as dictionaries compatible with existing structures."
+        ]
+      }
+    },
+    {
+      "id": "FR5",
+      "description": "Brain integration: store flights in Brain storage for use in Schedule and Machine Room.",
+      "details": {
+        "logic": [
+          "After a successful response from /api/flight-info, Brain writes the array into storage with key flights:{airline}:{iso_date}.",
+          "Schedule can then read this key to build its daily views.",
+          "Machine Room jobs later read the same key for calculations (no extra scraping)."
+        ]
+      }
+    }
+  ],
+  "non_functional_requirements": [
+    {
+      "id": "NFR1",
+      "description": "Network robustness – if external request fails, return 503 and do not overwrite existing stored flights for that key."
+    },
+    {
+      "id": "NFR2",
+      "description": "Logging – log airline, date, and number of flights fetched for observability."
+    },
+    {
+      "id": "NFR3",
+      "description": "Extensibility – adding a new airline should be as simple as adding a dropdown option and allowing its prefix in the backend."
+    }
+  ],
+  "implementation_hints": {
+    "scraper_generalisation": "In scraper.get_flight_details, move the ZL prefix check into a parameterised prefix list; allow airline_prefixes=None to return all airlines.",
+    "date_handling": "Use Python datetime.date.today() and timedelta; format target_date as YYYY-MM-DD string wherever the external source expects it.",
+    "prefix_filtering": "Centralise prefix logic into a small helper function to avoid duplicating `startswith` checks in multiple files.",
+    "future": "Once JSON endpoint for per-date flights is identified, implement a variant of get_flight_details that consumes JSON instead of scraping HTML and wire it into FR4."
+  },
+  "acceptance_criteria": [
+    "AC1: Calling /api/flight-info with airline=JQ&dayOffset=0 returns a non-empty list of JQ flights for today (when such flights exist).",
+    "AC2: Calling /api/flight-info with airline=JQ&dayOffset=1 returns JQ flights for tomorrow; same for dayOffset=2 (day after).",
+    "AC3: Brain can store the returned list under flights:JQ:<date> and Schedule can read and display that data.",
+    "AC4: No remaining hard-coded 'ZL' logic; code is ready to accept other airline prefixes later."
+  ],
+  "open_questions": [
+    "OQ1: What is the final JSON/date endpoint from Sydney Airport for per-day schedules? (Dev to determine via browser DevTools; initial version can still use current direct-view HTML if necessary.)",
+    "OQ2: Do we need arrivals as well as departures for JQ at this stage, or departures-only is enough for Schedule?"
+  ]
+}
