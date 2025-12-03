@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { fetchJson } from "../utils/api";
+import {
+  fetchFlights,
+  fetchRuns,
+  fetchStatus,
+  seedDemoDay,
+} from "../lib/apiClient";
 import "../styles/apiTest.css";
 
 const ENABLE_DEV_SEED = import.meta.env.VITE_ENABLE_DEV_SEED !== "0";
@@ -28,33 +33,51 @@ const ApiTestButton = ({ date, onAfterSeed, showSeedButton = true }) => {
     setSummary("Running diagnostics…");
     setDetails("");
 
-    const qs = date ? `?date=${encodeURIComponent(date)}` : "";
-
     try {
-      const [statusRes, flightsRes, runsRes] = await Promise.all([
-        fetchJson(`/api/status${qs}`),
-        fetchJson(`/api/flights${qs}`),
-        fetchJson(`/api/runs${qs}`),
+      const results = await Promise.allSettled([
+        fetchStatus(date),
+        fetchFlights(date, "all"),
+        fetchRuns(date),
       ]);
 
-      const flightsData = Array.isArray(flightsRes.data)
-        ? flightsRes.data
-        : [];
-      const runsData = Array.isArray(runsRes.data) ? runsRes.data : [];
+      const [statusRes, flightsRes, runsRes] = results.map((result) => {
+        if (result.status === "fulfilled") {
+          return { ok: true, status: result.value.status, data: result.value.data };
+        }
+
+        const err = result.reason || {};
+        return {
+          ok: false,
+          status: err.status ?? "network",
+          error: err.message || "Request failed",
+          data: null,
+        };
+      });
+
+      const flightsData = Array.isArray(flightsRes.data?.flights)
+        ? flightsRes.data.flights
+        : Array.isArray(flightsRes.data)
+          ? flightsRes.data
+          : [];
+      const runsData = Array.isArray(runsRes.data?.runs)
+        ? runsRes.data.runs
+        : Array.isArray(runsRes.data)
+          ? runsRes.data
+          : [];
 
       // Derive some quick flags from statusRes, similar to SystemHealthBar.
-      const status = statusRes.data || {};
+      const statusPayload = statusRes.data || {};
       const backendOk =
-        (status &&
-          (status.ok === true ||
-            status.backend_ok === true ||
-            status.backend?.ok === true)) ||
+        (statusPayload &&
+          (statusPayload.ok === true ||
+            statusPayload.backend_ok === true ||
+            statusPayload.backend?.ok === true)) ||
         false;
       const dbOk =
-        (status &&
-          (status.db_ok === true ||
-            status.database_ok === true ||
-            status.database?.ok === true)) ||
+        (statusPayload &&
+          (statusPayload.db_ok === true ||
+            statusPayload.database_ok === true ||
+            statusPayload.database?.ok === true)) ||
         false;
 
       const parts = [];
@@ -134,20 +157,7 @@ const ApiTestButton = ({ date, onAfterSeed, showSeedButton = true }) => {
     setDetails("");
 
     try {
-      const qs = `?date=${encodeURIComponent(date)}`;
-      const res = await fetchJson(`/api/dev/seed_demo_day${qs}`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        setSummary(
-          `Seed failed (${res.status || "?"}) – ${
-            res.error || "Unable to seed demo day"
-          }`
-        );
-        setDetails(res.error || "");
-        return;
-      }
+      const res = await seedDemoDay(date);
 
       const payload = res.data || {};
       const flightsCreated =
