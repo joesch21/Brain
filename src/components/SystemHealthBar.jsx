@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { fetchJson } from "../utils/api";
+import { fetchStatus } from "../lib/apiClient";
 import "../styles/systemHealthBar.css";
 
 /**
@@ -12,42 +12,63 @@ import "../styles/systemHealthBar.css";
  * Props:
  *   date?: ISO date string (YYYY-MM-DD). Optional; if omitted, no date param.
  */
-const SystemHealthBar = ({ date }) => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+const SystemHealthBar = ({ date, status: statusProp, statusError, loading }) => {
+  const [internalLoading, setInternalLoading] = useState(false);
+  const [internalError, setInternalError] = useState("");
   const [status, setStatus] = useState(null);
 
+  // Sync with externally provided status/error/loading when present.
   useEffect(() => {
+    if (
+      statusProp !== undefined ||
+      statusError !== undefined ||
+      loading !== undefined
+    ) {
+      setStatus(statusProp || null);
+      setInternalError(statusError || "");
+      setInternalLoading(Boolean(loading));
+    }
+  }, [loading, statusError, statusProp]);
+
+  useEffect(() => {
+    if (
+      statusProp !== undefined ||
+      statusError !== undefined ||
+      loading !== undefined
+    ) {
+      return undefined;
+    }
+
     let cancelled = false;
 
     async function load() {
-      setLoading(true);
-      setError("");
+      setInternalLoading(true);
+      setInternalError("");
 
-      const qs = date ? `?date=${encodeURIComponent(date)}` : "";
-      const res = await fetchJson(`/api/status${qs}`);
-
-      if (cancelled) return;
-
-      if (!res.ok) {
-        setError(
-          `Status ${res.status || ""} – ${
-            res.error || "Unable to fetch system status"
-          }`
-        );
-        setStatus(null);
-      } else {
-        setStatus(res.data || {});
+      try {
+        const res = await fetchStatus(date);
+        if (!cancelled) {
+          setStatus(res.data || {});
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const statusLabel = err?.status ?? "network";
+          const message = err?.message || "Unable to fetch system status";
+          setInternalError(`Status ${statusLabel} – ${message}`);
+          setStatus(null);
+        }
       }
 
-      setLoading(false);
+      if (!cancelled) {
+        setInternalLoading(false);
+      }
     }
 
     load();
     return () => {
       cancelled = true;
     };
-  }, [date]);
+  }, [date, loading, statusError, statusProp]);
 
   // Derive some flags defensively; different backends may expose slightly
   // different shapes, so we check a few common conventions.
@@ -88,7 +109,7 @@ const SystemHealthBar = ({ date }) => {
 
   // Overall mode: ok / warn / error
   let mode = "ok";
-  if (error || !backendOk) {
+  if (internalError || !backendOk) {
     mode = "error";
   } else if (!dbOk) {
     mode = "warn";
@@ -100,13 +121,13 @@ const SystemHealthBar = ({ date }) => {
   return (
     <div className={rootClass}>
       <div className="system-health-bar__left">
-        {loading ? (
+        {internalLoading ? (
           <span className="system-health-bar__pill system-health-bar__pill--loading">
             <span className="dot dot--pulse" /> Checking system…
           </span>
-        ) : error ? (
+        ) : internalError ? (
           <span className="system-health-bar__pill system-health-bar__pill--error">
-            <span className="dot dot--error" /> Backend issue: {error}
+            <span className="dot dot--error" /> Backend issue: {internalError}
           </span>
         ) : (
           <>
@@ -132,7 +153,7 @@ const SystemHealthBar = ({ date }) => {
         )}
       </div>
 
-      {!loading && !error && (
+      {!internalLoading && !internalError && (
         <div className="system-health-bar__right">
           <span className="system-health-bar__metric">
             Flights: <strong>{flightCount}</strong>

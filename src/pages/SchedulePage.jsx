@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import "../styles/schedule.css";
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
-import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
+import { fetchFlights, fetchStatus } from "../lib/apiClient";
 
 function todayISO() {
   const d = new Date();
@@ -19,32 +19,54 @@ function normalizeFlights(data) {
   return [];
 }
 
+function formatRequestError(label, err) {
+  if (!err) return label;
+  const statusLabel = err.status ?? "network";
+  const message = err.message || "Request failed";
+  return `${label} ${statusLabel} – ${message}`;
+}
+
 const SchedulePage = () => {
   const [date, setDate] = useState(todayISO());
   const [operator, setOperator] = useState("");
   const [flights, setFlights] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [statusData, setStatusData] = useState(null);
+  const [statusError, setStatusError] = useState("");
 
-  async function loadFlights(signal) {
+  async function loadSchedule(signal) {
     setLoading(true);
     setError("");
+    setStatusError("");
 
-    const qs = new URLSearchParams();
-    if (date) qs.set("date", date);
-    if (operator) qs.set("operator", operator);
+    try {
+      const statusResp = await fetchStatus(date, { signal });
+      if (!signal?.aborted) {
+        setStatusData(statusResp.data || null);
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        const message = formatRequestError("Status", err);
+        setStatusError(message);
+        setStatusData(null);
+        setError((prev) => prev || message);
+      }
+    }
 
-    const resp = await fetchApiStatus(`/api/flights?${qs.toString()}`, {
-      signal,
-    });
+    try {
+      const flightsResp = await fetchFlights(date, operator || "all", {
+        signal,
+      });
 
-    if (signal?.aborted) return;
-
-    if (!resp.ok) {
-      setError(formatApiError("Flights", resp));
-      setFlights([]);
-    } else {
-      setFlights(normalizeFlights(resp.data));
+      if (!signal?.aborted) {
+        setFlights(normalizeFlights(flightsResp.data));
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setFlights([]);
+        setError(formatRequestError("Flights", err));
+      }
     }
 
     if (!signal?.aborted) {
@@ -54,7 +76,7 @@ const SchedulePage = () => {
 
   useEffect(() => {
     const controller = new AbortController();
-    loadFlights(controller.signal);
+    loadSchedule(controller.signal);
     return () => controller.abort();
   }, [date, operator]);
 
@@ -116,20 +138,25 @@ const SchedulePage = () => {
       <div className="schedule-actions">
         <button
           type="button"
-          onClick={() => loadFlights()}
+          onClick={() => loadSchedule()}
           disabled={loading}
         >
           {loading ? "Refreshing…" : "Refresh"}
         </button>
         <ApiTestButton
           date={date}
-          onAfterSeed={() => loadFlights()}
+          onAfterSeed={() => loadSchedule()}
         />
       </div>
 
       {/* System status + diagnostics row (CWO-13B) */}
       <div className="schedule-system-row">
-        <SystemHealthBar date={date} />
+        <SystemHealthBar
+          date={date}
+          status={statusData}
+          statusError={statusError}
+          loading={loading && !statusData && !statusError}
+        />
       </div>
 
       {loading && <div className="schedule-status">Loading schedule…</div>}

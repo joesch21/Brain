@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import "../styles/planner.css";
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
-import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
+import { fetchFlights, fetchRuns } from "../lib/apiClient";
 
 // --- small helpers ---------------------------------------------------------
 
@@ -101,6 +101,27 @@ function formatByAirline(byAirline) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([code, count]) => `${code} ${count}`)
     .join(", ");
+}
+
+function normalizeFlights(data) {
+  if (!data) return [];
+  if (Array.isArray(data.flights)) return data.flights;
+  if (Array.isArray(data)) return data;
+  return [];
+}
+
+function normalizeRuns(data) {
+  if (!data) return [];
+  if (Array.isArray(data.runs)) return data.runs;
+  if (Array.isArray(data)) return data;
+  return [];
+}
+
+function formatRequestError(label, err) {
+  if (!err) return label;
+  const statusLabel = err.status ?? "network";
+  const message = err.message || "Request failed";
+  return `${label} ${statusLabel} – ${message}`;
 }
 
 // --- subcomponents ----------------------------------------------------------
@@ -680,6 +701,7 @@ const PlannerPage = () => {
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [error, setError] = useState("");
+  const [runsError, setRunsError] = useState("");
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [selectedFlightKey, setSelectedFlightKey] = useState(null);
   const [dragPayload, setDragPayload] = useState(null); // for cross-column DnD
@@ -740,50 +762,38 @@ const PlannerPage = () => {
   async function loadPlannerData(signal) {
     if (!date) return;
 
+    setLoading(true);
+    setLoadingRuns(true);
+    setError("");
+    setRunsError("");
+
     try {
-      setLoading(true);
-      setLoadingRuns(true);
-      setError("");
-
-      const [flightsResp, runsResp] = await Promise.all([
-        fetchApiStatus(`/api/flights?date=${encodeURIComponent(date)}`, {
-          signal,
-        }),
-        fetchApiStatus(`/api/runs?date=${encodeURIComponent(date)}`, {
-          signal,
-        }),
-      ]);
-
-      if (signal?.aborted) return;
-
-      const errors = [];
-
-      if (flightsResp.ok) {
-        const data = flightsResp.data || {};
-        const list = Array.isArray(data.flights) ? data.flights : data;
-        setFlights(list || []);
-      } else {
-        errors.push(formatApiError("Flights", flightsResp));
-        setFlights([]);
-      }
-
-      if (runsResp.ok) {
-        const data = runsResp.data || {};
-        const list = Array.isArray(data.runs) ? data.runs : data;
-        setRuns(list || []);
-      } else {
-        errors.push(formatApiError("Runs", runsResp));
-        setRuns([]);
-      }
-
-      setError(
-        errors.length ? `Error loading planner data: ${errors.join("; ")}` : ""
-      );
-    } finally {
+      const flightsResp = await fetchFlights(date, "all", { signal });
       if (!signal?.aborted) {
-        setLoading(false);
-        setLoadingRuns(false);
+        setFlights(normalizeFlights(flightsResp.data));
       }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setFlights([]);
+        setError(formatRequestError("Flights", err));
+      }
+    }
+
+    try {
+      const runsResp = await fetchRuns(date, { signal });
+      if (!signal?.aborted) {
+        setRuns(normalizeRuns(runsResp.data));
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setRuns([]);
+        setRunsError(formatRequestError("Runs", err));
+      }
+    }
+
+    if (!signal?.aborted) {
+      setLoading(false);
+      setLoadingRuns(false);
     }
   }
 
@@ -870,6 +880,7 @@ const PlannerPage = () => {
   async function handleAutoAssign() {
     if (!date) return;
     try {
+      setRunsError("");
       const resp = await fetch("/api/assignments/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -883,28 +894,14 @@ const PlannerPage = () => {
       }
 
       setLoadingRuns(true);
-      const runsResp = await fetchApiStatus(
-        `/api/runs?date=${encodeURIComponent(date)}`
-      );
-      if (!runsResp.ok) {
-        throw new Error(formatApiError("Runs", runsResp));
-      }
+      const runsResp = await fetchRuns(date);
       const runsData = runsResp.data || {};
-      setRuns(Array.isArray(runsData.runs) ? runsData.runs : runsData || []);
+      setRuns(normalizeRuns(runsData));
 
       setLoading(true);
-      const flightsResp = await fetchApiStatus(
-        `/api/flights?date=${encodeURIComponent(date)}`
-      );
-      if (!flightsResp.ok) {
-        throw new Error(formatApiError("Flights", flightsResp));
-      }
+      const flightsResp = await fetchFlights(date, "all");
       const flightsData = flightsResp.data || {};
-      setFlights(
-        Array.isArray(flightsData.flights)
-          ? flightsData.flights
-          : flightsData || []
-      );
+      setFlights(normalizeFlights(flightsData));
     } catch (err) {
       console.error(err);
       setError(err.message || "Error during auto-assign.");
@@ -1063,6 +1060,11 @@ const PlannerPage = () => {
           {error}
         </div>
       )}
+      {!loading && !loadingRuns && !error && runsError && (
+        <div className="planner-status planner-status--warn">
+          {runsError || "Runs could not be loaded."}
+        </div>
+      )}
 
       {/* CWO-12: page-specific missing-data indicators */}
       {!loading &&
@@ -1078,6 +1080,7 @@ const PlannerPage = () => {
       {!loading &&
         !loadingRuns &&
         !error &&
+        !runsError &&
         runs.length === 0 && (
           <div className="planner-status planner-status--warn">
             No runs returned for this date from the backend.
@@ -1085,38 +1088,40 @@ const PlannerPage = () => {
           </div>
         )}
 
-      <main className="planner-main">
-        <FlightListColumn
-          flights={flights}
-          unassignedFlights={unassignedFlights}
-          flightToRunMap={flightToRunMap}
-          selectedFlightKey={selectedFlightKey}
-          onSelectFlight={handleSelectFlight}
-          onUnassignedDragStart={handleUnassignedDragStart}
-          onUnassignedDrop={handleDropOnUnassigned}
-          isDraggingRunFlight={isDraggingRunFlight}
-          isUnassignedHover={hoverUnassigned}
-          onUnassignedDragEnter={() => setHoverUnassigned(true)}
-          onUnassignedDragLeave={() => setHoverUnassigned(false)}
-        />
-        <RunsGridColumn
-          runs={runs}
-          selectedRunId={selectedRunId}
-          onSelectRun={handleSelectRun}
-          onRunsReorder={handleRunsReorder}
-          onRunDropFromOutside={handleDropOnRunCard}
-          onRunFlightDragStart={handleRunFlightDragStart}
-          isDraggingUnassignedFlight={isDraggingUnassignedFlight}
-          hoverRunId={hoverRunId}
-          onRunCardDragEnter={setHoverRunId}
-          onRunCardDragLeave={() => setHoverRunId(null)}
-        />
-        <RunSheetColumn
-          runs={runs}
-          selectedRunId={selectedRunId}
-          onUpdateFlightRun={updateFlightRun}
-        />
-      </main>
+      {!error && (
+        <main className="planner-main">
+          <FlightListColumn
+            flights={flights}
+            unassignedFlights={unassignedFlights}
+            flightToRunMap={flightToRunMap}
+            selectedFlightKey={selectedFlightKey}
+            onSelectFlight={handleSelectFlight}
+            onUnassignedDragStart={handleUnassignedDragStart}
+            onUnassignedDrop={handleDropOnUnassigned}
+            isDraggingRunFlight={isDraggingRunFlight}
+            isUnassignedHover={hoverUnassigned}
+            onUnassignedDragEnter={() => setHoverUnassigned(true)}
+            onUnassignedDragLeave={() => setHoverUnassigned(false)}
+          />
+          <RunsGridColumn
+            runs={runs}
+            selectedRunId={selectedRunId}
+            onSelectRun={handleSelectRun}
+            onRunsReorder={handleRunsReorder}
+            onRunDropFromOutside={handleDropOnRunCard}
+            onRunFlightDragStart={handleRunFlightDragStart}
+            isDraggingUnassignedFlight={isDraggingUnassignedFlight}
+            hoverRunId={hoverRunId}
+            onRunCardDragEnter={setHoverRunId}
+            onRunCardDragLeave={() => setHoverRunId(null)}
+          />
+          <RunSheetColumn
+            runs={runs}
+            selectedRunId={selectedRunId}
+            onUpdateFlightRun={updateFlightRun}
+          />
+        </main>
+      )}
 
       <footer className="planner-footer">
         <div className="planner-summary">
