@@ -143,22 +143,28 @@ def resolve_airline(raw_airline: str | None) -> str:
 def build_source_urls(airline: str, target_date: date) -> list[str]:
     """Construct upstream URLs for the selected airline and date.
 
-    The default implementation uses a template that can be overridden via
-    the ``FLIGHT_SOURCE_URL_TEMPLATE`` environment variable, e.g.::
+    By default this uses the Sydney Airport domestic departures
+    direct-view endpoint for *today*. Airline/date filtering is done
+    in Python, not via query params.
 
-        https://example.com/direct-view?airline={airline}&date={date}&movement=departures
-
-    Returning a list keeps the function extensible in case we need to
-    combine arrivals and departures later.
+    You can override the URL via the FLIGHT_SOURCE_URL_TEMPLATE
+    environment variable. If you do, you may include the placeholders
+    {airline} and {date} (YYYY-MM-DD) if your upstream supports them.
     """
 
     template = os.getenv(
         "FLIGHT_SOURCE_URL_TEMPLATE",
-        "https://www.infosyd.com/direct-view?airline={airline}&date={date}",
+        (
+            "https://www.sydneyairport.com.au/infosyd/direct-view/"
+            "44268d53-5830-49f7-bc2a-f64fe9c8cff8/today"
+        ),
     )
 
+    # This will happily work even if the default template doesn't
+    # use {airline} or {date} – extra kwargs are ignored.
     url = template.format(airline=airline, date=target_date.isoformat())
     return [url]
+
 
 
 def fetch_flights(urls: Iterable[str], airline: str) -> list[dict]:
