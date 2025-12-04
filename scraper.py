@@ -19,7 +19,9 @@ def _normalize_header(value: str) -> str:
     return value.strip().lower().replace(" ", "")
 
 
-def _should_include_flight(flight_number: str, airline_prefixes: Optional[Iterable[str]]) -> bool:
+def _should_include_flight(
+    flight_number: str, airline_prefixes: Optional[Iterable[str]]
+) -> bool:
     """Decide whether a flight should be included based on airline prefixes."""
 
     if not airline_prefixes:
