@@ -1,0 +1,53 @@
+{
+  "job_id": "import_jq_flights_3_days",
+  "description": "Fetch Jetstar (JQ) domestic flights for today, tomorrow and the day after from the Brain backend and store them in Brain storage.",
+  "schedule": {
+    "type": "cron",
+    "expression": "5 0 * * *",
+    "timezone": "Australia/Sydney",
+    "notes": "Run daily at 00:05 local time so all three days are available for the planner."
+  },
+  "steps": [
+    {
+      "id": "fetch_today",
+      "type": "http_get",
+      "url": "https://brain-lbaj.onrender.com/api/flight-info?airline=JQ&dayOffset=0",
+      "store_as": "jq_flights_today_raw"
+    },
+    {
+      "id": "store_today",
+      "type": "storage_write",
+      "key": "flights:JQ:${today}",
+      "value_from": "jq_flights_today_raw"
+    },
+    {
+      "id": "fetch_tomorrow",
+      "type": "http_get",
+      "url": "https://brain-lbaj.onrender.com/api/flight-info?airline=JQ&dayOffset=1",
+      "store_as": "jq_flights_tomorrow_raw"
+    },
+    {
+      "id": "store_tomorrow",
+      "type": "storage_write",
+      "key": "flights:JQ:${tomorrow}",
+      "value_from": "jq_flights_tomorrow_raw"
+    },
+    {
+      "id": "fetch_day_after",
+      "type": "http_get",
+      "url": "https://brain-lbaj.onrender.com/api/flight-info?airline=JQ&dayOffset=2",
+      "store_as": "jq_flights_day_after_raw"
+    },
+    {
+      "id": "store_day_after",
+      "type": "storage_write",
+      "key": "flights:JQ:${day_after_tomorrow}",
+      "value_from": "jq_flights_day_after_raw"
+    }
+  ],
+  "outputs": {
+    "today_key": "flights:JQ:${today}",
+    "tomorrow_key": "flights:JQ:${tomorrow}",
+    "day_after_key": "flights:JQ:${day_after_tomorrow}"
+  }
+}
