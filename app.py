@@ -1492,6 +1492,180 @@ def api_know():
 def healthz():
     return 'ok', 200
 
+
+# --- Planner & Machine Room endpoints (added by Codex) ---
+
+
+def _ops_parse_date(value: str):
+    """Parse YYYY-MM-DD into a date object, or None on failure."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _ops_parse_time(value: str):
+    """Parse HH:MM into a time object, or None on failure."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%H:%M").time()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _ops_get_date_from_query(default_to_today: bool = True) -> date | None:
+    """Parse ?date=YYYY-MM-DD from the query string.
+
+    Falls back to today's date if missing/invalid and default_to_today is True.
+    """
+    dstr = request.args.get("date")
+    d = _ops_parse_date(dstr)
+    if d is None and default_to_today:
+        return date.today()
+    return d
+
+
+@app.get("/api/flights")
+def api_flights_for_date():
+    """Return flights for a given date from the Office DB.
+
+    Shape is compatible with the Planner:
+      { "date": "YYYY-MM-DD", "flights": [ ... ] }
+    """
+    day = _ops_get_date_from_query()
+
+    flights = (
+        Flight.query.filter(Flight.date == day)
+        .order_by(Flight.etd_local.asc().nullslast(), Flight.eta_local.asc().nullslast())
+        .all()
+    )
+
+    payload: list[dict] = []
+    for f in flights:
+        time_val = f.etd_local or f.eta_local
+        time_local = time_val.strftime("%H:%M") if time_val else ""
+        airline = "".join(ch for ch in (f.flight_number or "") if ch.isalpha())[:3] or "UNK"
+
+        payload.append(
+            {
+                "id": f.id,
+                "flight_number": f.flight_number,
+                "destination": f.destination,
+                "origin": f.origin,
+                "time_local": time_local,
+                "operator_code": airline,
+                "aircraft_type": None,
+                "notes": f.notes or "",
+            }
+        )
+
+    return jsonify({"date": day.isoformat(), "flights": payload})
+
+
+@app.post("/api/flights/import")
+def api_flights_import():
+    """Import a JSON payload of flights into the Flight table.
+
+    Expected body:
+    {
+      "date": "YYYY-MM-DD",
+      "flights": [
+        { "flight_number": "JQ123", "destination": "MEL", "origin": "SYD", "time_local": "08:15", ... }
+      ]
+    }
+    """
+    data = request.get_json(silent=True) or {}
+    day = _ops_parse_date(data.get("date")) or date.today()
+    flights_in = data.get("flights") or []
+
+    created = 0
+    for row in flights_in:
+        flight_number = (row.get("flight_number") or "").strip()
+        if not flight_number:
+            continue
+
+        time_str = (row.get("time_local") or "").strip()
+        time_val = _ops_parse_time(time_str)
+
+        f = Flight(
+            flight_number=flight_number,
+            date=day,
+            origin=row.get("origin") or None,
+            destination=row.get("destination") or None,
+            eta_local=None,
+            etd_local=time_val,
+            tail_number=row.get("tail_number") or None,
+            truck_assignment=None,
+            status=row.get("status") or "scheduled",
+            notes=row.get("notes") or None,
+        )
+        db.session.add(f)
+        created += 1
+
+    db.session.commit()
+    return jsonify({"ok": True, "imported": created, "date": day.isoformat()}), 201
+
+
+@app.get("/api/runs")
+def api_runs_for_date():
+    """Minimal runs endpoint used by Planner & Machine Room.
+
+    For now we return an empty list so the frontend does not see 404s.
+    Replace later with real runs logic.
+    """
+    day = _ops_get_date_from_query()
+    return jsonify({"ok": True, "date": day.isoformat(), "runs": []})
+
+
+@app.get("/api/status")
+def api_status():
+    """Backend + DB health snapshot for Machine Room.
+
+    Summarises flights by AM/PM and airline. Runs are stubbed for now.
+    """
+    day = _ops_get_date_from_query()
+
+    db_ok = True
+    flights_summary = {"total": 0, "am_total": 0, "pm_total": 0, "by_airline": {}}
+    runs_summary = {"total": 0, "with_flights": 0, "unassigned_flights": 0}
+
+    try:
+        flights = Flight.query.filter(Flight.date == day).all()
+        flights_summary["total"] = len(flights)
+
+        for f in flights:
+            time_val = f.etd_local or f.eta_local
+            mins = None
+            if time_val:
+                mins = time_val.hour * 60 + time_val.minute
+
+            airline = "".join(ch for ch in (f.flight_number or "") if ch.isalpha())[:3] or "UNK"
+            flights_summary["by_airline"].setdefault(airline, 0)
+            flights_summary["by_airline"][airline] += 1
+
+            if mins is None:
+                continue
+            if 5 * 60 <= mins <= 12 * 60:
+                flights_summary["am_total"] += 1
+            elif 12 * 60 + 1 <= mins <= 23 * 60:
+                flights_summary["pm_total"] += 1
+    except Exception as exc:  # noqa: BLE001
+        db_ok = False
+        print(f"[status] DB query failed: {exc}")
+
+    payload = {
+        "ok": db_ok,
+        "database_ok": db_ok,
+        "date": day.isoformat(),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "flights": flights_summary,
+        "runs": runs_summary,
+    }
+    return jsonify(payload)
+
 if __name__ == "__main__":
     app.run(debug=True)
 
