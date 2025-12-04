@@ -489,23 +489,83 @@ def flight_info():
 
 
 @app.post("/api/import/jq_live")
-def proxy_import_jq_live():
-    """Proxy JQ live import to CodeCrafter2."""
+def import_jq_live_local():
+    """
+    Import live JQ flights directly into the local database.
 
+    This replaces the old proxy to CODECRAFTER_BASE. The React frontend
+    still POSTs /api/import/jq_live with no body; we default to 'today'.
+    Later we can extend this to accept { "date": "YYYY-MM-DD" }.
+    """
+    # 1) Work out which date to import
+    body = request.get_json(silent=True) or {}
+    date_str = body.get("date") or request.args.get("date")
+    if date_str:
+        try:
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            target_date = date.today()
+    else:
+        target_date = date.today()
+
+    airline = DEFAULT_AIRLINE  # "JQ"
+
+    # 2) Build source URLs and fetch flights
+    source_urls = build_source_urls(airline, target_date)
     try:
-        resp = requests.post(f"{CODECRAFTER_BASE.rstrip('/')}/api/import/jq_live", timeout=60)
-    except requests.RequestException as exc:  # noqa: PERF203
-        return (
-            jsonify({"ok": False, "error": f"Failed to reach scheduling backend: {exc}"}),
-            502,
+        flights = fetch_flights(source_urls, airline)
+    except FlightFetchError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+
+    # 3) Optional: clear existing JQ flights for that date to avoid duplicates
+    existing_q = Flight.query.filter(
+        Flight.date == target_date,
+        Flight.flight_number.ilike(f"{airline}%"),
+    )
+    existing_count = existing_q.count()
+    existing_q.delete(synchronize_session=False)
+
+    # 4) Insert new flights into the DB
+    imported = 0
+    for f in flights:
+        flight_number = (f.get("flight_number") or "").strip()
+        if not flight_number:
+            continue
+
+        dest = (f.get("destination") or "").strip() or None
+        tail = (f.get("rego") or "").strip() or None
+        status = (f.get("status") or "").strip() or None
+
+        row = Flight(
+            flight_number=flight_number,
+            date=target_date,
+            origin="SYD",              # departures from SYD
+            destination=dest,
+            eta_local=None,            # we don't have times yet
+            etd_local=None,
+            tail_number=tail,
+            truck_assignment=None,
+            status=status,
+            notes=None,
         )
+        db.session.add(row)
+        imported += 1
 
-    try:
-        payload = resp.json()
-    except ValueError:
-        return jsonify({"ok": False, "error": "Invalid response from scheduling backend"}), 502
+    db.session.commit()
 
-    return jsonify(payload), resp.status_code
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "airline": airline,
+                "date": target_date.isoformat(),
+                "imported": imported,
+                "replaced_existing": existing_count,
+            }
+        ),
+        200,
+    )
+
 
 # ----- Pages -----
 @app.route("/")
