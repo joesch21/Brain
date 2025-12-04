@@ -1,6 +1,7 @@
 // Machine Room page with inline system status + seed/test tools
 import React, { useEffect, useState } from "react";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
+import "../styles/machineRoom.css";
 
 function todayISO() {
   const d = new Date();
@@ -327,10 +328,99 @@ const SystemStatusCard = () => {
 };
 
 const MachineRoomPage = () => {
+  const [importLoading, setImportLoading] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
+
+  const handleImportJQ = async () => {
+    setImportLoading(true);
+    setImportStatus(null);
+
+    try {
+      const resp = await fetch("/api/import/jq_live", { method: "POST" });
+      const body = await resp.json();
+      const ok = resp.ok && body?.ok !== false;
+
+      if (ok) {
+        setImportStatus({
+          ok: true,
+          message: "Imported JQ flights for upcoming days.",
+          summary: body.summary || null,
+        });
+      } else {
+        setImportStatus({
+          ok: false,
+          message:
+            body?.error ||
+            "Import failed. Check the scheduling backend for details.",
+          summary: body?.summary || null,
+        });
+      }
+    } catch (err) {
+      setImportStatus({
+        ok: false,
+        message: err?.message || "Network error triggering import.",
+        summary: null,
+      });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const renderImportSummary = () => {
+    if (!importStatus?.summary?.days || !Array.isArray(importStatus.summary.days)) {
+      return null;
+    }
+
+    return (
+      <div className="jq-import-summary">
+        {importStatus.summary.days.map((day) => (
+          <div key={day.date} className="jq-import-summary__day">
+            <strong>{day.date}</strong>: {" "}
+            {day.ok
+              ? `OK — found ${day.found}, upserted ${day.upserted}`
+              : `ERROR — ${day.error || "Unknown error"}`}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="machine-room-page">
       <h2>Machine Room</h2>
       <p>Quick system snapshot for supervisors and admins.</p>
+
+      <div className="machine-room-card machine-room-import-card">
+        <div className="machine-room-import-card__header">
+          <div>
+            <h3>JQ live import</h3>
+            <p className="machine-room-intro muted">
+              Trigger CodeCrafter2 to scrape Jetstar flights for today and the
+              next two days.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="machine-room-import-button"
+            onClick={handleImportJQ}
+            disabled={importLoading}
+          >
+            {importLoading ? "Importing…" : "Import JQ flights (3 days)"}
+          </button>
+        </div>
+
+        {importStatus && (
+          <div
+            className={
+              "jq-import-status " +
+              (importStatus.ok ? "jq-import-status--ok" : "jq-import-status--error")
+            }
+          >
+            <div>{importStatus.message}</div>
+            {renderImportSummary()}
+          </div>
+        )}
+      </div>
 
       {/* NEW: live system status, flight/run counts, API tests, and seeding */}
       <SystemStatusCard />

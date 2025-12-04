@@ -24,6 +24,7 @@ app = Flask(__name__)
 SUPPORTED_AIRLINES = {"JQ"}
 DEFAULT_AIRLINE = "JQ"
 ALLOWED_DAY_OFFSETS = {0, 1, 2}
+CODECRAFTER_BASE = os.environ.get("CODECRAFTER_BASE", "https://codecrafter2.onrender.com")
 
 
 class FlightFetchError(RuntimeError):
@@ -114,6 +115,26 @@ def flight_info():
         "generated_at": datetime.utcnow().isoformat() + "Z",
     }
     return jsonify(response)
+
+
+@app.post("/api/import/jq_live")
+def proxy_import_jq_live():
+    """Proxy JQ live import to CodeCrafter2."""
+
+    try:
+        resp = requests.post(f"{CODECRAFTER_BASE.rstrip('/')}/api/import/jq_live", timeout=60)
+    except requests.RequestException as exc:  # noqa: PERF203
+        return (
+            jsonify({"ok": False, "error": f"Failed to reach scheduling backend: {exc}"}),
+            502,
+        )
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid response from scheduling backend"}), 502
+
+    return jsonify(payload), resp.status_code
 
 
 @app.get("/")
