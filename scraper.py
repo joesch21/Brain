@@ -32,8 +32,9 @@ def _should_include_flight(
     if not airline_prefixes:
         return True
 
-    prefixes = [prefix.upper() for prefix in airline_prefixes]
-    return flight_number.upper().startswith(tuple(prefixes))
+    prefixes = [prefix.upper().strip() for prefix in airline_prefixes]
+    normalized_flight = flight_number.strip().upper()
+    return normalized_flight.startswith(tuple(prefixes))
 
 
 def _extract_cell_texts(row) -> List[str]:
