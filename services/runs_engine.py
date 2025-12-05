@@ -1,80 +1,173 @@
-"""Lightweight runs engine grouping flights by registration and etd_local."""
+"""Run generation engine.
+
+Groups flights by registration and builds runs for a given date and airline.
+"""
 
 from __future__ import annotations
 
-from collections import defaultdict
-from datetime import date
-from typing import Dict
+from datetime import date, datetime
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_, select
+from sqlalchemy.orm import Session
 
 
-def generate_runs_for_date_airline(target_date: date, airline: str) -> Dict[str, int | str]:
-    """Generate runs for a given service date and airline.
+def _normalize_date(target_date: date | str | datetime) -> date:
+    if isinstance(target_date, date) and not isinstance(target_date, datetime):
+        return target_date
+    if isinstance(target_date, datetime):
+        return target_date.date()
+    if isinstance(target_date, str):
+        return date.fromisoformat(target_date)
+    raise ValueError("Unsupported date type; expected date, datetime, or YYYY-MM-DD string")
+
+
+def generate_runs_for_date_airline(target_date, airline: str) -> dict:
+    """Generate runs for the given date and airline.
 
     Flights are grouped by registration and ordered by ``etd_local``. Existing
-    runs for the same date + airline are removed so the operation is idempotent.
+    runs for the same date and airline are removed before new ones are created
+    to keep the operation idempotent.
     """
 
-    if target_date is None:
-        raise ValueError("target_date is required")
-    if not airline:
-        raise ValueError("airline is required")
+    from app import Flight, Run, RunFlight, SYD_TZ, db
 
-    # Local import to avoid circular references during Flask startup
-    from app import Flight, Run, RunFlight, db
+    normalized_date = _normalize_date(target_date)
+    airline_code = (airline or "").strip().upper()
+    if not airline_code:
+        raise ValueError("Airline is required")
 
-    flights_query = Flight.query.filter(
-        Flight.date == target_date,
-        Flight.registration.isnot(None),
-        Flight.etd_local.isnot(None),
-        or_(
-            Flight.airline == airline,
-            Flight.flight_number.ilike(f"{airline}%"),
-        ),
+    session: Session = db.session
+    db.create_all()
+    session.execute(select(1))  # Ensure a session is available
+
+    # Clean slate for the requested scope
+    existing_run_ids = [r.id for r in Run.query.filter_by(date=normalized_date, airline=airline_code).all()]
+    if existing_run_ids:
+        session.query(RunFlight).filter(RunFlight.run_id.in_(existing_run_ids)).delete(
+            synchronize_session=False
+        )
+    Run.query.filter_by(date=normalized_date, airline=airline_code).delete(synchronize_session=False)
+
+    query = (
+        Flight.query.filter(Flight.date == normalized_date)
+        .filter(
+            or_(
+                Flight.airline == airline_code,
+                and_(Flight.airline.is_(None), Flight.flight_number.ilike(f"{airline_code}%")),
+            )
+        )
+        .filter(Flight.registration.isnot(None))
+        .filter(Flight.etd_local.isnot(None))
     )
-    flights = flights_query.all()
 
-    existing_runs = Run.query.filter_by(date=target_date, airline=airline).all()
-    for run in existing_runs:
-        db.session.delete(run)
-    db.session.flush()
-
-    flights_by_rego: dict[str, list[Flight]] = defaultdict(list)
-    for flight in flights:
-        flights_by_rego[flight.registration].append(flight)
+    flights_by_rego: dict[str, list] = {}
+    for flight in query.all():
+        rego = flight.registration
+        if not rego:
+            continue
+        flights_by_rego.setdefault(rego, []).append(flight)
 
     runs_created = 0
     flights_assigned = 0
 
-    for registration, rego_flights in flights_by_rego.items():
-        sorted_flights = sorted(rego_flights, key=lambda f: f.etd_local)
-        start_time = sorted_flights[0].etd_local if sorted_flights else None
-        end_time = sorted_flights[-1].etd_local if sorted_flights else None
+    for rego, flights in flights_by_rego.items():
+        flights.sort(key=lambda f: f.etd_local)
+        start_time = flights[0].etd_local
+        end_time = flights[-1].etd_local
+
+        # Ensure timezone awareness for consistency
+        if isinstance(start_time, datetime) and start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=SYD_TZ)
+        if isinstance(end_time, datetime) and end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=SYD_TZ)
 
         run = Run(
-            date=target_date,
-            airline=airline,
-            registration=registration,
+            date=normalized_date,
+            airline=airline_code,
+            registration=rego,
             start_time=start_time,
             end_time=end_time,
         )
-        db.session.add(run)
-        db.session.flush()
+        session.add(run)
+        session.flush()
 
-        for idx, flight in enumerate(sorted_flights):
-            db.session.add(
-                RunFlight(run_id=run.id, flight_id=flight.id, position=idx)
+        for position, flight in enumerate(flights):
+            session.add(
+                RunFlight(
+                    run_id=run.id,
+                    flight_id=flight.id,
+                    position=position,
+                )
             )
             flights_assigned += 1
 
         runs_created += 1
 
-    db.session.commit()
+    session.commit()
 
     return {
-        "date": target_date.isoformat(),
-        "airline": airline,
+        "date": normalized_date.isoformat(),
+        "airline": airline_code,
         "runs_created": runs_created,
         "flights_assigned": flights_assigned,
+    }
+
+
+def get_runs_for_date_airline(target_date, airline: str) -> dict:
+    """Return runs with their flights for the given date and airline."""
+
+    from app import Run, RunFlight, SYD_TZ, db
+
+    normalized_date = _normalize_date(target_date)
+    airline_code = (airline or "").strip().upper()
+    if not airline_code:
+        raise ValueError("Airline is required")
+
+    session: Session = db.session
+    db.create_all()
+    session.execute(select(1))
+
+    runs = (
+        Run.query.filter_by(date=normalized_date, airline=airline_code)
+        .options(db.selectinload(Run.run_flights).joinedload(RunFlight.flight))
+        .order_by(Run.registration.asc())
+        .all()
+    )
+
+    payload: list[dict] = []
+    for run in runs:
+        flights_payload: list[dict] = []
+        for rf in sorted(run.run_flights, key=lambda r: r.position):
+            flight = rf.flight
+            etd_local = flight.etd_local if flight else None
+            if isinstance(etd_local, datetime) and etd_local.tzinfo is None:
+                etd_local = etd_local.replace(tzinfo=SYD_TZ)
+
+            flights_payload.append(
+                {
+                    "run_id": run.id,
+                    "flight_id": flight.id if flight else None,
+                    "flight_number": flight.flight_number if flight else None,
+                    "etd_local": etd_local.isoformat() if etd_local else None,
+                    "position": rf.position,
+                }
+            )
+
+        payload.append(
+            {
+                "id": run.id,
+                "date": run.date.isoformat(),
+                "airline": run.airline,
+                "registration": run.registration,
+                "start_time": run.start_time.isoformat() if run.start_time else None,
+                "end_time": run.end_time.isoformat() if run.end_time else None,
+                "flights": flights_payload,
+            }
+        )
+
+    return {
+        "ok": True,
+        "date": normalized_date.isoformat(),
+        "airline": airline_code,
+        "runs": payload,
     }

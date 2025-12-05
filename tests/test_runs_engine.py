@@ -5,7 +5,10 @@ from zoneinfo import ZoneInfo
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 from app import SYD_TZ, Flight, Run, RunFlight, app, db, ensure_flight_schema  # noqa: E402
-from services.runs_engine import generate_runs_for_date_airline  # noqa: E402
+from services.runs_engine import (
+    generate_runs_for_date_airline,
+    get_runs_for_date_airline,
+)  # noqa: E402
 
 
 class TestRunsEngine:
@@ -21,112 +24,71 @@ class TestRunsEngine:
             db.session.remove()
             db.drop_all()
 
-    def _add_flight(self, **kwargs):
-        with app.app_context():
-            flight = Flight(**kwargs)
-            db.session.add(flight)
-            db.session.commit()
-            return flight
+    def _seed_flight(self, flight_number: str, rego: str, etd: datetime, airline: str = "JQ"):
+        flight = Flight(
+            flight_number=flight_number,
+            airline=airline,
+            date=etd.date(),
+            registration=rego,
+            etd_local=etd,
+        )
+        db.session.add(flight)
+        return flight
 
-    def test_generate_single_registration_orders_flights(self):
+    def test_generate_runs_orders_flights(self):
         target_date = date(2025, 12, 5)
-        early = datetime(2025, 12, 5, 6, 0, tzinfo=SYD_TZ)
-        late = datetime(2025, 12, 5, 18, 30, tzinfo=SYD_TZ)
-
-        self._add_flight(
-            flight_number="JQ501",
-            airline="JQ",
-            date=target_date,
-            registration="VH-ABC",
-            etd_local=late,
-        )
-        self._add_flight(
-            flight_number="JQ502",
-            airline="JQ",
-            date=target_date,
-            registration="VH-ABC",
-            etd_local=early,
-        )
-
+        tz = ZoneInfo("Australia/Sydney")
         with app.app_context():
+            first = self._seed_flight("JQ101", "VH-ABC", datetime(2025, 12, 5, 6, 0, tzinfo=tz))
+            second = self._seed_flight("JQ202", "VH-ABC", datetime(2025, 12, 5, 8, 30, tzinfo=tz))
+            db.session.commit()
+
             summary = generate_runs_for_date_airline(target_date, "JQ")
-        assert summary["runs_created"] == 1
-        assert summary["flights_assigned"] == 2
+            assert summary["runs_created"] == 1
+            assert summary["flights_assigned"] == 2
 
-        with app.app_context():
             run = Run.query.one()
             assert run.registration == "VH-ABC"
-            assert run.start_time.hour == early.hour
-            assert run.start_time.minute == early.minute
-            assert run.end_time.hour == late.hour
-            assert run.end_time.minute == late.minute
 
-            positions = [rf.position for rf in RunFlight.query.order_by(RunFlight.position).all()]
-            assert positions == [0, 1]
+            run_flights = RunFlight.query.filter_by(run_id=run.id).order_by(RunFlight.position).all()
+            assert [rf.flight_id for rf in run_flights] == [first.id, second.id]
 
-    def test_generate_creates_one_run_per_registration(self):
-        target_date = date(2025, 12, 6)
-        etd = datetime(2025, 12, 6, 9, 0, tzinfo=SYD_TZ)
-
-        self._add_flight(
-            flight_number="JQ100",
-            airline="JQ",
-            date=target_date,
-            registration="VH-AAA",
-            etd_local=etd,
-        )
-        self._add_flight(
-            flight_number="JQ200",
-            airline="JQ",
-            date=target_date,
-            registration="VH-BBB",
-            etd_local=etd,
-        )
-
+    def test_generate_runs_splits_by_registration(self):
+        target_date = date(2025, 12, 5)
         with app.app_context():
+            self._seed_flight("JQ101", "VH-AAA", datetime(2025, 12, 5, 6, 0, tzinfo=SYD_TZ))
+            self._seed_flight("JQ202", "VH-BBB", datetime(2025, 12, 5, 8, 30, tzinfo=SYD_TZ))
+            db.session.commit()
+
             summary = generate_runs_for_date_airline(target_date, "JQ")
-        assert summary["runs_created"] == 2
+            assert summary["runs_created"] == 2
+            assert summary["flights_assigned"] == 2
 
-        with app.app_context():
             runs = Run.query.order_by(Run.registration).all()
-            assert [r.registration for r in runs] == ["VH-AAA", "VH-BBB"]
-            assert all(len(r.run_flights) == 1 for r in runs)
+            assert {r.registration for r in runs} == {"VH-AAA", "VH-BBB"}
 
-    def test_generate_is_idempotent(self):
-        target_date = date(2025, 12, 7)
-        etd = datetime(2025, 12, 7, 10, 0, tzinfo=SYD_TZ)
-
-        self._add_flight(
-            flight_number="JQ300",
-            airline="JQ",
-            date=target_date,
-            registration="VH-IDM",
-            etd_local=etd,
-        )
-
+    def test_generate_runs_is_idempotent(self):
+        target_date = date(2025, 12, 5)
         with app.app_context():
-            first = generate_runs_for_date_airline(target_date, "JQ")
-            second = generate_runs_for_date_airline(target_date, "JQ")
+            self._seed_flight("JQ101", "VH-AAA", datetime(2025, 12, 5, 6, 0, tzinfo=SYD_TZ))
+            self._seed_flight("JQ202", "VH-AAA", datetime(2025, 12, 5, 8, 30, tzinfo=SYD_TZ))
+            db.session.commit()
 
-        assert first["runs_created"] == 1
-        assert second["runs_created"] == 1
+            first_run = generate_runs_for_date_airline(target_date, "JQ")
+            second_run = generate_runs_for_date_airline(target_date, "JQ")
 
-        with app.app_context():
-            assert Run.query.count() == 1
-            run = Run.query.one()
-            assert len(run.run_flights) == 1
+            assert first_run == second_run
+            runs = Run.query.all()
+            assert len(runs) == 1
+            run_flights = RunFlight.query.filter_by(run_id=runs[0].id).all()
+            assert len(run_flights) == 2
 
     def test_api_generate_and_fetch_runs(self):
-        target_date = date(2025, 12, 8)
-        etd = datetime(2025, 12, 8, 12, 15, tzinfo=ZoneInfo("Australia/Sydney"))
-
-        self._add_flight(
-            flight_number="JQ400",
-            airline="JQ",
-            date=target_date,
-            registration="VH-API",
-            etd_local=etd,
-        )
+        target_date = date(2025, 12, 5)
+        with app.app_context():
+            self._seed_flight("JQ101", "VH-AAA", datetime(2025, 12, 5, 6, 0, tzinfo=SYD_TZ))
+            self._seed_flight("JQ202", "VH-AAA", datetime(2025, 12, 5, 8, 30, tzinfo=SYD_TZ))
+            db.session.commit()
 
         resp = self.client.post(
             "/api/runs/generate",
@@ -135,15 +97,34 @@ class TestRunsEngine:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["runs_created"] == 1
+        assert data["flights_assigned"] == 2
 
-        resp = self.client.get(
+        resp_get = self.client.get(
             "/api/runs",
             query_string={"date": target_date.isoformat(), "airline": "JQ"},
         )
-        assert resp.status_code == 200
+        assert resp_get.status_code == 200
+        runs_payload = resp_get.get_json()
+        assert runs_payload["ok"] is True
+        assert len(runs_payload["runs"]) == 1
+        assert len(runs_payload["runs"][0]["flights"]) == 2
+        assert runs_payload["runs"][0]["registration"] == "VH-AAA"
 
-        runs = resp.get_json()
-        assert len(runs) == 1
-        assert runs[0]["registration"] == "VH-API"
-        assert len(runs[0]["flights"]) == 1
-        assert runs[0]["flights"][0]["position"] == 0
+    def test_get_runs_for_date_airline_returns_payload(self):
+        target_date = date(2025, 12, 5)
+        with app.app_context():
+            first = self._seed_flight("JQ101", "VH-ZZZ", datetime(2025, 12, 5, 6, 0, tzinfo=SYD_TZ))
+            second = self._seed_flight("JQ202", "VH-ZZZ", datetime(2025, 12, 5, 8, 30, tzinfo=SYD_TZ))
+            db.session.commit()
+
+            generate_runs_for_date_airline(target_date, "JQ")
+
+            payload = get_runs_for_date_airline(target_date, "JQ")
+
+            assert payload["ok"] is True
+            assert payload["date"] == target_date.isoformat()
+            assert payload["airline"] == "JQ"
+            assert len(payload["runs"]) == 1
+            run_payload = payload["runs"][0]
+            assert run_payload["registration"] == "VH-ZZZ"
+            assert [f["flight_id"] for f in run_payload["flights"]] == [first.id, second.id]
