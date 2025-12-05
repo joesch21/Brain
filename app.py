@@ -59,6 +59,9 @@ DEFAULT_AIRLINE = "JQ"
 ALLOWED_DAY_OFFSETS = {0, 1, 2}
 CODECRAFTER_BASE = os.environ.get("CODECRAFTER_BASE", "https://codecrafter2.onrender.com")
 
+# Preserve a predictable airline order for observability endpoints
+SUPPORTED_AIRLINES_ORDERED = ["JQ", "QF", "VA", "ZL"]
+
 SUPPORTED_ROLES = ("admin", "supervisor", "refueler", "viewer")
 ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
 
@@ -662,6 +665,39 @@ def run_three_day_import(airline_prefix: str) -> dict:
     }
 
 
+def _get_import_timestamp_column():
+    """Return the most specific timestamp column available for imports."""
+
+    for attr in ("imported_at", "updated_at", "created_at", "etd_local"):
+        column = getattr(Flight, attr, None)
+        if column is not None:
+            return column, attr
+    return None, None
+
+
+def _serialize_timestamp(value):
+    """Return an ISO 8601 string for datetimes/dates, otherwise None."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=SYD_TZ)
+        return value.isoformat()
+
+    if isinstance(value, date):
+        return datetime.combine(value, time(), tzinfo=SYD_TZ).isoformat()
+
+    return None
+
+
 @app.post("/api/import/live")
 def import_live():
     """Import live flights for a requested airline prefix."""
@@ -692,6 +728,45 @@ def import_jq_live_local():
         return jsonify({"ok": False, "error": str(exc), "airline": DEFAULT_AIRLINE}), 503
 
     return jsonify({"ok": True, "summary": summary}), 200
+
+
+@app.get("/api/ops/import_status")
+def import_status():
+    """Return supported airlines and last import timestamps."""
+
+    import_route_present = "import_live" in app.view_functions
+    timestamp_column, timestamp_source = _get_import_timestamp_column()
+
+    last_import: dict[str, str | None] = {}
+
+    for airline in SUPPORTED_AIRLINES_ORDERED:
+        if timestamp_column is None:
+            last_import[airline] = None
+            continue
+
+        try:
+            value = (
+                db.session.query(db.func.max(timestamp_column))
+                .filter(Flight.flight_number.ilike(f"{airline}%"))
+                .scalar()
+            )
+        except Exception:  # noqa: BLE001
+            db.session.rollback()
+            value = None
+
+        last_import[airline] = _serialize_timestamp(value)
+
+    response = {
+        "ok": True,
+        "endpoints": {"import_live": import_route_present},
+        "supported_airlines": SUPPORTED_AIRLINES_ORDERED,
+        "last_import": last_import,
+    }
+
+    if timestamp_source:
+        response["timestamp_source"] = timestamp_source
+
+    return jsonify(response), 200
 
 
 # ----- Pages -----
