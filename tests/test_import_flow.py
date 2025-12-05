@@ -100,3 +100,40 @@ class TestImportFlow:
 
         assert resp.status_code == 200
         assert mock_import.called
+
+    def test_import_status_reports_supported_airlines(self):
+        resp = self.client.get("/api/ops/import_status")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["ok"] is True
+        assert data["endpoints"]["import_live"] is True
+        assert data["supported_airlines"] == ["JQ", "QF", "VA", "ZL"]
+        assert set(data["last_import"].keys()) == {"JQ", "QF", "VA", "ZL"}
+        assert data["timestamp_source"] == "etd_local"
+
+    def test_import_status_returns_last_import_timestamp(self):
+        tz = ZoneInfo("Australia/Sydney")
+        with app.app_context():
+            db.session.add(
+                Flight(
+                    flight_number="JQ123",
+                    date=date(2025, 12, 5),
+                    etd_local=datetime(2025, 12, 5, 2, 0, tzinfo=tz),
+                )
+            )
+            db.session.add(
+                Flight(
+                    flight_number="QF321",
+                    date=date(2025, 12, 6),
+                    etd_local=datetime(2025, 12, 6, 6, 30, tzinfo=tz),
+                )
+            )
+            db.session.commit()
+
+        resp = self.client.get("/api/ops/import_status")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["last_import"]["JQ"].startswith("2025-12-05T02:00:00+")
+        assert data["last_import"]["QF"].startswith("2025-12-06T06:30:00+")
