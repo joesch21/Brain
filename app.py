@@ -38,6 +38,7 @@ from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
 from services.importer import ImportService
+from services.runs_engine import generate_runs_for_date_airline, get_runs_for_date_airline
 from flight_matcher import filter_flights_by_prefix, match_flights_by_rego
 from scraper import get_flight_details
 app = Flask(__name__)
@@ -2039,8 +2040,6 @@ def api_flights_import():
 def api_generate_runs():
     """Generate runs for the requested date and airline."""
 
-    from services.runs_engine import generate_runs_for_date_airline
-
     day = _ops_get_date_from_query(default_to_today=False)
     if day is None:
         return jsonify({"error": "date is required"}), 400
@@ -2069,45 +2068,9 @@ def api_runs_for_date():
     if not airline:
         return jsonify({"error": "airline is required"}), 400
 
-    runs = (
-        Run.query.filter_by(date=day, airline=airline)
-        .options(db.selectinload(Run.run_flights).joinedload(RunFlight.flight))
-        .order_by(Run.registration.asc())
-        .all()
-    )
+    runs_payload = get_runs_for_date_airline(day, airline)
 
-    payload: list[dict] = []
-    for run in runs:
-        flights_payload: list[dict] = []
-        for rf in run.run_flights:
-            flight = rf.flight
-            etd_local = flight.etd_local if flight else None
-            if isinstance(etd_local, datetime) and etd_local.tzinfo is None:
-                etd_local = etd_local.replace(tzinfo=SYD_TZ)
-
-            flights_payload.append(
-                {
-                    "run_id": run.id,
-                    "flight_id": flight.id if flight else None,
-                    "flight_number": flight.flight_number if flight else None,
-                    "etd_local": etd_local.isoformat() if etd_local else None,
-                    "position": rf.position,
-                }
-            )
-
-        payload.append(
-            {
-                "id": run.id,
-                "date": run.date.isoformat(),
-                "airline": run.airline,
-                "registration": run.registration,
-                "start_time": run.start_time.isoformat() if run.start_time else None,
-                "end_time": run.end_time.isoformat() if run.end_time else None,
-                "flights": flights_payload,
-            }
-        )
-
-    return jsonify({"ok": True, "date": day.isoformat(), "airline": airline, "runs": payload})
+    return jsonify(runs_payload)
 
 
 @app.get("/api/status")

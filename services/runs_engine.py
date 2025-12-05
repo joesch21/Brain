@@ -111,3 +111,63 @@ def generate_runs_for_date_airline(target_date, airline: str) -> dict:
         "runs_created": runs_created,
         "flights_assigned": flights_assigned,
     }
+
+
+def get_runs_for_date_airline(target_date, airline: str) -> dict:
+    """Return runs with their flights for the given date and airline."""
+
+    from app import Run, RunFlight, SYD_TZ, db
+
+    normalized_date = _normalize_date(target_date)
+    airline_code = (airline or "").strip().upper()
+    if not airline_code:
+        raise ValueError("Airline is required")
+
+    session: Session = db.session
+    db.create_all()
+    session.execute(select(1))
+
+    runs = (
+        Run.query.filter_by(date=normalized_date, airline=airline_code)
+        .options(db.selectinload(Run.run_flights).joinedload(RunFlight.flight))
+        .order_by(Run.registration.asc())
+        .all()
+    )
+
+    payload: list[dict] = []
+    for run in runs:
+        flights_payload: list[dict] = []
+        for rf in sorted(run.run_flights, key=lambda r: r.position):
+            flight = rf.flight
+            etd_local = flight.etd_local if flight else None
+            if isinstance(etd_local, datetime) and etd_local.tzinfo is None:
+                etd_local = etd_local.replace(tzinfo=SYD_TZ)
+
+            flights_payload.append(
+                {
+                    "run_id": run.id,
+                    "flight_id": flight.id if flight else None,
+                    "flight_number": flight.flight_number if flight else None,
+                    "etd_local": etd_local.isoformat() if etd_local else None,
+                    "position": rf.position,
+                }
+            )
+
+        payload.append(
+            {
+                "id": run.id,
+                "date": run.date.isoformat(),
+                "airline": run.airline,
+                "registration": run.registration,
+                "start_time": run.start_time.isoformat() if run.start_time else None,
+                "end_time": run.end_time.isoformat() if run.end_time else None,
+                "flights": flights_payload,
+            }
+        )
+
+    return {
+        "ok": True,
+        "date": normalized_date.isoformat(),
+        "airline": airline_code,
+        "runs": payload,
+    }

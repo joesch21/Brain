@@ -5,7 +5,10 @@ from zoneinfo import ZoneInfo
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 from app import SYD_TZ, Flight, Run, RunFlight, app, db, ensure_flight_schema  # noqa: E402
-from services.runs_engine import generate_runs_for_date_airline  # noqa: E402
+from services.runs_engine import (
+    generate_runs_for_date_airline,
+    get_runs_for_date_airline,
+)  # noqa: E402
 
 
 class TestRunsEngine:
@@ -106,3 +109,22 @@ class TestRunsEngine:
         assert len(runs_payload["runs"]) == 1
         assert len(runs_payload["runs"][0]["flights"]) == 2
         assert runs_payload["runs"][0]["registration"] == "VH-AAA"
+
+    def test_get_runs_for_date_airline_returns_payload(self):
+        target_date = date(2025, 12, 5)
+        with app.app_context():
+            first = self._seed_flight("JQ101", "VH-ZZZ", datetime(2025, 12, 5, 6, 0, tzinfo=SYD_TZ))
+            second = self._seed_flight("JQ202", "VH-ZZZ", datetime(2025, 12, 5, 8, 30, tzinfo=SYD_TZ))
+            db.session.commit()
+
+            generate_runs_for_date_airline(target_date, "JQ")
+
+            payload = get_runs_for_date_airline(target_date, "JQ")
+
+            assert payload["ok"] is True
+            assert payload["date"] == target_date.isoformat()
+            assert payload["airline"] == "JQ"
+            assert len(payload["runs"]) == 1
+            run_payload = payload["runs"][0]
+            assert run_payload["registration"] == "VH-ZZZ"
+            assert [f["flight_id"] for f in run_payload["flights"]] == [first.id, second.id]
