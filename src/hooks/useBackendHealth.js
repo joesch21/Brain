@@ -1,10 +1,11 @@
 // /src/hooks/useBackendHealth.js
 import { useEffect } from "react";
+import { OPS_API_BASE } from "../lib/opsApiBase";
 
 export default function useBackendHealth() {
   useEffect(() => {
     const checkHealth = async () => {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "");
+      const baseUrl = OPS_API_BASE;
 
       try {
         const res = await fetch(`${baseUrl}/api/status`);

@@ -1,13 +1,9 @@
 // Centralized API client for Brain frontend
-// Uses VITE_API_BASE_URL and normalizes errors for schedule/planner flows.
-
-function getBaseUrl() {
-  const raw = import.meta.env.VITE_API_BASE_URL || "";
-  return raw.replace(/\/+$/, "");
-}
+// Uses VITE_API_BASE_URL (or same-origin) and normalizes errors for schedule/planner flows.
+import { OPS_API_BASE } from "./opsApiBase";
 
 function buildUrl(path) {
-  const base = getBaseUrl();
+  const base = OPS_API_BASE;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${base}${normalizedPath}`;
