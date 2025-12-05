@@ -2,6 +2,7 @@ import os
 import json
 import datetime as dt
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from functools import wraps
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -62,6 +63,20 @@ ROLE_CHOICES = ("admin", "supervisor", "refueler", "viewer")
 
 BASE_DIR = Path(__file__).parent
 FRONTEND_BUILD_DIR = BASE_DIR / "frontend_dist"
+
+# --- Sydney-local date helper for ops logic ---
+SYD_TZ = ZoneInfo("Australia/Sydney")
+
+
+def syd_today():
+    """Return today's date in Australia/Sydney local time.
+
+    Used by JQ import and any other 'ops day' logic so that imports
+    line up with what the Machine Room date picker shows for SYD.
+    """
+    from datetime import datetime as _dt
+
+    return _dt.now(SYD_TZ).date()
 
 
 TRUCKS = [
@@ -496,81 +511,82 @@ def flight_info():
 
 @app.post("/api/import/jq_live")
 def import_jq_live_local():
-    """
-    Import live JQ flights directly into the local database.
+    """Import live JQ flights directly into the local database.
 
-    This replaces the old proxy to CODECRAFTER_BASE. The React frontend
-    still POSTs /api/import/jq_live with no body; we default to 'today'.
-    Later we can extend this to accept { "date": "YYYY-MM-DD" }.
+    Behaviour:
+      * Use Sydney-local 'today' as the base date.
+      * Import today + the next two days (3 days total).
+      * For each day, scrape JQ flights via build_source_urls + fetch_flights.
+      * Delete any existing JQ flights for that date in the Flight table.
+      * Insert new Flight rows with origin='SYD' and destination/time/tail/status
+        based on the scraped data.
+
+    The React Machine Room button still POSTs /api/import/jq_live with no body.
     """
-    # 1) Work out which date to import
-    body = request.get_json(silent=True) or {}
-    date_str = body.get("date") or request.args.get("date")
-    if date_str:
-        try:
-            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            target_date = date.today()
-    else:
-        target_date = date.today()
+    from datetime import timedelta
 
     airline = DEFAULT_AIRLINE  # "JQ"
+    base_date = syd_today()
 
-    # 2) Build source URLs and fetch flights
-    source_urls = build_source_urls(airline, target_date)
-    try:
-        flights = fetch_flights(source_urls, airline)
-    except FlightFetchError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 503
+    total_imported = 0
+    per_day = []
 
-    # 3) Optional: clear existing JQ flights for that date to avoid duplicates
-    existing_q = Flight.query.filter(
-        Flight.date == target_date,
-        Flight.flight_number.ilike(f"{airline}%"),
-    )
-    existing_count = existing_q.count()
-    existing_q.delete(synchronize_session=False)
+    for offset in range(3):  # 0=today, 1=tomorrow, 2=day after (all SYD local)
+        target_date = base_date + timedelta(days=offset)
 
-    # 4) Insert new flights into the DB
-    imported = 0
-    for f in flights:
-        flight_number = (f.get("flight_number") or "").strip()
-        if not flight_number:
-            continue
+        # Build upstream URLs and fetch flights filtered to this airline
+        source_urls = build_source_urls(airline, target_date)
+        try:
+            flights = fetch_flights(source_urls, airline)
+        except FlightFetchError as exc:  # noqa: F821 if FlightFetchError is already imported
+            return jsonify({"ok": False, "error": str(exc)}), 503
 
-        dest = (f.get("destination") or "").strip() or None
-        tail = (f.get("rego") or "").strip() or None
-        status = (f.get("status") or "").strip() or None
-
-        row = Flight(
-            flight_number=flight_number,
-            date=target_date,
-            origin="SYD",              # departures from SYD
-            destination=dest,
-            eta_local=None,            # we don't have times yet
-            etd_local=None,
-            tail_number=tail,
-            truck_assignment=None,
-            status=status,
-            notes=None,
+        # Clear existing JQ flights for that date to avoid duplicates
+        existing_q = Flight.query.filter(
+            Flight.date == target_date,
+            Flight.flight_number.ilike(f"{airline}%"),
         )
-        db.session.add(row)
-        imported += 1
+        existing_count = existing_q.count()
+        existing_q.delete(synchronize_session=False)
+
+        imported = 0
+        for f in flights:
+            flight_number = (f.get("flight_number") or "").strip()
+            if not flight_number:
+                continue
+
+            dest = (f.get("destination") or "").strip() or None
+            tail = (f.get("rego") or "").strip() or None
+            status = (f.get("status") or "").strip() or None
+
+            row = Flight(
+                flight_number=flight_number,
+                date=target_date,
+                origin="SYD",
+                destination=dest,
+                eta_local=None,
+                etd_local=None,  # upgrade later when we parse times
+                tail_number=tail,
+                truck_assignment=None,
+                status=status or "scheduled",
+                notes=None,
+            )
+            db.session.add(row)
+            imported += 1
+
+        db.session.flush()  # ensure IDs are assigned before next day (optional)
+        per_day.append({"date": target_date.isoformat(), "imported": imported, "replaced_existing": int(existing_count)})
+        total_imported += imported
 
     db.session.commit()
 
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "airline": airline,
-                "date": target_date.isoformat(),
-                "imported": imported,
-                "replaced_existing": existing_count,
-            }
-        ),
-        200,
-    )
+    return jsonify({
+        "ok": True,
+        "airline": airline,
+        "base_date": base_date.isoformat(),
+        "total_imported": total_imported,
+        "days": per_day,
+    }), 200
 
 
 # ----- Pages -----
