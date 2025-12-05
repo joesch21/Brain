@@ -21,11 +21,11 @@ def filter_flights_by_prefix(flights: Iterable[MutableMapping], prefix: str) -> 
         prefix: Airline prefix, e.g. "JQ".
     """
 
-    normalized_prefix = prefix.upper()
+    normalized_prefix = prefix.upper().strip()
     return [
         flight
         for flight in flights
-        if str(flight.get("flight_number", "")).upper().startswith(normalized_prefix)
+        if str(flight.get("flight_number", "")).strip().upper().startswith(normalized_prefix)
     ]
 
 
