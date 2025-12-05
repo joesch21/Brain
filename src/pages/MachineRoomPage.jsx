@@ -1,6 +1,7 @@
 // Machine Room page with inline system status + seed/test tools
 import React, { useEffect, useState } from "react";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
+import ImportStatusCard from "../components/ImportStatusCard";
 import "../styles/machineRoom.css";
 
 function todayISO() {
@@ -423,6 +424,8 @@ const MachineRoomPage = () => {
     <div className="machine-room-page">
       <h2>Machine Room</h2>
       <p>Quick system snapshot for supervisors and admins.</p>
+
+      <ImportStatusCard />
 
       <div className="machine-room-card machine-room-import-card">
         <div className="machine-room-import-card__header">
