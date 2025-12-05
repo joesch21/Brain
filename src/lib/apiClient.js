@@ -1,5 +1,5 @@
 // Centralized API client for Brain frontend
-// Uses VITE_API_BASE_URL (or same-origin) and normalizes errors for schedule/planner flows.
+// Uses VITE_OPS_API_BASE (or same-origin) and normalizes errors for schedule/planner flows.
 import { OPS_API_BASE } from "./opsApiBase";
 
 function buildUrl(path) {
@@ -16,9 +16,10 @@ async function request(path, options = {}) {
     "Content-Type": "application/json",
     ...options.headers,
   };
+  const credentials = options.credentials ?? "include";
 
   try {
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers, credentials });
     const status = response.status;
     const contentType = response.headers?.get("content-type") || "";
     let body;
