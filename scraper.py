@@ -9,8 +9,13 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional
 
+import logging
+
 import requests
 from bs4 import BeautifulSoup
+
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_header(value: str) -> str:
@@ -35,6 +40,42 @@ def _extract_cell_texts(row) -> List[str]:
     """Extract and clean text from a table row's cells."""
 
     return [cell.get_text(strip=True) for cell in row.find_all(["td", "th"])]
+
+
+def _normalize_scheduled_time(raw: str, flight_number: str) -> Optional[str]:
+    """Validate and normalize a scheduled time cell.
+
+    Returns a cleaned ``HH:MM`` string when valid, otherwise ``None``.
+    Logs a warning when the value looks malformed so imports can surface
+    upstream issues.
+    """
+
+    value = raw.strip()
+    if not value or value == "-":
+        return None
+
+    parts = value.split(":")
+    if len(parts) != 2:
+        logger.warning("[scraper] Unexpected scheduled time format for %s: %s", flight_number, raw)
+        return None
+
+    hour_part, minute_part = parts
+    if not (hour_part.isdigit() and minute_part.isdigit()):
+        logger.warning("[scraper] Non-numeric scheduled time for %s: %s", flight_number, raw)
+        return None
+
+    try:
+        hour = int(hour_part)
+        minute = int(minute_part)
+    except ValueError:
+        logger.warning("[scraper] Failed to parse scheduled time for %s: %s", flight_number, raw)
+        return None
+
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        logger.warning("[scraper] Out-of-range scheduled time for %s: %s", flight_number, raw)
+        return None
+
+    return f"{hour:02d}:{minute:02d}"
 
 
 def get_flight_details(url: str, airline_prefixes: Optional[Iterable[str]] = None) -> List[dict]:
@@ -78,6 +119,7 @@ def get_flight_details(url: str, airline_prefixes: Optional[Iterable[str]] = Non
         bay_idx = header_map.get("bay") if header_map else 2
         status_idx = header_map.get("status") if header_map else 3
         destination_idx = header_map.get("destination") if header_map else 4
+        scheduled_idx = header_map.get("scheduled") if header_map else None
 
         try:
             flight_number = cells[flight_number_idx]
@@ -95,12 +137,16 @@ def get_flight_details(url: str, airline_prefixes: Optional[Iterable[str]] = Non
             except IndexError:
                 return ""
 
+        scheduled_raw = safe_get(scheduled_idx)
+        scheduled_time = _normalize_scheduled_time(scheduled_raw, flight_number)
+
         flight_info = {
             "flight_number": flight_number,
             "rego": safe_get(rego_idx),
             "bay": safe_get(bay_idx),
             "status": safe_get(status_idx),
             "destination": safe_get(destination_idx),
+            "scheduled_time_str": scheduled_time,
         }
         flights.append(flight_info)
 

@@ -1,7 +1,7 @@
 import os
 import json
 import datetime as dt
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 from functools import wraps
 from pathlib import Path
@@ -25,6 +25,7 @@ from flask import (
     has_request_context,
 )
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from dotenv import load_dotenv
@@ -96,6 +97,52 @@ TRUCKS = [
 
 
 db = SQLAlchemy(app)
+
+
+def ensure_flight_schema():
+    """Ensure the flights table supports timezone-aware ETD values.
+
+    This lightweight helper adds ``etd_local`` when missing and upgrades the
+    column to ``TIMESTAMPTZ`` on PostgreSQL deployments where the historical
+    type was a plain ``TIME``. SQLite keeps the existing column untouched but
+    will happily accept timezone-aware datetimes for new rows.
+    """
+
+    try:
+        engine = db.engine
+        inspector = inspect(engine)
+
+        if "flights" not in inspector.get_table_names():
+            return []
+
+        added: list[str] = []
+        columns = {col["name"]: col for col in inspector.get_columns("flights")}
+
+        if "etd_local" not in columns:
+            ddl = (
+                "TIMESTAMP WITH TIME ZONE"
+                if engine.dialect.name == "postgresql"
+                else "TIMESTAMP"
+            )
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE flights ADD COLUMN etd_local {ddl}"))
+            added.append("etd_local")
+            columns = {col["name"]: col for col in inspect(engine).get_columns("flights")}
+
+        etd_col = columns.get("etd_local")
+        col_type = etd_col.get("type") if etd_col else None
+        if (
+            engine.dialect.name == "postgresql"
+            and col_type is not None
+            and getattr(col_type, "timezone", None) is False
+        ):
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE flights ALTER COLUMN etd_local TYPE TIMESTAMPTZ"))
+
+        return added
+    except Exception as exc:  # noqa: BLE001
+        print(f"[schema] Failed to ensure flight schema: {exc}")
+        return []
 
 
 _PROJECT_SUMMARY_CACHE = None
@@ -246,7 +293,7 @@ class Flight(db.Model):
     origin = db.Column(db.String(32), nullable=True)
     destination = db.Column(db.String(32), nullable=True)
     eta_local = db.Column(db.Time, nullable=True)
-    etd_local = db.Column(db.Time, nullable=True)
+    etd_local = db.Column(db.DateTime(timezone=True), nullable=True)
     tail_number = db.Column(db.String(32), nullable=True)
     truck_assignment = db.Column(db.String(64), nullable=True)
     status = db.Column(db.String(32), nullable=True)
@@ -528,6 +575,8 @@ def import_jq_live_local():
     airline = DEFAULT_AIRLINE  # "JQ"
     base_date = syd_today()
 
+    ensure_flight_schema()
+
     total_imported = 0
     per_day = []
 
@@ -550,6 +599,7 @@ def import_jq_live_local():
         existing_q.delete(synchronize_session=False)
 
         imported = 0
+        imported_with_time = 0
         for f in flights:
             flight_number = (f.get("flight_number") or "").strip()
             if not flight_number:
@@ -558,6 +608,8 @@ def import_jq_live_local():
             dest = (f.get("destination") or "").strip() or None
             tail = (f.get("rego") or "").strip() or None
             status = (f.get("status") or "").strip() or None
+            scheduled_str = f.get("scheduled_time_str")
+            etd_dt = parse_scheduled_time(target_date, scheduled_str, flight_number)
 
             row = Flight(
                 flight_number=flight_number,
@@ -565,7 +617,7 @@ def import_jq_live_local():
                 origin="SYD",
                 destination=dest,
                 eta_local=None,
-                etd_local=None,  # upgrade later when we parse times
+                etd_local=etd_dt,
                 tail_number=tail,
                 truck_assignment=None,
                 status=status or "scheduled",
@@ -573,10 +625,25 @@ def import_jq_live_local():
             )
             db.session.add(row)
             imported += 1
+            if etd_dt:
+                imported_with_time += 1
 
         db.session.flush()  # ensure IDs are assigned before next day (optional)
-        per_day.append({"date": target_date.isoformat(), "imported": imported, "replaced_existing": int(existing_count)})
+        per_day.append({
+            "date": target_date.isoformat(),
+            "imported": imported,
+            "replaced_existing": int(existing_count),
+            "with_times": imported_with_time,
+        })
         total_imported += imported
+
+        app.logger.info(
+            "import_jq_live: %s imported %s flights, %s with etd_local, %s without times",
+            target_date.isoformat(),
+            imported,
+            imported_with_time,
+            imported - imported_with_time,
+        )
 
     db.session.commit()
 
@@ -947,7 +1014,7 @@ def flight_create():
         else:
             date_val = _parse_date(date_str)
             eta_val = _parse_time(eta_str)
-            etd_val = _parse_time(etd_str)
+            etd_val = parse_scheduled_time(date_val, etd_str, flight_number)
 
             if not date_val:
                 flash("Invalid date format.", "error")
@@ -1007,7 +1074,7 @@ def flight_edit(flight_id):
         else:
             date_val = _parse_date(date_str)
             eta_val = _parse_time(eta_str)
-            etd_val = _parse_time(etd_str)
+            etd_val = parse_scheduled_time(date_val, etd_str, flight_number)
 
             if not date_val:
                 flash("Invalid date format.", "error")
@@ -1042,7 +1109,7 @@ def flight_edit(flight_id):
                 return redirect(url_for("schedule_page"))
 
     eta_value = f.eta_local.strftime("%H:%M") if f.eta_local else ""
-    etd_value = f.etd_local.strftime("%H:%M") if f.etd_local else ""
+    etd_value = _format_time_for_display(f.etd_local)
     return render_template(
         "flight_form.html",
         flight=f,
@@ -1190,13 +1257,21 @@ def admin_import_commit(batch_id):
         data = row.data or {}
         try:
             if batch.import_type == "flights":
+                date_val = _parse_date(data.get("date"))
+                eta_val = _parse_time(data.get("eta_local"))
+                etd_val = (
+                    parse_scheduled_time(date_val, data.get("etd_local"), data.get("flight_number"))
+                    if date_val
+                    else None
+                )
+
                 f = Flight(
                     flight_number=data.get("flight_number", "").strip(),
-                    date=_parse_date(data.get("date")),
+                    date=date_val,
                     origin=data.get("origin"),
                     destination=data.get("destination"),
-                    eta_local=_parse_time(data.get("eta_local")),
-                    etd_local=_parse_time(data.get("etd_local")),
+                    eta_local=eta_val,
+                    etd_local=etd_val,
                     tail_number=data.get("tail_number"),
                     truck_assignment=data.get("truck_assignment"),
                     status=data.get("status"),
@@ -1598,6 +1673,58 @@ def _ops_parse_time(value: str):
         return None
 
 
+def parse_scheduled_time(service_date: date, time_str: str | None, flight_number: str | None = None):
+    """Convert a scheduled time string into a timezone-aware datetime.
+
+    Returns ``None`` when the input is missing or malformed. Logs a warning so
+    operators can spot upstream data issues without breaking imports.
+    """
+
+    if not time_str:
+        return None
+
+    try:
+        hour_str, minute_str = time_str.split(":", maxsplit=1)
+        hour = int(hour_str)
+        minute = int(minute_str)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning(
+            "[import] Failed to parse scheduled time %s for %s: %s",
+            time_str,
+            flight_number or "unknown flight",
+            exc,
+        )
+        return None
+
+    try:
+        return datetime(
+            year=service_date.year,
+            month=service_date.month,
+            day=service_date.day,
+            hour=hour,
+            minute=minute,
+            tzinfo=SYD_TZ,
+        )
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning(
+            "[import] Could not build datetime for %s (%s): %s",
+            flight_number or "unknown flight",
+            time_str,
+            exc,
+        )
+        return None
+
+
+def _time_from_value(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.astimezone(SYD_TZ).timetz()
+    if isinstance(value, time):
+        return value
+    return None
+
+
 def _ops_get_date_from_query(default_to_today: bool = True) -> date | None:
     """Parse ?date=YYYY-MM-DD from the query string.
 
@@ -1608,6 +1735,11 @@ def _ops_get_date_from_query(default_to_today: bool = True) -> date | None:
     if d is None and default_to_today:
         return date.today()
     return d
+
+
+def _format_time_for_display(value) -> str:
+    time_val = _time_from_value(value)
+    return time_val.strftime("%H:%M") if time_val else ""
 
 
 @app.get("/api/flights")
@@ -1628,7 +1760,7 @@ def api_flights_for_date():
     payload: list[dict] = []
     for f in flights:
         time_val = f.etd_local or f.eta_local
-        time_local = time_val.strftime("%H:%M") if time_val else ""
+        time_local = _format_time_for_display(time_val)
         airline = "".join(ch for ch in (f.flight_number or "") if ch.isalpha())[:3] or "UNK"
 
         payload.append(
@@ -1638,6 +1770,7 @@ def api_flights_for_date():
                 "destination": f.destination,
                 "origin": f.origin,
                 "time_local": time_local,
+                "etd_local": f.etd_local.isoformat() if f.etd_local else None,
                 "operator_code": airline,
                 "aircraft_type": None,
                 "notes": f.notes or "",
@@ -1670,7 +1803,7 @@ def api_flights_import():
             continue
 
         time_str = (row.get("time_local") or "").strip()
-        time_val = _ops_parse_time(time_str)
+        time_val = parse_scheduled_time(day, time_str)
 
         f = Flight(
             flight_number=flight_number,
@@ -1719,7 +1852,7 @@ def api_status():
         flights_summary["total"] = len(flights)
 
         for f in flights:
-            time_val = f.etd_local or f.eta_local
+            time_val = _time_from_value(f.etd_local or f.eta_local)
             mins = None
             if time_val:
                 mins = time_val.hour * 60 + time_val.minute
