@@ -110,7 +110,7 @@ class TestImportFlow:
         assert data["endpoints"]["import_live"] is True
         assert data["supported_airlines"] == ["JQ", "QF", "VA", "ZL"]
         assert set(data["last_import"].keys()) == {"JQ", "QF", "VA", "ZL"}
-        assert data["timestamp_source"] == "etd_local"
+        assert data["timestamp_source"] == "imported_at"
 
     def test_import_status_returns_last_import_timestamp(self):
         tz = ZoneInfo("Australia/Sydney")

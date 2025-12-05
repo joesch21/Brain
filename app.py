@@ -83,6 +83,12 @@ def syd_today():
     return _dt.now(SYD_TZ).date()
 
 
+def syd_now():
+    """Return the current Australia/Sydney datetime."""
+
+    return datetime.now(SYD_TZ)
+
+
 TRUCKS = [
     {
         "id": "Truck-1",
@@ -105,10 +111,11 @@ db = SQLAlchemy(app)
 def ensure_flight_schema():
     """Ensure the flights table supports timezone-aware ETD values.
 
-    This lightweight helper adds ``etd_local`` when missing and upgrades the
-    column to ``TIMESTAMPTZ`` on PostgreSQL deployments where the historical
-    type was a plain ``TIME``. SQLite keeps the existing column untouched but
-    will happily accept timezone-aware datetimes for new rows.
+    This lightweight helper adds ``etd_local`` when missing, ensures a
+    timestamped ``imported_at`` column for tracking import freshness, and
+    upgrades ``etd_local`` to ``TIMESTAMPTZ`` on PostgreSQL deployments where
+    the historical type was a plain ``TIME``. SQLite keeps the existing columns
+    untouched but will happily accept timezone-aware datetimes for new rows.
     """
 
     try:
@@ -130,6 +137,23 @@ def ensure_flight_schema():
             with engine.begin() as conn:
                 conn.execute(text(f"ALTER TABLE flights ADD COLUMN etd_local {ddl}"))
             added.append("etd_local")
+            columns = {col["name"]: col for col in inspect(engine).get_columns("flights")}
+
+        if "imported_at" not in columns:
+            ddl = (
+                "TIMESTAMP WITH TIME ZONE"
+                if engine.dialect.name == "postgresql"
+                else "TIMESTAMP"
+            )
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE flights ADD COLUMN imported_at {ddl}"))
+                conn.execute(
+                    text(
+                        "UPDATE flights "
+                        "SET imported_at = COALESCE(imported_at, etd_local, CURRENT_TIMESTAMP)"
+                    )
+                )
+            added.append("imported_at")
             columns = {col["name"]: col for col in inspect(engine).get_columns("flights")}
 
         etd_col = columns.get("etd_local")
@@ -314,6 +338,7 @@ class Flight(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     flight_number = db.Column(db.String(32), nullable=False)
     date = db.Column(db.Date, nullable=False)
+    imported_at = db.Column(db.DateTime(timezone=True), nullable=True)
     origin = db.Column(db.String(32), nullable=True)
     destination = db.Column(db.String(32), nullable=True)
     eta_local = db.Column(db.Time, nullable=True)
@@ -618,6 +643,7 @@ def run_three_day_import(airline_prefix: str) -> dict:
             row = Flight(
                 flight_number=flight_number,
                 date=target_date,
+                imported_at=syd_now(),
                 origin="SYD",
                 destination=dest,
                 eta_local=None,
@@ -666,9 +692,17 @@ def run_three_day_import(airline_prefix: str) -> dict:
 
 
 def _get_import_timestamp_column():
-    """Return the most specific timestamp column available for imports."""
+    """Return the most specific timestamp expression available for imports."""
 
-    for attr in ("imported_at", "updated_at", "created_at", "etd_local"):
+    imported_at = getattr(Flight, "imported_at", None)
+    etd_local = getattr(Flight, "etd_local", None)
+
+    if imported_at is not None:
+        if etd_local is not None:
+            return db.func.coalesce(imported_at, etd_local), "imported_at"
+        return imported_at, "imported_at"
+
+    for attr in ("updated_at", "created_at", "etd_local"):
         column = getattr(Flight, attr, None)
         if column is not None:
             return column, attr
@@ -1135,6 +1169,7 @@ def flight_create():
                 f = Flight(
                     flight_number=flight_number,
                     date=date_val,
+                    imported_at=syd_now(),
                     origin=origin or None,
                     destination=destination or None,
                     eta_local=eta_val,
@@ -1381,6 +1416,7 @@ def admin_import_commit(batch_id):
                 f = Flight(
                     flight_number=data.get("flight_number", "").strip(),
                     date=date_val,
+                    imported_at=syd_now(),
                     origin=data.get("origin"),
                     destination=data.get("destination"),
                     eta_local=eta_val,
@@ -1929,6 +1965,7 @@ def api_flights_import():
         f = Flight(
             flight_number=flight_number,
             date=day,
+            imported_at=syd_now(),
             origin=row.get("origin") or None,
             destination=row.get("destination") or None,
             eta_local=None,
