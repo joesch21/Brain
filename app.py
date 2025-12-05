@@ -33,6 +33,7 @@ from dotenv import load_dotenv
 load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
 
 from config import CODE_CRAFTER2_API_BASE
+from scripts.schema_utils import ensure_flight_columns
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
@@ -165,6 +166,8 @@ def ensure_flight_schema():
         ):
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE flights ALTER COLUMN etd_local TYPE TIMESTAMPTZ"))
+
+        added.extend(ensure_flight_columns(engine))
 
         return added
     except Exception as exc:  # noqa: BLE001
@@ -337,16 +340,61 @@ class Flight(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     flight_number = db.Column(db.String(32), nullable=False)
+    airline = db.Column(db.String(8), nullable=True)
     date = db.Column(db.Date, nullable=False)
     imported_at = db.Column(db.DateTime(timezone=True), nullable=True)
     origin = db.Column(db.String(32), nullable=True)
     destination = db.Column(db.String(32), nullable=True)
     eta_local = db.Column(db.Time, nullable=True)
     etd_local = db.Column(db.DateTime(timezone=True), nullable=True)
+    registration = db.Column(db.String(32), nullable=True)
     tail_number = db.Column(db.String(32), nullable=True)
     truck_assignment = db.Column(db.String(64), nullable=True)
     status = db.Column(db.String(32), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+
+
+class Run(db.Model):
+    __tablename__ = "runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    airline = db.Column(db.String(8), nullable=False)
+    registration = db.Column(db.String(32), nullable=False)
+    start_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    end_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    run_flights = db.relationship(
+        "RunFlight",
+        backref="run",
+        cascade="all, delete-orphan",
+        order_by="RunFlight.position",
+    )
+
+
+class RunFlight(db.Model):
+    __tablename__ = "run_flights"
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey("runs.id"), nullable=False)
+    flight_id = db.Column(db.Integer, db.ForeignKey("flights.id"), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
+
+    flight = db.relationship("Flight")
 
 
 class FlightRun(db.Model):
@@ -1962,14 +2010,19 @@ def api_flights_import():
         time_str = (row.get("time_local") or "").strip()
         time_val = parse_scheduled_time(day, time_str)
 
+        airline = row.get("airline") or "".join(ch for ch in flight_number if ch.isalpha())[:3]
+        registration = row.get("registration") or row.get("rego")
+
         f = Flight(
             flight_number=flight_number,
+            airline=airline or None,
             date=day,
             imported_at=syd_now(),
             origin=row.get("origin") or None,
             destination=row.get("destination") or None,
             eta_local=None,
             etd_local=time_val,
+            registration=registration or None,
             tail_number=row.get("tail_number") or None,
             truck_assignment=None,
             status=row.get("status") or "scheduled",
@@ -1982,22 +2035,87 @@ def api_flights_import():
     return jsonify({"ok": True, "imported": created, "date": day.isoformat()}), 201
 
 
+@app.post("/api/runs/generate")
+def api_generate_runs():
+    """Generate runs for the requested date and airline."""
+
+    from services.runs_engine import generate_runs_for_date_airline
+
+    day = _ops_get_date_from_query(default_to_today=False)
+    if day is None:
+        return jsonify({"error": "date is required"}), 400
+
+    airline, error = parse_airline_filter(request.args.get("airline"), allow_all=False)
+    if error:
+        return jsonify({"error": error}), 400
+    if not airline:
+        return jsonify({"error": "airline is required"}), 400
+
+    summary = generate_runs_for_date_airline(day, airline)
+    return jsonify(summary)
+
+
 @app.get("/api/runs")
 def api_runs_for_date():
-    """Minimal runs endpoint used by Planner & Machine Room.
+    """Return runs with their flights for the requested date and airline."""
 
-    For now we return an empty list so the frontend does not see 404s.
-    Replace later with real runs logic.
-    """
-    day = _ops_get_date_from_query()
-    return jsonify({"ok": True, "date": day.isoformat(), "runs": []})
+    day = _ops_get_date_from_query(default_to_today=False)
+    if day is None:
+        return jsonify({"error": "date is required"}), 400
+
+    airline, error = parse_airline_filter(request.args.get("airline"), allow_all=False)
+    if error:
+        return jsonify({"error": error}), 400
+    if not airline:
+        return jsonify({"error": "airline is required"}), 400
+
+    runs = (
+        Run.query.filter_by(date=day, airline=airline)
+        .options(db.selectinload(Run.run_flights).joinedload(RunFlight.flight))
+        .order_by(Run.registration.asc())
+        .all()
+    )
+
+    payload: list[dict] = []
+    for run in runs:
+        flights_payload: list[dict] = []
+        for rf in run.run_flights:
+            flight = rf.flight
+            etd_local = flight.etd_local if flight else None
+            if isinstance(etd_local, datetime) and etd_local.tzinfo is None:
+                etd_local = etd_local.replace(tzinfo=SYD_TZ)
+
+            flights_payload.append(
+                {
+                    "run_id": run.id,
+                    "flight_id": flight.id if flight else None,
+                    "flight_number": flight.flight_number if flight else None,
+                    "etd_local": etd_local.isoformat() if etd_local else None,
+                    "position": rf.position,
+                }
+            )
+
+        payload.append(
+            {
+                "id": run.id,
+                "date": run.date.isoformat(),
+                "airline": run.airline,
+                "registration": run.registration,
+                "start_time": run.start_time.isoformat() if run.start_time else None,
+                "end_time": run.end_time.isoformat() if run.end_time else None,
+                "flights": flights_payload,
+            }
+        )
+
+    return jsonify({"ok": True, "date": day.isoformat(), "airline": airline, "runs": payload})
 
 
 @app.get("/api/status")
 def api_status():
     """Backend + DB health snapshot for Machine Room.
 
-    Summarises flights by AM/PM and airline. Runs are stubbed for now.
+    Summarises flights by AM/PM and airline and includes a lightweight runs
+    summary.
     """
     day = _ops_get_date_from_query()
     airline_filter, error = parse_airline_filter(request.args.get("airline"))
@@ -2032,6 +2150,18 @@ def api_status():
                 flights_summary["am_total"] += 1
             elif 12 * 60 + 1 <= mins <= 23 * 60:
                 flights_summary["pm_total"] += 1
+
+        runs_query = Run.query.filter(Run.date == day)
+        if airline_filter:
+            runs_query = runs_query.filter(Run.airline == airline_filter)
+        runs = runs_query.options(db.selectinload(Run.run_flights)).all()
+        runs_summary["total"] = len(runs)
+        runs_summary["with_flights"] = sum(1 for r in runs if r.run_flights)
+
+        assigned_flight_ids = {rf.flight_id for r in runs for rf in r.run_flights}
+        runs_summary["unassigned_flights"] = len(
+            [f for f in flights if f.id not in assigned_flight_ids]
+        )
     except Exception as exc:  # noqa: BLE001
         db_ok = False
         print(f"[status] DB query failed: {exc}")
