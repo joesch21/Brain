@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+from zoneinfo import ZoneInfo
+
 from app import User, app, db, Employee, Flight, ensure_flight_schema
 
 
@@ -29,7 +31,7 @@ def seed():
         if not Flight.query.first():
             # Seed a couple of flights using the actual model fields so Machine Room
             # has data to display in development.
-            now = datetime.utcnow()
+            now = datetime.now(ZoneInfo("Australia/Sydney"))
 
             flights = [
                 Flight(
@@ -40,7 +42,7 @@ def seed():
                     origin="MEL",
                     destination="SYD",
                     eta_local=(now + timedelta(hours=1)).time(),
-                    etd_local=(now + timedelta(hours=1, minutes=45)).time(),
+                    etd_local=now + timedelta(hours=1, minutes=45),
                     tail_number="VH-QFA",
                     truck_assignment="Truck-1",
                     status="Scheduled",
@@ -54,7 +56,7 @@ def seed():
                     origin="SYD",
                     destination="DXB",
                     eta_local=(now + timedelta(hours=3)).time(),
-                    etd_local=(now + timedelta(hours=4)).time(),
+                    etd_local=now + timedelta(hours=4),
                     tail_number="A6-EKB",
                     truck_assignment="Truck-2",
                     status="Scheduled",
