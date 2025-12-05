@@ -11,6 +11,10 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const AIRLINE_OPTIONS = ["JQ", "QF", "VA", "ZL"];
+const ALL_AIRLINE_OPTION = "ALL";
+const DEFAULT_AIRLINE = "JQ";
+
 const StatusPill = ({ ok, label }) => (
   <span
     style={{
@@ -27,7 +31,7 @@ const StatusPill = ({ ok, label }) => (
   </span>
 );
 
-const SystemStatusCard = () => {
+const SystemStatusCard = ({ selectedAirline }) => {
   const [date, setDate] = useState(todayISO());
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -42,8 +46,12 @@ const SystemStatusCard = () => {
     try {
       setLoading(true);
       setError("");
+      const airlineSuffix =
+        selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
+          ? `&airline=${encodeURIComponent(selectedAirline)}`
+          : "";
       const resp = await fetchApiStatus(
-        `/api/status?date=${encodeURIComponent(targetDate)}`
+        `/api/status?date=${encodeURIComponent(targetDate)}${airlineSuffix}`
       );
 
       if (!resp.ok) {
@@ -69,17 +77,22 @@ const SystemStatusCard = () => {
 
   useEffect(() => {
     loadStatus(date);
-  }, [date]);
+  }, [date, selectedAirline]);
 
   async function testCoreApis() {
+    const airlineSuffix =
+      selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
+        ? `&airline=${encodeURIComponent(selectedAirline)}`
+        : "";
+
     const tests = [
       {
         name: "Flights (date)",
-        url: `/api/flights?date=${encodeURIComponent(date)}`,
+        url: `/api/flights?date=${encodeURIComponent(date)}${airlineSuffix}`,
       },
       {
         name: "Runs (date)",
-        url: `/api/runs?date=${encodeURIComponent(date)}`,
+        url: `/api/runs?date=${encodeURIComponent(date)}${airlineSuffix}`,
       },
       {
         name: "Service profiles",
@@ -160,6 +173,11 @@ const SystemStatusCard = () => {
     ([a], [b]) => a.localeCompare(b)
   );
 
+  const airlineLabel =
+    selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
+      ? selectedAirline
+      : "All airlines";
+
   return (
     <div className="machine-room-status-card" style={{ marginTop: "1rem" }}>
       <div
@@ -230,7 +248,7 @@ const SystemStatusCard = () => {
             style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}
           >
             <div className="machine-room-status-col" style={{ minWidth: 180 }}>
-              <h4>Flights ({status.date})</h4>
+              <h4>Flights ({status.date}, {airlineLabel})</h4>
               <p>
                 <strong>Total:</strong> {flights.total}
               </p>
@@ -328,23 +346,39 @@ const SystemStatusCard = () => {
 };
 
 const MachineRoomPage = () => {
+  const [airline, setAirline] = useState(DEFAULT_AIRLINE);
   const [importLoading, setImportLoading] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
 
-  const handleImportJQ = async () => {
+  const importDisabled = importLoading || airline === ALL_AIRLINE_OPTION;
+
+  const handleImport = async () => {
+    if (airline === ALL_AIRLINE_OPTION) {
+      setImportStatus({
+        ok: false,
+        message: "Select a specific airline to run a live import.",
+        summary: null,
+      });
+      return;
+    }
+
     setImportLoading(true);
     setImportStatus(null);
 
     try {
-      const resp = await fetch("/api/import/jq_live", { method: "POST" });
+      const resp = await fetch(
+        `/api/import/live?airline=${encodeURIComponent(airline)}`,
+        { method: "POST" }
+      );
       const body = await resp.json();
       const ok = resp.ok && body?.ok !== false;
+      const summary = body.summary || null;
 
       if (ok) {
         setImportStatus({
           ok: true,
-          message: "Imported JQ flights for upcoming days.",
-          summary: body.summary || null,
+          message: `Imported ${airline} flights for upcoming days.`,
+          summary,
         });
       } else {
         setImportStatus({
@@ -352,7 +386,7 @@ const MachineRoomPage = () => {
           message:
             body?.error ||
             "Import failed. Check the scheduling backend for details.",
-          summary: body?.summary || null,
+          summary,
         });
       }
     } catch (err) {
@@ -393,20 +427,44 @@ const MachineRoomPage = () => {
       <div className="machine-room-card machine-room-import-card">
         <div className="machine-room-import-card__header">
           <div>
-            <h3>JQ live import</h3>
+            <h3>Live import (SYD domestic)</h3>
             <p className="machine-room-intro muted">
-              Trigger CodeCrafter2 to scrape Jetstar flights for today and the
-              next two days.
+              Trigger CodeCrafter2 to scrape flights for today and the next two
+              days. Default airline is Jetstar.
             </p>
           </div>
-          <button
-            type="button"
-            className="machine-room-import-button"
-            onClick={handleImportJQ}
-            disabled={importLoading}
-          >
-            {importLoading ? "Importing…" : "Import JQ flights (3 days)"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.9rem" }}>
+              Airline:{" "}
+              <select
+                value={airline}
+                onChange={(e) => setAirline(e.target.value)}
+                style={{ marginLeft: "0.35rem" }}
+              >
+                {AIRLINE_OPTIONS.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+                <option value={ALL_AIRLINE_OPTION}>All</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="machine-room-import-button"
+              onClick={handleImport}
+              disabled={importDisabled}
+              title={
+                airline === ALL_AIRLINE_OPTION
+                  ? "Select an airline to run an import"
+                  : undefined
+              }
+            >
+              {importLoading
+                ? "Importing…"
+                : `Import ${airline === ALL_AIRLINE_OPTION ? "flights" : `${airline} flights`} (3 days)`}
+            </button>
+          </div>
         </div>
 
         {importStatus && (
@@ -423,7 +481,7 @@ const MachineRoomPage = () => {
       </div>
 
       {/* NEW: live system status, flight/run counts, API tests, and seeding */}
-      <SystemStatusCard />
+      <SystemStatusCard selectedAirline={airline} />
 
       {/* Existing descriptive content can be kept below or simplified */}
       <section style={{ marginTop: "1.5rem" }}>

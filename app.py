@@ -54,7 +54,7 @@ app.config["ADMIN_KEY"] = os.getenv("ADMIN_KEY")
 app.config["SUPERVISOR_KEY"] = os.getenv("SUPERVISOR_KEY")
 app.config["CODE_CRAFTER2_API_BASE"] = CODE_CRAFTER2_API_BASE
 
-SUPPORTED_AIRLINES = {"JQ"}
+SUPPORTED_AIRLINES = {"JQ", "QF", "VA", "ZL"}
 DEFAULT_AIRLINE = "JQ"
 ALLOWED_DAY_OFFSETS = {0, 1, 2}
 CODECRAFTER_BASE = os.environ.get("CODECRAFTER_BASE", "https://codecrafter2.onrender.com")
@@ -200,6 +200,27 @@ def resolve_airline(raw_airline: str | None) -> str:
 
     code = raw_airline.strip().upper()
     return code if code in SUPPORTED_AIRLINES else DEFAULT_AIRLINE
+
+
+def parse_airline_filter(raw_airline: str | None, *, allow_all: bool = True) -> tuple[str | None, str | None]:
+    """Parse an optional airline filter from the query string.
+
+    Returns a tuple of (airline_code_or_None, error_message_or_None).
+    Passing ``allow_all`` lets callers treat the ``all`` keyword as "no filter".
+    """
+
+    if raw_airline is None or raw_airline.strip() == "":
+        return None, None
+
+    code = raw_airline.strip().upper()
+    if allow_all and code == "ALL":
+        return None, None
+
+    if code in SUPPORTED_AIRLINES:
+        return code, None
+
+    supported = ", ".join(sorted(SUPPORTED_AIRLINES))
+    return None, f"Unsupported airline '{code}'. Supported airlines: {supported}."
 
 
 def build_source_urls(airline: str, target_date: date) -> list[str]:
@@ -556,44 +577,24 @@ def flight_info():
     return jsonify(response)
 
 
-@app.post("/api/import/jq_live")
-def import_jq_live_local():
-    """Import live JQ flights directly into the local database.
+def run_three_day_import(airline_prefix: str) -> dict:
+    """Import three days of flights for the given airline prefix."""
 
-    Behaviour:
-      * Use Sydney-local 'today' as the base date.
-      * Import today + the next two days (3 days total).
-      * For each day, scrape JQ flights via build_source_urls + fetch_flights.
-      * Delete any existing JQ flights for that date in the Flight table.
-      * Insert new Flight rows with origin='SYD' and destination/time/tail/status
-        based on the scraped data.
-
-    The React Machine Room button still POSTs /api/import/jq_live with no body.
-    """
-    from datetime import timedelta
-
-    airline = DEFAULT_AIRLINE  # "JQ"
     base_date = syd_today()
+    total_imported = 0
+    per_day: list[dict] = []
 
     ensure_flight_schema()
-
-    total_imported = 0
-    per_day = []
 
     for offset in range(3):  # 0=today, 1=tomorrow, 2=day after (all SYD local)
         target_date = base_date + timedelta(days=offset)
 
-        # Build upstream URLs and fetch flights filtered to this airline
-        source_urls = build_source_urls(airline, target_date)
-        try:
-            flights = fetch_flights(source_urls, airline)
-        except FlightFetchError as exc:  # noqa: F821 if FlightFetchError is already imported
-            return jsonify({"ok": False, "error": str(exc)}), 503
+        source_urls = build_source_urls(airline_prefix, target_date)
+        flights = fetch_flights(source_urls, airline_prefix)
 
-        # Clear existing JQ flights for that date to avoid duplicates
         existing_q = Flight.query.filter(
             Flight.date == target_date,
-            Flight.flight_number.ilike(f"{airline}%"),
+            Flight.flight_number.ilike(f"{airline_prefix}%"),
         )
         existing_count = existing_q.count()
         existing_q.delete(synchronize_session=False)
@@ -628,17 +629,22 @@ def import_jq_live_local():
             if etd_dt:
                 imported_with_time += 1
 
-        db.session.flush()  # ensure IDs are assigned before next day (optional)
-        per_day.append({
-            "date": target_date.isoformat(),
-            "imported": imported,
-            "replaced_existing": int(existing_count),
-            "with_times": imported_with_time,
-        })
+        db.session.flush()
+        per_day.append(
+            {
+                "date": target_date.isoformat(),
+                "found": len(flights),
+                "upserted": imported,
+                "replaced_existing": int(existing_count),
+                "with_times": imported_with_time,
+                "ok": True,
+            }
+        )
         total_imported += imported
 
         app.logger.info(
-            "import_jq_live: %s imported %s flights, %s with etd_local, %s without times",
+            "%s import: %s imported %s flights, %s with etd_local, %s without times",
+            airline_prefix,
             target_date.isoformat(),
             imported,
             imported_with_time,
@@ -647,13 +653,45 @@ def import_jq_live_local():
 
     db.session.commit()
 
-    return jsonify({
+    return {
         "ok": True,
-        "airline": airline,
+        "airline": airline_prefix,
         "base_date": base_date.isoformat(),
         "total_imported": total_imported,
         "days": per_day,
-    }), 200
+    }
+
+
+@app.post("/api/import/live")
+def import_live():
+    """Import live flights for a requested airline prefix."""
+
+    requested_airline = request.args.get("airline")
+    airline, error = parse_airline_filter(requested_airline, allow_all=False)
+    if error or not airline:
+        message = error or "Query parameter 'airline' is required."
+        return jsonify({"ok": False, "error": message}), 400
+
+    try:
+        summary = run_three_day_import(airline)
+    except FlightFetchError as exc:  # noqa: PERF203
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(exc), "airline": airline}), 503
+
+    return jsonify({"ok": True, "summary": summary}), 200
+
+
+@app.post("/api/import/jq_live")
+def import_jq_live_local():
+    """Legacy wrapper for importing Jetstar flights."""
+
+    try:
+        summary = run_three_day_import(DEFAULT_AIRLINE)
+    except FlightFetchError as exc:  # noqa: PERF203
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(exc), "airline": DEFAULT_AIRLINE}), 503
+
+    return jsonify({"ok": True, "summary": summary}), 200
 
 
 # ----- Pages -----
@@ -1719,7 +1757,8 @@ def _time_from_value(value):
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.astimezone(SYD_TZ).timetz()
+        localized = value if value.tzinfo else value.replace(tzinfo=SYD_TZ)
+        return localized.astimezone(SYD_TZ).timetz()
     if isinstance(value, time):
         return value
     return None
@@ -1750,16 +1789,23 @@ def api_flights_for_date():
       { "date": "YYYY-MM-DD", "flights": [ ... ] }
     """
     day = _ops_get_date_from_query()
+    airline_filter, error = parse_airline_filter(request.args.get("airline"))
+    if error:
+        return jsonify({"error": error}), 400
 
-    flights = (
-        Flight.query.filter(Flight.date == day)
-        .order_by(Flight.etd_local.asc().nullslast(), Flight.eta_local.asc().nullslast())
-        .all()
-    )
+    query = Flight.query.filter(Flight.date == day)
+    if airline_filter:
+        query = query.filter(Flight.flight_number.ilike(f"{airline_filter}%"))
+
+    flights = query.order_by(Flight.etd_local.asc().nullslast(), Flight.eta_local.asc().nullslast()).all()
 
     payload: list[dict] = []
     for f in flights:
-        time_val = f.etd_local or f.eta_local
+        etd_local = f.etd_local
+        if isinstance(etd_local, datetime) and etd_local.tzinfo is None:
+            etd_local = etd_local.replace(tzinfo=SYD_TZ)
+
+        time_val = etd_local or f.eta_local
         time_local = _format_time_for_display(time_val)
         airline = "".join(ch for ch in (f.flight_number or "") if ch.isalpha())[:3] or "UNK"
 
@@ -1770,7 +1816,7 @@ def api_flights_for_date():
                 "destination": f.destination,
                 "origin": f.origin,
                 "time_local": time_local,
-                "etd_local": f.etd_local.isoformat() if f.etd_local else None,
+                "etd_local": etd_local.isoformat() if etd_local else None,
                 "operator_code": airline,
                 "aircraft_type": None,
                 "notes": f.notes or "",
@@ -1842,13 +1888,20 @@ def api_status():
     Summarises flights by AM/PM and airline. Runs are stubbed for now.
     """
     day = _ops_get_date_from_query()
+    airline_filter, error = parse_airline_filter(request.args.get("airline"))
+    if error:
+        return jsonify({"ok": False, "database_ok": False, "error": error}), 400
 
     db_ok = True
     flights_summary = {"total": 0, "am_total": 0, "pm_total": 0, "by_airline": {}}
     runs_summary = {"total": 0, "with_flights": 0, "unassigned_flights": 0}
 
     try:
-        flights = Flight.query.filter(Flight.date == day).all()
+        query = Flight.query.filter(Flight.date == day)
+        if airline_filter:
+            query = query.filter(Flight.flight_number.ilike(f"{airline_filter}%"))
+
+        flights = query.all()
         flights_summary["total"] = len(flights)
 
         for f in flights:
@@ -1875,6 +1928,7 @@ def api_status():
         "ok": db_ok,
         "database_ok": db_ok,
         "date": day.isoformat(),
+        "airline": airline_filter,
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "flights": flights_summary,
         "runs": runs_summary,

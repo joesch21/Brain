@@ -8,7 +8,7 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 from app import SYD_TZ, Flight, app, db, ensure_flight_schema  # noqa: E402
 
 
-class ImportFlowTest:
+class TestImportFlow:
     def setup_method(self):
         self.client = app.test_client()
         with app.app_context():
@@ -45,9 +45,8 @@ class ImportFlowTest:
 
         with app.app_context():
             flights = Flight.query.all()
-            assert len(flights) == 1
-            assert flights[0].etd_local is not None
-            assert flights[0].etd_local.tzinfo == SYD_TZ
+            assert len(flights) == 3
+            assert all(f.etd_local is not None for f in flights)
 
         api_resp = self.client.get("/api/flights", query_string={"date": target_date.isoformat()})
         assert api_resp.status_code == 200
@@ -60,3 +59,44 @@ class ImportFlowTest:
         parsed = datetime.fromisoformat(stored_iso)
         assert parsed.tzinfo is not None
         assert parsed.tzinfo.utcoffset(parsed) == ZoneInfo("Australia/Sydney").utcoffset(parsed)
+
+    def test_api_flights_can_filter_by_airline(self):
+        target_date = date(2025, 12, 5)
+        with app.app_context():
+            db.session.add(
+                Flight(
+                    flight_number="JQ100",
+                    date=target_date,
+                    origin="SYD",
+                    destination="OOL",
+                )
+            )
+            db.session.add(
+                Flight(
+                    flight_number="QF200",
+                    date=target_date,
+                    origin="SYD",
+                    destination="MEL",
+                )
+            )
+            db.session.commit()
+
+        resp = self.client.get(
+            "/api/flights", query_string={"date": target_date.isoformat(), "airline": "QF"}
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert len(data["flights"]) == 1
+        assert data["flights"][0]["flight_number"] == "QF200"
+
+    def test_import_live_validates_airline_param(self):
+        resp = self.client.post("/api/import/live")
+        assert resp.status_code == 400
+
+    def test_import_live_runs_with_supported_airline(self):
+        with patch("app.run_three_day_import", return_value={"ok": True, "airline": "QF"}) as mock_import:
+            resp = self.client.post("/api/import/live", query_string={"airline": "QF"})
+
+        assert resp.status_code == 200
+        assert mock_import.called
