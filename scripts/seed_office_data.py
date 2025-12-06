@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 
 # Prefer a local SQLite database when no real DATABASE_URL is configured or a placeholder is detected.
@@ -23,6 +23,7 @@ from app import (  # noqa: E402
     RosterEntry,
     MaintenanceItem,
     AuditLog,
+    SYD_TZ,
     log_audit,
     ensure_flight_schema,
 )
@@ -54,22 +55,23 @@ def seed_office_data():
                 date=today,
                 origin="MEL",
                 destination="SYD",
-                eta_local=time(9, 30),
-                etd_local=time(10, 15),
+                eta_local=datetime.combine(today, time(9, 30), tzinfo=SYD_TZ),
+                etd_local=datetime.combine(today, time(10, 15), tzinfo=SYD_TZ),
                 tail_number="VH-QFA",
                 truck_assignment="Truck-1",
                 status="Scheduled",
                 notes="Morning bank",
             )
+            next_day = today + timedelta(days=1)
             f2 = Flight(
                 flight_number="SQ222",
                 operator_code="SQ",
                 time_local=time(16, 45),
-                date=today + timedelta(days=1),
+                date=next_day,
                 origin="SYD",
                 destination="SIN",
-                eta_local=time(16, 45),
-                etd_local=time(18, 0),
+                eta_local=datetime.combine(next_day, time(16, 45), tzinfo=SYD_TZ),
+                etd_local=datetime.combine(next_day, time(18, 0), tzinfo=SYD_TZ),
                 tail_number="9V-SYD",
                 truck_assignment="Truck-2",
                 status="Scheduled",
