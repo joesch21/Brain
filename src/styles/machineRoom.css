@@ -196,3 +196,32 @@
 .import-status-chip {
   white-space: nowrap;
 }
+
+.roster-seed-status {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 0.92rem;
+}
+
+.roster-seed-status--ok {
+  border-color: rgba(76, 175, 80, 0.4);
+  background: rgba(76, 175, 80, 0.08);
+  color: #1b5e20;
+}
+
+.roster-seed-status--error {
+  border-color: rgba(244, 67, 54, 0.4);
+  background: rgba(244, 67, 54, 0.08);
+  color: #b71c1c;
+}
+
+.roster-seed-summary {
+  margin-top: 0.35rem;
+  line-height: 1.4;
+}
+
+.roster-seed-summary__item {
+  margin-top: 0.15rem;
+}
