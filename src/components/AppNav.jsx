@@ -34,23 +34,27 @@ const AppNav = () => {
 
   return (
     <nav className="main-nav">
+      <a className="main-nav__back" href="/">
+        ← Back to Office
+      </a>
 
-      <NavLink to="/planner" className={navLinkClass}>
-        Planner {badge}
-      </NavLink>
+      <div className="main-nav__links">
+        <NavLink to="/planner" className={navLinkClass}>
+          Planner {badge}
+        </NavLink>
 
-      <NavLink to="/schedule" className={navLinkClass}>
-        Schedule {badge}
-      </NavLink>
+        <NavLink to="/schedule" className={navLinkClass}>
+          Schedule {badge}
+        </NavLink>
 
-      <NavLink to="/runsheets" className={navLinkClass}>
-        Run Sheets {badge}
-      </NavLink>
+        <NavLink to="/runsheets" className={navLinkClass}>
+          Run Sheets {badge}
+        </NavLink>
 
-      <NavLink to="/machine-room" className={navLinkClass}>
-        Machine Room {badge}
-      </NavLink>
-
+        <NavLink to="/machine-room" className={navLinkClass}>
+          Machine Room {badge}
+        </NavLink>
+      </div>
     </nav>
   );
 };

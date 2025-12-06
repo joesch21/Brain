@@ -42,6 +42,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [apiTests, setApiTests] = useState([]);
 
   const [seeding, setSeeding] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [assignmentMessage, setAssignmentMessage] = useState("");
 
   async function loadStatus(targetDate) {
     try {
@@ -132,6 +134,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
     try {
       setSeeding(true);
       setError("");
+      setAssignmentMessage("");
 
       const url = date
         ? `/api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`
@@ -158,10 +161,46 @@ const SystemStatusCard = ({ selectedAirline }) => {
     }
   }
 
+  async function autoAssignEmployees() {
+    const targetAirline =
+      selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
+        ? selectedAirline
+        : DEFAULT_AIRLINE;
+
+    try {
+      setAssigning(true);
+      setAssignmentMessage("");
+      const resp = await fetch("/api/employee_assignments/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, airline: targetAirline }),
+      });
+
+      const body = await resp.json();
+      if (!resp.ok || body?.ok === false) {
+        throw new Error(body?.error || "Failed to auto-assign employees.");
+      }
+
+      setAssignmentMessage(
+        `Assigned ${body.assigned ?? 0}/${body.total_flights ?? 0} flights for ${
+          body.airline || targetAirline
+        } on ${body.date || date}.`
+      );
+      await loadStatus(date);
+    } catch (err) {
+      console.error(err);
+      setAssignmentMessage(err?.message || "Failed to auto-assign employees.");
+    } finally {
+      setAssigning(false);
+    }
+  }
+
   const flights = status?.flights || {
     total: 0,
     am_total: 0,
     pm_total: 0,
+    assigned: 0,
+    unassigned: 0,
     by_airline: {},
   };
   const runs = status?.runs || {
@@ -226,8 +265,21 @@ const SystemStatusCard = ({ selectedAirline }) => {
           >
             {seeding ? "Seeding…" : "Seed demo flights"}
           </button>
+          <button
+            type="button"
+            onClick={autoAssignEmployees}
+            disabled={assigning}
+            style={{ fontSize: "0.8rem", marginLeft: "0.5rem" }}
+          >
+            {assigning ? "Assigning…" : "Auto-assign employees"}
+          </button>
         </div>
       </div>
+      {assignmentMessage && (
+        <p className="muted" style={{ marginTop: "0.35rem" }}>
+          {assignmentMessage}
+        </p>
+      )}
 
       {loading && <p>Checking backend…</p>}
       {error && <p style={{ color: "#ff8a80" }}>{error}</p>}
@@ -258,6 +310,12 @@ const SystemStatusCard = ({ selectedAirline }) => {
               </p>
               <p>
                 <strong>PM (12:01–23:00):</strong> {flights.pm_total}
+              </p>
+              <p>
+                <strong>Assigned to flights:</strong> {flights.assigned}
+              </p>
+              <p>
+                <strong>Unassigned flights:</strong> {flights.unassigned}
               </p>
               <p>
                 <strong>By airline:</strong>

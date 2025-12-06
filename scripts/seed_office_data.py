@@ -16,16 +16,17 @@ if ROOT not in sys.path:
     sys.path.append(ROOT)
 
 from app import (  # noqa: E402
-    app,
-    db,
+    AuditLog,
     Employee,
     Flight,
-    RosterEntry,
     MaintenanceItem,
-    AuditLog,
+    RosterEntry,
     SYD_TZ,
-    log_audit,
+    WeeklyRosterTemplate,
+    app,
+    db,
     ensure_flight_schema,
+    log_audit,
 )
 
 
@@ -100,6 +101,58 @@ def seed_office_data():
                 notes="Night refueler",
             )
             db.session.add_all([r1, r2])
+
+        if WeeklyRosterTemplate.query.count() == 0:
+            employees = {emp.name: emp for emp in Employee.query.all()}
+
+            def add_template(name: str, weekday: int, role: str, start: time, end: time, truck: str, notes: str):
+                emp = employees.get(name)
+                if not emp:
+                    return
+                db.session.add(
+                    WeeklyRosterTemplate(
+                        employee_id=emp.id,
+                        weekday=weekday,
+                        role=role,
+                        shift_start=start,
+                        shift_end=end,
+                        truck=truck,
+                        notes=notes,
+                    )
+                )
+
+            for weekday in range(0, 5):
+                add_template(
+                    "Alice",
+                    weekday,
+                    "supervisor",
+                    time(6, 0),
+                    time(14, 0),
+                    "Truck-1",
+                    "Day supervisor",
+                )
+
+            for weekday in range(1, 6):
+                add_template(
+                    "Bob",
+                    weekday,
+                    "refueler",
+                    time(14, 0),
+                    time(22, 0),
+                    "Truck-2",
+                    "Evening refueler",
+                )
+
+            for weekday in (0, 2, 4):
+                add_template(
+                    "Charlie",
+                    weekday,
+                    "refueler",
+                    time(6, 0),
+                    time(14, 0),
+                    "Truck-3",
+                    "Day refueler",
+                )
 
         # Seed maintenance items
         if MaintenanceItem.query.count() == 0:

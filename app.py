@@ -9,6 +9,9 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 from typing import Iterable
 
+import click
+from sqlalchemy import inspect
+
 import requests
 
 from flask import (
@@ -140,6 +143,23 @@ def ensure_runs_schema():
     except Exception as exc:  # noqa: BLE001
         print(f"[schema] Failed to ensure run schema: {exc}")
         raise
+
+
+def ensure_roster_schema():
+    """Ensure roster-related tables (weekly templates) exist."""
+
+    inspector = inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+    actions: list[str] = []
+
+    if "weekly_roster_templates" not in existing_tables:
+        table = db.metadata.tables.get("weekly_roster_templates")
+        if table is not None:
+            with db.engine.begin() as conn:
+                db.metadata.create_all(bind=conn, tables=[table])
+            actions.append("created:weekly_roster_templates")
+
+    return actions
 
 
 _PROJECT_SUMMARY_CACHE = None
@@ -310,15 +330,27 @@ class Flight(db.Model):
     airline = db.Column(db.String(4), nullable=True)
     date = db.Column(db.Date, nullable=False)
     imported_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    time_local = db.Column(db.Time, nullable=True)
     origin = db.Column(db.String(32), nullable=True)
     destination = db.Column(db.String(32), nullable=True)
     eta_local = db.Column(db.DateTime(timezone=True), nullable=True)
     etd_local = db.Column(db.DateTime(timezone=True), nullable=True)
+    operator_code = db.Column(db.String(16), nullable=True)
+    aircraft_type = db.Column(db.String(32), nullable=True)
+    service_profile_code = db.Column(db.String(64), nullable=True)
+    bay = db.Column(db.String(32), nullable=True)
     registration = db.Column(db.String(32), nullable=True)
+    status_code = db.Column(db.String(32), nullable=True)
     tail_number = db.Column(db.String(32), nullable=True)
     truck_assignment = db.Column(db.String(64), nullable=True)
+    assigned_employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    assigned_employee_name = db.Column(db.String(80), nullable=True)
+    assigned_truck = db.Column(db.String(64), nullable=True)
+    is_international = db.Column(db.Boolean, nullable=True)
     status = db.Column(db.String(32), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+
+    assigned_employee = db.relationship("Employee", foreign_keys=[assigned_employee_id])
 
 
 class Run(db.Model):
@@ -440,6 +472,24 @@ class RosterEntry(db.Model):
     shift_end = db.Column(db.Time, nullable=True)
     truck = db.Column(db.String(32), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+
+
+class WeeklyRosterTemplate(db.Model):
+    __tablename__ = "weekly_roster_templates"
+
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
+    weekday = db.Column(db.Integer, nullable=False)  # 0=Mon .. 6=Sun
+    role = db.Column(db.String(32), nullable=False)
+    shift_start = db.Column(db.Time, nullable=True)
+    shift_end = db.Column(db.Time, nullable=True)
+    truck = db.Column(db.String(32), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    employee = db.relationship("Employee")
+
+
+from services.roster_engine import auto_assign_employees_for_date, generate_roster_for_date_range
 
 
 class ImportBatch(db.Model):
@@ -2056,6 +2106,9 @@ def api_flights_for_date():
                     "etd_local": etd_local.isoformat() if etd_local else None,
                     "operator_code": airline,
                     "aircraft_type": None,
+                    "assigned_employee_id": f.assigned_employee_id,
+                    "assigned_employee_name": f.assigned_employee_name,
+                    "assigned_truck": f.assigned_truck,
                     "notes": f.notes or "",
                 }
             )
@@ -2124,6 +2177,102 @@ def api_flights_import():
 
     db.session.commit()
     return jsonify({"ok": True, "imported": created, "date": day.isoformat()}), 201
+
+
+@app.post("/api/roster/generate")
+def api_generate_roster_from_template():
+    payload = request.get_json(silent=True) or {}
+    start_date = _ops_parse_date(payload.get("start_date") or payload.get("date"))
+    end_date = _ops_parse_date(payload.get("end_date")) or start_date
+
+    if not start_date:
+        return json_error(
+            "start_date is required", status_code=400, error_type="validation_error"
+        )
+
+    if end_date is None:
+        end_date = start_date
+
+    try:
+        ensure_roster_schema()
+        summary = generate_roster_for_date_range(start_date, end_date)
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    **summary,
+                }
+            ),
+            200,
+        )
+    except Exception:  # noqa: BLE001
+        app.logger.exception("Failed to generate roster entries")
+        return json_error(
+            "Failed to generate roster entries.",
+            context={
+                "endpoint": "/api/roster/generate",
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
+        )
+
+
+@app.post("/api/employee_assignments/generate")
+def api_employee_assignments_generate():
+    payload = request.get_json(silent=True) or {}
+    date_str = payload.get("date")
+    airline = (payload.get("airline") or DEFAULT_AIRLINE).upper()
+
+    context = {"endpoint": "/api/employee_assignments/generate", "airline": airline}
+
+    if not date_str:
+        return json_error(
+            "date is required", status_code=400, error_type="validation_error", context=context
+        )
+
+    try:
+        target_date = date.fromisoformat(date_str)
+    except Exception:
+        context["date"] = date_str
+        return json_error(
+            "Invalid date format; expected YYYY-MM-DD.",
+            status_code=400,
+            error_type="validation_error",
+            context=context,
+        )
+
+    context["date"] = target_date.isoformat()
+
+    if airline not in SUPPORTED_AIRLINES:
+        return json_error(
+            f"Unsupported airline {airline}.",
+            status_code=400,
+            error_type="validation_error",
+            context=context,
+        )
+
+    try:
+        ensure_flight_schema()
+        ensure_roster_schema()
+        summary = auto_assign_employees_for_date(target_date, airline)
+        payload = {"ok": True, **summary}
+        app.logger.info(
+            "employee assignments generated for %s %s: %s assigned, %s unassigned",
+            airline,
+            target_date.isoformat(),
+            summary.get("assigned"),
+            summary.get("unassigned"),
+        )
+        return jsonify(payload), 200
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        app.logger.exception("Auto-assign employees failed")
+        return json_error(
+            "Internal error while assigning employees to flights.",
+            context=context,
+        )
 
 
 @app.post("/api/runs/generate")
@@ -2405,7 +2554,14 @@ def api_status():
         return jsonify({"ok": False, "database_ok": False, "error": error}), 400
 
     db_ok = True
-    flights_summary = {"total": 0, "am_total": 0, "pm_total": 0, "by_airline": {}}
+    flights_summary = {
+        "total": 0,
+        "am_total": 0,
+        "pm_total": 0,
+        "by_airline": {},
+        "assigned": 0,
+        "unassigned": 0,
+    }
     runs_summary = {"total": 0, "with_flights": 0, "unassigned_flights": 0}
 
     flights: list[Flight] = []
@@ -2417,6 +2573,8 @@ def api_status():
 
         flights = query.all()
         flights_summary["total"] = len(flights)
+        flights_summary["assigned"] = len([f for f in flights if f.assigned_employee_name])
+        flights_summary["unassigned"] = flights_summary["total"] - flights_summary["assigned"]
 
         for f in flights:
             time_val = _time_from_value(f.etd_local or f.eta_local)
@@ -2469,6 +2627,34 @@ def api_status():
         "runs_supported": runs_supported,
     }
     return jsonify(payload)
+
+
+@app.cli.command("generate-roster")
+@click.option("--start-date", "start_date_str", required=True)
+@click.option("--end-date", "end_date_str")
+def cli_generate_roster(start_date_str: str, end_date_str: str | None):
+    """Generate dated roster entries from the weekly template."""
+
+    with app.app_context():
+        ensure_roster_schema()
+        start_date = date.fromisoformat(start_date_str)
+        end_date = date.fromisoformat(end_date_str) if end_date_str else start_date
+        summary = generate_roster_for_date_range(start_date, end_date)
+        click.echo(json.dumps(summary))
+
+
+@app.cli.command("auto-assign-employees")
+@click.option("--date", "target_date_str", required=True)
+@click.option("--airline", default=DEFAULT_AIRLINE)
+def cli_auto_assign(target_date_str: str, airline: str):
+    """Assign rostered employees to flights for the given date/airline."""
+
+    with app.app_context():
+        ensure_flight_schema()
+        ensure_roster_schema()
+        target_date = date.fromisoformat(target_date_str)
+        summary = auto_assign_employees_for_date(target_date, airline)
+        click.echo(json.dumps(summary))
 
 if __name__ == "__main__":
     app.run(debug=True)
