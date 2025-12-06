@@ -1,0 +1,229 @@
+{
+  "title": "Brain: Back-to-Office nav + weekly roster → daily employee assignment",
+  "id": "CWO-brain-roster-employee-assignment",
+  "starting_point": {
+    "branch": "rollback-daa586a",
+    "commit": "daa586a4253932deda91c7373e3e0b3c32f0fc5d",
+    "notes": [
+      "Work in the Brain app at brain-lbaj.onrender.com.",
+      "CodeCrafter Office (Build/Fix/Know/Roster/Schedule/Planner/Runs/Import/Machine Room/Settings) is the main nav shell.",
+      "The simpler 'Planner · Schedule · Run Sheets · Machine Room' header is the lean Brain-style view.",
+      "This CWO adds a back-to-office control in Machine Room and propagates a weekly roster pattern into per-day employee assignments to flights (starting with Jetstar)."
+    ]
+  },
+
+  "background": {
+    "context": [
+      "Brain Machine Room shows live import status and daily flights (JQ, QF, VA, ZL).",
+      "CodeCrafter Office provides richer tools (Build/Fix/Know, Roster, Schedule, Planner, Runs, Import, Machine Room).",
+      "There is currently no simple 'back to office' navigation from the lean Machine Room view.",
+      "Employees and roster concepts exist, but employees are not yet automatically assigned to daily flights.",
+      "We can assume Jetstar flights operate every day; focus first on assigning employees to JQ flights by day."
+    ],
+    "goal": "Make Machine Room feel like the kitchen for ops: easy back-to-office navigation, and a basic end-to-end flow where a weekly roster pattern is expanded into daily roster entries, and employees are auto-assigned to that day’s flights."
+  },
+
+  "constraints_and_principles": {
+    "navigation": {
+      "rule": "The new back button must not break existing navigation or layouts.",
+      "details": [
+        "Machine Room stays visually slightly different (lean header), but links back to the main CodeCrafter Office view.",
+        "Use a simple, obvious control: '← Back to Office' or similar."
+      ]
+    },
+    "api_stability": {
+      "rule": "Do not break existing JSON APIs used by Brain Machine Room / Planner.",
+      "endpoints_to_preserve": [
+        "GET /api/flights",
+        "GET /api/status",
+        "POST /api/import/live",
+        "POST /api/import/jq_live",
+        "GET /api/ops/import_status"
+      ]
+    },
+    "ownership": {
+      "rule": "Heavy reasoning (Build/Fix/Know) stays in the CodeCrafter domain, but the assignment logic here is purely operational (employees ↔ flights) and lives in the same app as Machine Room/Planner.",
+      "note": "Do not touch Build/Fix/Know flows in this CWO."
+    },
+    "error_handling": {
+      "rule": "All new APIs must return JSON, never HTML, including on errors.",
+      "shape": {
+        "ok": false,
+        "error": "Human-readable description",
+        "type": "validation_error | internal_error",
+        "context": {
+          "endpoint": "/api/employee_assignments/generate",
+          "date": "YYYY-MM-DD",
+          "airline": "JQ"
+        }
+      }
+    }
+  },
+
+  "required_changes": {
+    "1_back_to_office_button_in_machine_room": {
+      "description": "Add a 'back to office' button in the lean Machine Room header that returns to the CodeCrafter Office main view.",
+      "requirements": [
+        "In the Brain Machine Room template (the one with 'Planner · Schedule · Run Sheets · Machine Room' nav), add a left-aligned back link.",
+        "Suggested label: '← Back to Office' (configurable string).",
+        "Target URL: use the existing CodeCrafter Office home route (e.g. '/', '/office' or similar) — Codex must detect the correct one from app routes.",
+        "Styling: pill-style link, visually distinct from section tabs but consistent with dark theme.",
+        "Do not alter the CodeCrafter Office header itself."
+      ]
+    },
+
+    "2_weekly_roster_template_model": {
+      "description": "Introduce an explicit weekly roster template to define who works which shifts on which weekdays.",
+      "model": {
+        "name": "WeeklyRosterTemplate",
+        "fields": [
+          "id (PK, integer)",
+          "employee_id (FK to employees.id)",
+          "weekday (integer, 0=Monday .. 6=Sunday)",
+          "role (string, e.g. 'refueler', 'supervisor')",
+          "shift_start (TIME, local)",
+          "shift_end (TIME, local)",
+          "truck (nullable string, truck identifier like 'Truck-1')",
+          "notes (nullable string)"
+        ]
+      },
+      "behaviour": [
+        "This table represents the *pattern* for a typical week (e.g. Alice days Mon–Fri, Bob nights Tue–Sat).",
+        "Prefer to store employee_id rather than just a name string to avoid name drift."
+      ],
+      "migration": [
+        "Add the WeeklyRosterTemplate table via a migration.",
+        "Backfill using any existing sample weekly roster you already have (Codex to translate the sample into initial rows)."
+      ]
+    },
+
+    "3_daily_roster_propagation": {
+      "description": "From WeeklyRosterTemplate, automatically generate per-day RosterEntry rows for specific dates.",
+      "existing_model_notes": [
+        "RosterEntry already exists (from seed_office_data.py) with fields like date, employee_name, role, shift_start, shift_end, truck, notes.",
+        "This remains the 'dated' roster that views like /roster use."
+      ],
+      "helper_function": {
+        "name": "generate_roster_for_date_range",
+        "signature": "(start_date: date, end_date: date) -> dict",
+        "behaviour": [
+          "For each day in [start_date, end_date]:",
+          "  - Determine weekday (0–6).",
+          "  - Query WeeklyRosterTemplate rows for that weekday.",
+          "  - For each template row, create or update a RosterEntry:",
+          "      • date = that day",
+          "      • employee_name = linked Employee.name",
+          "      • role, shift_start, shift_end, truck, notes copied from template.",
+          "If an identical RosterEntry (same date + employee_name + role + shift_start + shift_end) already exists, do not duplicate it.",
+          "Return a summary: { 'days': N, 'entries_created': X, 'entries_updated': Y }."
+        ]
+      },
+      "surface": [
+        "Expose as an internal admin/CLI helper (e.g. a Flask CLI command) and a protected HTTP endpoint like POST /api/roster/generate to seed demo data.",
+        "Do not auto-run at every app start; this should be an explicit operation in this CWO."
+      ]
+    },
+
+    "4_daily_employee_assignment_to_flights": {
+      "description": "For a given date (initial focus: Jetstar flights), automatically assign employees based on the daily roster.",
+      "assumptions": [
+        "Flights for the date are already imported into the flights table.",
+        "Jetstar flights can be identified via `flight_number`/`airline`/`operator_code` beginning with 'JQ'.",
+        "We can assume Jetstar flies every day, but the code must handle 'no flights' gracefully."
+      ],
+      "algorithm": [
+        "Function name: auto_assign_employees_for_date(day: date, airline: str = 'JQ') -> dict.",
+        "1) Load all flights for that day whose airline/operator/flight_number matches the airline code (case-insensitive).",
+        "2) Load all RosterEntry rows for that date where role is a relevant operational role (e.g. 'refueler') and base is SYD if applicable.",
+        "3) For fairness, maintain a count of how many flights have been assigned to each employee_name for that date.",
+        "4) For each flight in time order (using etd_local or time_local):",
+        "   - Determine the flight's local time.",
+        "   - Find roster entries whose [shift_start, shift_end] window covers that time.",
+        "   - From eligible entries, choose the employee with the lowest assigned count (round-robin-style balancing).",
+        "   - Write the assignment: either by setting fields directly on Flight (e.g. assigned_employee_name, truck_assignment) or by inserting into a separate FlightAssignment table if one exists.",
+        "   - Increment that employee's count.",
+        "5) If no eligible roster entries exist for a flight, leave it unassigned and increment an 'unassigned' counter.",
+        "6) Commit the changes and return a summary like: { 'assigned': N, 'unassigned': M, 'total_flights': T }."
+      ],
+      "storage": [
+        "Codex must detect whether it is safer to add `assigned_employee_name` and optional `assigned_employee_id`/`assigned_truck` columns to the flights table, or to create a dedicated FlightAssignment table.",
+        "Choice should be documented in code comments and not break existing queries."
+      ]
+    },
+
+    "5_employee_assignment_api": {
+      "description": "Expose a JSON API to trigger daily employee assignment for one or more airlines.",
+      "endpoint": {
+        "method": "POST",
+        "path": "/api/employee_assignments/generate",
+        "body_example": {
+          "date": "2025-12-06",
+          "airline": "JQ"
+        },
+        "response_success_example": {
+          "ok": true,
+          "date": "2025-12-06",
+          "airline": "JQ",
+          "total_flights": 24,
+          "assigned": 24,
+          "unassigned": 0
+        },
+        "errors": [
+          "400 if date is missing or invalid.",
+          "400 if airline is missing or not supported.",
+          "500 -> mapped to JSON {ok:false,error,type:'internal_error',context:{...}} on unexpected failure."
+        ]
+      },
+      "behaviour": [
+        "Internally call auto_assign_employees_for_date(parsed_date, airline).",
+        "Log a summary (date, airline, assigned, unassigned) to the app logger.",
+        "Do not delete existing flights or change import behaviour."
+      ]
+    },
+
+    "6_machine_room_and_planner_ui_hooks": {
+      "description": "Make it easy from the Brain UI to see and use the new assignments.",
+      "requirements": [
+        "Add the '← Back to Office' control described in section 1 to the Machine Room header.",
+        "Surface a small control in Machine Room and/or Planner for admins to trigger employee auto-assignment for the selected date and airline:",
+        "  - e.g. a button 'Auto-assign employees' that POSTs to /api/employee_assignments/generate with the current date and airline context.",
+        "Update any relevant tables (e.g. flight lists) to show the assigned employee and/or truck, using the fields created in section 4.",
+        "Ensure that if there are no assignments, UI gracefully shows 'Unassigned' rather than breaking."
+      ]
+    }
+  },
+
+  "implementation_guidance": {
+    "code_structure": [
+      "Place roster and assignment helpers in a dedicated module, e.g. services/roster_engine.py or services/employee_assignments.py.",
+      "Reuse existing Employee, RosterEntry, and Flight models defined in app.py or related models modules.",
+      "Reuse existing time-zone helpers (SYD_TZ, parse_scheduled_time, etc.) so that comparisons are done in local time."
+    ],
+    "idempotence": [
+      "Roster generation must be idempotent across multiple runs for the same date range (no duplicated RosterEntry rows).",
+      "Employee assignment can overwrite previous assignments for that date+airline when re-run, or provide a 'respect_existing' flag if needed later.",
+      "APIs must never assume 'first run only'; they should be safe to call repeatedly."
+    ],
+    "testing": [
+      "Unit test generate_roster_for_date_range on a small weekly template and a 7-day range; assert that the right employees/roles end up on each day.",
+      "Unit test auto_assign_employees_for_date with a small set of flights and roster entries: ensure that:",
+      "  - All flights inside shift windows are assigned.",
+      "  - None outside windows are assigned.",
+      "  - Workload is roughly balanced (difference in counts between employees is at most 1 in simple scenarios).",
+      "Integration test POST /api/employee_assignments/generate for a date with imported Jetstar flights; confirm JSON response and that flights now carry an assigned employee/truck.",
+      "Manual smoke test: from Browser, verify:",
+      "  - Machine Room has a working 'Back to Office' button leading to the CodeCrafter Office home.",
+      "  - For a given date with JQ flights and a defined roster, clicking 'Auto-assign employees' updates the planner/machine room view to show assigned employees."
+    ]
+  },
+
+  "acceptance_criteria": [
+    "1) Machine Room displays a 'Back to Office' button that navigates to the CodeCrafter Office home without breaking existing nav.",
+    "2) WeeklyRosterTemplate exists in the database and can represent a 7-day repeating schedule for named employees.",
+    "3) generate_roster_for_date_range can be run over a date range and produces RosterEntry rows for each day consistent with the weekly template, without duplicates on re-run.",
+    "4) auto_assign_employees_for_date(date, 'JQ') successfully assigns available rostered employees to that day’s Jetstar flights, storing the link in a stable way.",
+    "5) POST /api/employee_assignments/generate returns JSON (never HTML), with a success or error shape as described.",
+    "6) Machine Room/Planner UI can trigger employee assignment and show per-flight assigned employees; unassigned flights are clearly marked as 'Unassigned'.",
+    "7) Existing endpoints and flows (imports, /api/status, /api/flights, Build/Fix/Know, etc.) remain unchanged and fully operational."
+  ]
+}
