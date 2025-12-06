@@ -20,6 +20,7 @@ function todayISO() {
 }
 
 const DEFAULT_AIRLINE = "JQ";
+const AIRLINE_OPTIONS = ["JQ", "QF", "VA", "ZL"];
 
 // Extract airline code from a flight number, e.g. "JQ719" -> "JQ".
 function getAirlineCode(flightNumber) {
@@ -734,6 +735,7 @@ function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
 
 const PlannerPage = () => {
   const [date, setDate] = useState(todayISO());
+  const [airline, setAirline] = useState(DEFAULT_AIRLINE);
   const [flights, setFlights] = useState([]);
   const [runs, setRuns] = useState([]);
   const [staffRuns, setStaffRuns] = useState({ runs: [], unassigned: [] });
@@ -741,6 +743,7 @@ const PlannerPage = () => {
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingStaffRuns, setLoadingStaffRuns] = useState(false);
+  const [generatingStaffRuns, setGeneratingStaffRuns] = useState(false);
   const [error, setError] = useState("");
   const [runsError, setRunsError] = useState("");
   const [staffViewError, setStaffViewError] = useState("");
@@ -828,6 +831,8 @@ const PlannerPage = () => {
   async function loadPlannerData(signal) {
     if (!date) return;
 
+    const airlineCode = airline || DEFAULT_AIRLINE;
+
     setLoading(true);
     setLoadingRuns(true);
     setLoadingStaffRuns(true);
@@ -836,7 +841,7 @@ const PlannerPage = () => {
     setStaffViewError("");
 
     try {
-      const flightsResp = await fetchFlights(date, "all", { signal });
+      const flightsResp = await fetchFlights(date, airlineCode, { signal });
       if (!signal?.aborted) {
         setFlights(normalizeFlights(flightsResp.data));
       }
@@ -848,7 +853,7 @@ const PlannerPage = () => {
     }
 
     try {
-      const runsResp = await fetchRuns(date, DEFAULT_AIRLINE, { signal });
+      const runsResp = await fetchRuns(date, airlineCode, { signal });
       if (!signal?.aborted) {
         setRuns(normalizeRuns(runsResp.data));
       }
@@ -872,7 +877,7 @@ const PlannerPage = () => {
     }
 
     try {
-      const staffRunsResp = await fetchStaffRuns(date, DEFAULT_AIRLINE, { signal });
+      const staffRunsResp = await fetchStaffRuns(date, airlineCode, { signal });
       if (!signal?.aborted) {
         setStaffRuns(normalizeStaffRuns(staffRunsResp.data));
       }
@@ -896,7 +901,7 @@ const PlannerPage = () => {
 
     loadPlannerData(controller.signal);
     return () => controller.abort();
-  }, [date]);
+  }, [date, airline]);
 
   useEffect(() => {
     if (!roster.length) {
@@ -1001,12 +1006,12 @@ const PlannerPage = () => {
       }
 
       setLoadingRuns(true);
-      const runsResp = await fetchRuns(date, DEFAULT_AIRLINE);
+      const runsResp = await fetchRuns(date, airline || DEFAULT_AIRLINE);
       const runsData = runsResp.data || {};
       setRuns(normalizeRuns(runsData));
 
       setLoading(true);
-      const flightsResp = await fetchFlights(date, "all");
+      const flightsResp = await fetchFlights(date, airline || DEFAULT_AIRLINE);
       const flightsData = flightsResp.data || {};
       setFlights(normalizeFlights(flightsData));
     } catch (err) {
@@ -1015,6 +1020,31 @@ const PlannerPage = () => {
     } finally {
       setLoading(false);
       setLoadingRuns(false);
+    }
+  }
+
+  async function handleGenerateStaffRuns() {
+    if (!date) return;
+
+    const airlineCode = airline || DEFAULT_AIRLINE;
+    try {
+      setStaffViewError("");
+      setGeneratingStaffRuns(true);
+      const resp = await fetch(
+        `/api/staff_runs/generate?date=${encodeURIComponent(date)}&airline=${encodeURIComponent(airlineCode)}`,
+        { method: "POST" }
+      );
+      const body = await resp.json();
+      if (!resp.ok || body?.ok === false) {
+        throw new Error(body?.error || "Failed to generate staff runs.");
+      }
+
+      await loadPlannerData();
+    } catch (err) {
+      console.error(err);
+      setStaffViewError(err?.message || "Failed to generate staff runs.");
+    } finally {
+      setGeneratingStaffRuns(false);
     }
   }
 
@@ -1145,8 +1175,28 @@ const PlannerPage = () => {
               onChange={(e) => setDate(e.target.value)}
             />
           </label>
+          <label style={{ marginLeft: "0.75rem" }}>
+            Airline:{" "}
+            <select
+              value={airline}
+              onChange={(e) => setAirline(e.target.value)}
+            >
+              {AIRLINE_OPTIONS.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="planner-header-right">
+          <button
+            type="button"
+            onClick={handleGenerateStaffRuns}
+            disabled={generatingStaffRuns || loadingStaffRuns}
+          >
+            {generatingStaffRuns ? "Generating staff runs…" : "Generate staff runs"}
+          </button>
           <button type="button" onClick={handleAutoAssign}>
             Auto-assign runs
           </button>
@@ -1299,6 +1349,14 @@ const PlannerPage = () => {
                 </div>
                 <div className="planner-staff-runs">
                   <h3>Staff runs</h3>
+                  {!staffViewError &&
+                    !loadingStaffRuns &&
+                    (staffRuns.runs || []).length === 0 && (
+                      <div className="planner-status planner-status--warn">
+                        No runs generated yet for {airline} on {date}. Try
+                        “Generate staff runs” to populate assignments.
+                      </div>
+                    )}
                   {!selectedStaff && (
                     <p className="muted">Select a rostered staff member.</p>
                   )}

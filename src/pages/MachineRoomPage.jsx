@@ -40,6 +40,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
 
   const [roster, setRoster] = useState([]);
   const [staffRuns, setStaffRuns] = useState({ runs: [], unassigned: [] });
+  const [runsStatus, setRunsStatus] = useState(null);
+  const [runsStatusError, setRunsStatusError] = useState("");
   const [staffingError, setStaffingError] = useState("");
 
   const [testingApis, setTestingApis] = useState(false);
@@ -54,6 +56,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
       setLoading(true);
       setError("");
       setStaffingError("");
+      setRunsStatus(null);
+      setRunsStatusError("");
       const airlineSuffix =
         selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
           ? `&airline=${encodeURIComponent(selectedAirline)}`
@@ -108,12 +112,23 @@ const SystemStatusCard = ({ selectedAirline }) => {
         setStaffRuns({ runs: [], unassigned: [] });
         setStaffingError(formatApiError("Staff runs", staffRunsResp));
       }
+
+      const runsStatusResp = await fetchApiStatus(
+        `/api/runs_status?date=${encodeURIComponent(targetDate)}`
+      );
+      if (runsStatusResp.ok) {
+        setRunsStatus(runsStatusResp.data || null);
+      } else {
+        setRunsStatus(null);
+        setRunsStatusError(formatApiError("Runs status", runsStatusResp));
+      }
     } catch (err) {
       console.error(err);
       setError(err.message || "Error checking backend status.");
       setStatus(null);
       setRoster([]);
       setStaffRuns({ runs: [], unassigned: [] });
+      setRunsStatus(null);
     } finally {
       setLoading(false);
     }
@@ -145,6 +160,10 @@ const SystemStatusCard = ({ selectedAirline }) => {
       {
         name: "Staff runs (date)",
         url: `/api/staff_runs?date=${encodeURIComponent(date)}${airlineSuffix || `&airline=${DEFAULT_AIRLINE}`}`,
+      },
+      {
+        name: "Runs status (date)",
+        url: `/api/runs_status?date=${encodeURIComponent(date)}`,
       },
       {
         name: "Service profiles",
@@ -252,6 +271,9 @@ const SystemStatusCard = ({ selectedAirline }) => {
     unassigned: 0,
     by_airline: {},
   };
+  const runsHealth = Array.isArray(runsStatus?.airlines)
+    ? runsStatus.airlines
+    : [];
   const runs = status?.runs || {
     total: 0,
     with_flights: 0,
@@ -405,6 +427,58 @@ const SystemStatusCard = ({ selectedAirline }) => {
                 <strong>“Auto-assign runs for this day”</strong> on Runs
                 Overview or Planner.
               </p>
+            </div>
+
+            <div className="machine-room-status-col" style={{ minWidth: 240 }}>
+              <h4>Runs health ({status.date})</h4>
+              {runsStatusError && (
+                <p style={{ color: "#b71c1c" }}>{runsStatusError}</p>
+              )}
+              {!runsStatusError && runsHealth.length === 0 && (
+                <p className="muted" style={{ marginBottom: 0 }}>
+                  No runs generated yet.
+                </p>
+              )}
+              {!runsStatusError && runsHealth.length > 0 && (
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", paddingBottom: "0.35rem" }}>
+                        Airline
+                      </th>
+                      <th style={{ textAlign: "right", paddingBottom: "0.35rem" }}>
+                        Flights
+                      </th>
+                      <th style={{ textAlign: "right", paddingBottom: "0.35rem" }}>
+                        Runs
+                      </th>
+                      <th style={{ textAlign: "right", paddingBottom: "0.35rem" }}>
+                        Jobs
+                      </th>
+                      <th style={{ textAlign: "right", paddingBottom: "0.35rem" }}>
+                        Unassigned
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runsHealth.map((row) => (
+                      <tr key={row.airline}>
+                        <td style={{ padding: "0.15rem 0" }}>{row.airline}</td>
+                        <td style={{ textAlign: "right" }}>{row.flights}</td>
+                        <td style={{ textAlign: "right" }}>{row.runs}</td>
+                        <td style={{ textAlign: "right" }}>{row.jobs}</td>
+                        <td style={{ textAlign: "right" }}>{row.unassigned}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             <div className="machine-room-status-col" style={{ minWidth: 220 }}>
