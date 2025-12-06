@@ -132,6 +132,13 @@ function normalizeRuns(data) {
   return [];
 }
 
+function normalizeUnassigned(data) {
+  if (!data) return [];
+  if (Array.isArray(data.unassigned)) return data.unassigned;
+  if (Array.isArray(data)) return data;
+  return [];
+}
+
 function formatRequestError(label, err) {
   if (!err) return label;
   const validationMessage =
@@ -226,30 +233,40 @@ function FlightListColumn({
           <table className="planner-table planner-table--compact">
             <thead>
               <tr>
-                <th>Time</th>
+                <th>#</th>
                 <th>Flight</th>
                 <th>Dest</th>
-                <th>Airline</th>
-                <th>Assigned</th>
+                <th>ETD</th>
+                <th>Reason</th>
               </tr>
             </thead>
             <tbody>
               {safeUnassigned.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ fontStyle: "italic" }}>
-                    All flights assigned for this day.
+                    All flights are assigned to runs for this date.
                   </td>
                 </tr>
               ) : (
                 safeUnassigned.map((f) => {
                   const flightNumber = f.flight_number || f.flightNumber;
-                  const timeStr = f.time_local || f.timeLocal || "";
+                  const timeStr =
+                    f.dep_time ||
+                    f.time_local ||
+                    f.timeLocal ||
+                    f.planned_start_time ||
+                    f.plannedStartTime ||
+                    "";
                   const dest = f.destination || f.dest || "";
-                  const airline = getAirlineCode(flightNumber);
-                  const assignedLabel =
-                    f.assigned_employee_name || f.assigned_employee || "Unassigned";
+                  const reason = f.reason || f.unassigned_reason || "";
+                  const seq =
+                    f.sequence_index ??
+                    f.sequenceIndex ??
+                    f.sequence ??
+                    null;
                   const key = `${flightNumber}|${timeStr}`;
                   const isSelected = selectedFlightKey === key;
+                  const flightId = f.flight_id || f.id;
 
                   return (
                     <tr
@@ -258,20 +275,26 @@ function FlightListColumn({
                         "planner-row" +
                         (isSelected ? " planner-row--selected" : "")
                       }
-                      draggable={Boolean(onUnassignedDragStart)}
+                      onClick={() => onSelectFlight(key)}
+                      draggable={Boolean(onUnassignedDragStart) && flightId != null}
                       onDragStart={(event) => {
-                        event.dataTransfer.effectAllowed = "move";
-                        if (onUnassignedDragStart && f.id != null) {
-                          onUnassignedDragStart(f.id);
+                        if (onUnassignedDragStart && flightId != null) {
+                          event.dataTransfer.effectAllowed = "move";
+                          onUnassignedDragStart(flightId);
                         }
                       }}
-                      onClick={() => onSelectFlight(key, undefined)}
                     >
-                      <td>{timeStr}</td>
+                      <td>{seq != null ? seq + 1 : "—"}</td>
                       <td>{flightNumber}</td>
-                      <td>{dest}</td>
-                      <td>{airline}</td>
-                      <td>{assignedLabel}</td>
+                      <td>{dest || "—"}</td>
+                      <td>{timeStr || "—"}</td>
+                      <td>
+                        {reason ? (
+                          <span className="planner-reason">{reason}</span>
+                        ) : (
+                          <span className="planner-subtext">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
@@ -450,7 +473,25 @@ function RunsGridColumn({
                   const shift = run.shift || {};
                   const runLabel = run.label || run.run_label || "";
                   const op = run.operator_code || shift.operator_code || "";
-                  const truck = run.truck_id || "";
+                  const truck = run.truck_label || run.truck_id || "";
+                  const refueller =
+                    run.refueller ||
+                    run.refueller_name ||
+                    run.refueler ||
+                    run.driver ||
+                    "";
+                  const startTime =
+                    run.start_time ||
+                    run.startTime ||
+                    shift.start_time ||
+                    shift.startTime ||
+                    "—";
+                  const endTime =
+                    run.end_time ||
+                    run.endTime ||
+                    shift.end_time ||
+                    shift.endTime ||
+                    "—";
                   const flights =
                     run.flights || run.flight_runs || run.flightRuns || [];
 
@@ -489,31 +530,51 @@ function RunsGridColumn({
                       }}
                     >
                       <div className="planner-run-card-header">
-                        <div>
-                          <strong>{op || "RUN"}</strong> • {runLabel}
+                        <div className="planner-run-card-title">
+                          <div className="planner-run-title">
+                            {runLabel || `Run ${run.id}`}
+                          </div>
+                          <div className="planner-run-card-sub">
+                            {startTime} – {endTime}
+                            {truck ? ` • Truck ${truck}` : null}
+                            {refueller ? ` • Refueller: ${refueller}` : null}
+                          </div>
                         </div>
-                        <div className="planner-run-card-sub">
-                          {shift.start_time || shift.startTime} –{" "}
-                          {shift.end_time || shift.endTime}
-                          {truck ? ` • Truck ${truck}` : null}
+                        <div className="planner-run-card-meta">
+                          {op || "RUN"}
                         </div>
                       </div>
                       <table className="planner-table planner-table--compact">
                         <thead>
                           <tr>
-                            <th>Time</th>
+                            <th>#</th>
                             <th>Flight</th>
                             <th>Dest</th>
+                            <th>ETD</th>
                           </tr>
                         </thead>
                         <tbody>
                           {flights.map((fr, index) => {
                             const flt = fr.flight || fr;
-            const fn =
-              flt.flight_number || flt.flightNumber || "";
-            const time =
-              flt.time_local || flt.timeLocal || "";
-            const dest = flt.destination || flt.dest || "";
+                            const fn =
+                              flt.flight_number || flt.flightNumber || "";
+                            const time =
+                              fr.dep_time ||
+                              flt.dep_time ||
+                              flt.time_local ||
+                              flt.timeLocal ||
+                              "";
+                            const plannedStart =
+                              fr.planned_start_time || fr.plannedStartTime || "";
+                            const plannedEnd =
+                              fr.planned_end_time || fr.plannedEndTime || "";
+                            const dest =
+                              fr.destination || flt.destination || flt.dest || "";
+                            const sequence =
+                              fr.sequence_index ??
+                              fr.sequenceIndex ??
+                              fr.sequence ??
+                              index;
                             const key = fr.id || `${fn}|${time}`;
                             return (
                               <tr
@@ -534,15 +595,23 @@ function RunsGridColumn({
                                 onDragOver={handleDragOver(run.id, index)}
                                 onDrop={handleDrop(run.id, index)}
                               >
-                                <td>{time}</td>
+                                <td>{sequence + 1}</td>
                                 <td>{fn}</td>
                                 <td>{dest}</td>
+                                <td>
+                                  {time}
+                                  {(plannedStart || plannedEnd) && (
+                                    <div className="planner-subtext">
+                                      {plannedStart || "?"} – {plannedEnd || "?"}
+                                    </div>
+                                  )}
+                                </td>
                               </tr>
                             );
                           })}
                           {flights.length === 0 && (
                             <tr>
-                              <td colSpan={3} style={{ fontStyle: "italic" }}>
+                              <td colSpan={4} style={{ fontStyle: "italic" }}>
                                 No flights assigned
                               </td>
                             </tr>
@@ -585,8 +654,26 @@ function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
     [];
 
   const op = selectedRun.operator_code || shift.operator_code || "";
-  const truck = selectedRun.truck_id || "";
+  const truck = selectedRun.truck_label || selectedRun.truck_id || "";
   const runLabel = selectedRun.label || selectedRun.run_label || "";
+  const refueller =
+    selectedRun.refueller ||
+    selectedRun.refueller_name ||
+    selectedRun.refueler ||
+    selectedRun.driver ||
+    "";
+  const runStart =
+    selectedRun.start_time ||
+    selectedRun.startTime ||
+    shift.start_time ||
+    shift.startTime ||
+    "—";
+  const runEnd =
+    selectedRun.end_time ||
+    selectedRun.endTime ||
+    shift.end_time ||
+    shift.endTime ||
+    "—";
 
   const handleFieldBlur = (fr, fieldName, value) => {
     const patch = { [fieldName]: value };
@@ -608,19 +695,26 @@ function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
       <h3>Run sheet</h3>
       <div className="run-sheet-header">
         <div>
+          <strong>Run:</strong> {runLabel}
+        </div>
+        <div>
+          <strong>Window:</strong> {runStart}–{runEnd}
+        </div>
+        <div>
           <strong>Operator:</strong> {op || "—"}
         </div>
         <div>
           <strong>Vehicle No.:</strong> {truck || "—"}
         </div>
         <div>
-          <strong>Run:</strong> {runLabel}
+          <strong>Refueller:</strong> {refueller || "—"}
         </div>
       </div>
       <div className="planner-list">
         <table className="planner-table">
           <thead>
             <tr>
+              <th>#</th>
               <th>Flight</th>
               <th>Dest</th>
               <th>Time</th>
@@ -633,18 +727,37 @@ function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
             </tr>
           </thead>
           <tbody>
-            {flights.map((fr) => {
+            {flights.map((fr, index) => {
               const flt = fr.flight || fr;
               const fn = flt.flight_number || flt.flightNumber || "";
               const dest = flt.destination || flt.dest || "";
-              const time = flt.time_local || flt.timeLocal || "";
+              const time =
+                fr.dep_time ||
+                flt.dep_time ||
+                flt.time_local ||
+                flt.timeLocal ||
+                "";
+              const plannedStart =
+                fr.planned_start_time || fr.plannedStartTime || "";
+              const plannedEnd =
+                fr.planned_end_time || fr.plannedEndTime || "";
+              const sequence =
+                fr.sequence_index ?? fr.sequenceIndex ?? fr.sequence ?? index;
               const key = fr.id || `${fn}|${time}`;
 
               return (
                 <tr key={key}>
+                  <td>{sequence + 1}</td>
                   <td>{fn}</td>
                   <td>{dest}</td>
-                  <td>{time}</td>
+                  <td>
+                    {time}
+                    {(plannedStart || plannedEnd) && (
+                      <div className="planner-subtext">
+                        {plannedStart || "?"} – {plannedEnd || "?"}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <input
                       type="text"
@@ -719,7 +832,7 @@ function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
             })}
             {flights.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ fontStyle: "italic" }}>
+                <td colSpan={10} style={{ fontStyle: "italic" }}>
                   No flights assigned to this run.
                 </td>
               </tr>
@@ -738,12 +851,16 @@ const PlannerPage = () => {
   const [airline, setAirline] = useState(DEFAULT_AIRLINE);
   const [flights, setFlights] = useState([]);
   const [runs, setRuns] = useState([]);
+  const [unassigned, setUnassigned] = useState([]);
   const [staffRuns, setStaffRuns] = useState({ runs: [], unassigned: [] });
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingStaffRuns, setLoadingStaffRuns] = useState(false);
   const [generatingStaffRuns, setGeneratingStaffRuns] = useState(false);
+  const [autoAssignLoading, setAutoAssignLoading] = useState(false);
+  const [autoAssignError, setAutoAssignError] = useState("");
+  const [autoAssignSuccess, setAutoAssignSuccess] = useState(false);
   const [error, setError] = useState("");
   const [runsError, setRunsError] = useState("");
   const [staffViewError, setStaffViewError] = useState("");
@@ -786,7 +903,7 @@ const PlannerPage = () => {
   );
 
   // Flights that are NOT present in any run -> Unassigned pool
-  const unassignedFlights = useMemo(() => {
+  const fallbackUnassignedFlights = useMemo(() => {
     if (!Array.isArray(flights) || !flights.length) return [];
 
     const assignedIds = new Set();
@@ -805,6 +922,16 @@ const PlannerPage = () => {
       (f) => f && f.id != null && !assignedIds.has(f.id)
     );
   }, [flights, runs]);
+
+  const displayedUnassignedFlights = useMemo(() => {
+    if (Array.isArray(unassigned) && unassigned.length) return unassigned;
+    return fallbackUnassignedFlights;
+  }, [fallbackUnassignedFlights, unassigned]);
+
+  const unassignedCount = useMemo(() => {
+    if (Array.isArray(unassigned) && unassigned.length) return unassigned.length;
+    return fallbackUnassignedFlights.length;
+  }, [fallbackUnassignedFlights, unassigned]);
 
   const staffRunsByStaffId = useMemo(() => {
     const map = new Map();
@@ -856,10 +983,12 @@ const PlannerPage = () => {
       const runsResp = await fetchRuns(date, airlineCode, { signal });
       if (!signal?.aborted) {
         setRuns(normalizeRuns(runsResp.data));
+        setUnassigned(normalizeUnassigned(runsResp.data));
       }
     } catch (err) {
       if (!signal?.aborted) {
         setRuns([]);
+        setUnassigned([]);
         setRunsError(formatRequestError("Runs", err));
       }
     }
@@ -902,6 +1031,17 @@ const PlannerPage = () => {
     loadPlannerData(controller.signal);
     return () => controller.abort();
   }, [date, airline]);
+
+  useEffect(() => {
+    setAutoAssignError("");
+    setAutoAssignSuccess(false);
+  }, [date, airline]);
+
+  useEffect(() => {
+    if (!autoAssignSuccess) return undefined;
+    const timer = setTimeout(() => setAutoAssignSuccess(false), 4000);
+    return () => clearTimeout(timer);
+  }, [autoAssignSuccess]);
 
   useEffect(() => {
     if (!roster.length) {
@@ -991,35 +1131,53 @@ const PlannerPage = () => {
 
   async function handleAutoAssign() {
     if (!date) return;
+    const airlineCode = airline || DEFAULT_AIRLINE;
+
+    setAutoAssignLoading(true);
+    setAutoAssignError("");
+    setAutoAssignSuccess(false);
     try {
-      setRunsError("");
-      const resp = await fetch("/api/assignments/generate", {
+      const resp = await fetch("/api/runs/auto_assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date }),
       });
-      if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(
-          `Auto-assign failed (${resp.status}): ${text || "Unknown error"}`
-        );
+      let body = null;
+      try {
+        body = await resp.json();
+      } catch (parseErr) {
+        body = null;
       }
 
-      setLoadingRuns(true);
-      const runsResp = await fetchRuns(date, airline || DEFAULT_AIRLINE);
-      const runsData = runsResp.data || {};
-      setRuns(normalizeRuns(runsData));
+      if (!resp.ok || body?.ok !== true) {
+        const message =
+          (body && body.error) ||
+          (body && body.message) ||
+          `Auto-assign failed (${resp.status})`;
+        throw new Error(message || "Auto-assign failed. Check backend logs.");
+      }
 
-      setLoading(true);
-      const flightsResp = await fetchFlights(date, airline || DEFAULT_AIRLINE);
-      const flightsData = flightsResp.data || {};
-      setFlights(normalizeFlights(flightsData));
+      const newRuns = normalizeRuns(body || {});
+      setRuns(newRuns);
+      setUnassigned(normalizeUnassigned(body || {}));
+      setRunsError("");
+      setAutoAssignSuccess(true);
+      setSelectedRunId((prev) => prev ?? (newRuns[0]?.id ?? null));
+
+      try {
+        const flightsResp = await fetchFlights(date, airlineCode);
+        const flightsData = flightsResp.data || {};
+        setFlights(normalizeFlights(flightsData));
+      } catch (flightErr) {
+        console.error("Auto-assign refresh flights failed", flightErr);
+      }
     } catch (err) {
       console.error(err);
-      setError(err.message || "Error during auto-assign.");
+      setAutoAssignError(
+        err?.message || "Auto-assign failed. Check backend logs."
+      );
     } finally {
-      setLoading(false);
-      setLoadingRuns(false);
+      setAutoAssignLoading(false);
     }
   }
 
@@ -1197,11 +1355,33 @@ const PlannerPage = () => {
           >
             {generatingStaffRuns ? "Generating staff runs…" : "Generate staff runs"}
           </button>
-          <button type="button" onClick={handleAutoAssign}>
-            Auto-assign runs
+          <button
+            type="button"
+            onClick={handleAutoAssign}
+            disabled={autoAssignLoading}
+          >
+            {autoAssignLoading ? "Auto-assigning…" : "Auto-assign runs"}
           </button>
         </div>
       </header>
+
+      <div className="planner-autoassign-row">
+        {autoAssignLoading && (
+          <div className="planner-status">
+            Auto-assigning… please wait
+          </div>
+        )}
+        {autoAssignSuccess && !autoAssignLoading && (
+          <div className="planner-status planner-status--success">
+            Runs auto-assigned for {date}
+          </div>
+        )}
+        {autoAssignError && (
+          <div className="planner-status planner-status--error">
+            {autoAssignError}
+          </div>
+        )}
+      </div>
 
       {/* System status + diagnostics row */}
       <div className="planner-system-row">
@@ -1268,7 +1448,7 @@ const PlannerPage = () => {
             <main className="planner-main">
               <FlightListColumn
                 flights={flights}
-                unassignedFlights={unassignedFlights}
+                unassignedFlights={displayedUnassignedFlights}
                 flightToRunMap={flightToRunMap}
                 selectedFlightKey={selectedFlightKey}
                 onSelectFlight={handleSelectFlight}
@@ -1449,7 +1629,7 @@ const PlannerPage = () => {
             {formatByAirline(summary.pm.byAirline)}]
           </span>
           <span>
-            <strong>Unassigned:</strong> {summary.unassigned}
+            <strong>Unassigned:</strong> {unassignedCount}
           </span>
         </div>
       </footer>
