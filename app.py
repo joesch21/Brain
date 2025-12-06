@@ -145,6 +145,19 @@ def ensure_runs_schema():
         raise
 
 
+def ensure_staff_run_schema():
+    """Ensure the staff run tables exist."""
+
+    try:
+        with db.engine.begin() as conn:
+            db.metadata.create_all(
+                bind=conn, tables=[StaffRun.__table__, StaffRunJob.__table__]
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[schema] Failed to ensure staff run schema: {exc}")
+        raise
+
+
 def ensure_roster_schema():
     """Ensure roster-related tables (weekly templates) exist."""
 
@@ -511,6 +524,41 @@ class Staff(db.Model):
     weekly_hours_target = db.Column(db.Integer, nullable=True)
     active = db.Column(db.Boolean, nullable=False, default=True)
     skills = db.Column(db.JSON, nullable=True)
+
+
+class StaffRun(db.Model):
+    __tablename__ = "staff_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    airline = db.Column(db.String(8), nullable=False)
+    staff_id = db.Column(db.Integer, db.ForeignKey("staff.id"), nullable=False)
+    shift_start = db.Column(db.Time, nullable=True)
+    shift_end = db.Column(db.Time, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
+    updated_at = db.Column(
+        db.DateTime, nullable=False, server_default=db.func.now(), onupdate=db.func.now()
+    )
+
+    staff = db.relationship("Staff")
+    jobs = db.relationship(
+        "StaffRunJob",
+        back_populates="staff_run",
+        cascade="all, delete-orphan",
+        order_by="StaffRunJob.sequence",
+    )
+
+
+class StaffRunJob(db.Model):
+    __tablename__ = "staff_run_jobs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    staff_run_id = db.Column(db.Integer, db.ForeignKey("staff_runs.id"), nullable=False)
+    flight_id = db.Column(db.Integer, db.ForeignKey("flights.id"), nullable=False)
+    sequence = db.Column(db.Integer, nullable=False, default=0)
+
+    staff_run = db.relationship("StaffRun", back_populates="jobs")
+    flight = db.relationship("Flight")
 
 
 class RosterTemplateWeek(db.Model):
@@ -2396,6 +2444,38 @@ def api_generate_runs():
         )
 
 
+@app.post("/api/staff_runs/generate")
+def api_generate_staff_runs():
+    """Generate staff runs for the requested date and airline."""
+
+    day = _ops_get_date_from_query(default_to_today=False)
+    if day is None:
+        return json_error("date is required", status_code=400, error_type="validation_error")
+
+    airline, error = parse_airline_filter(request.args.get("airline"), allow_all=False)
+    if error:
+        return json_error(error, status_code=400, error_type="validation_error")
+    if not airline:
+        return json_error("airline is required", status_code=400, error_type="validation_error")
+
+    try:
+        from services.staff_runs import generate_staff_runs_for_date_airline
+
+        ensure_flight_schema()
+        ensure_roster_schema()
+        ensure_staff_run_schema()
+        summary = generate_staff_runs_for_date_airline(day, airline)
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("staff runs.generate failed")
+        return json_error(
+            "Internal error while generating staff runs.",
+            status_code=500,
+            error_type="staff_runs_error",
+            context={"date": day.isoformat(), "airline": airline, "detail": str(exc)},
+        )
+
+
 @app.get("/api/runs")
 def api_runs_for_date():
     """Return runs with their flights for the requested date and airline."""
@@ -2421,6 +2501,37 @@ def api_runs_for_date():
             "Internal error while fetching runs.",
             status_code=500,
             error_type="runs_error",
+            context={"date": day.isoformat(), "airline": airline, "detail": str(exc)},
+        )
+
+
+@app.get("/api/staff_runs")
+def api_staff_runs_for_date():
+    """Return staff runs and unassigned flights for the requested date and airline."""
+
+    day = _ops_get_date_from_query(default_to_today=False)
+    if day is None:
+        return json_error("date is required", status_code=400, error_type="validation_error")
+
+    airline, error = parse_airline_filter(request.args.get("airline"), allow_all=False)
+    if error:
+        return json_error(error, status_code=400, error_type="validation_error")
+    if not airline:
+        return json_error("airline is required", status_code=400, error_type="validation_error")
+
+    try:
+        from services.staff_runs import get_staff_runs_for_date_airline
+
+        ensure_flight_schema()
+        ensure_staff_run_schema()
+        runs_payload = get_staff_runs_for_date_airline(day, airline)
+        return jsonify(runs_payload)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("staff runs.fetch failed")
+        return json_error(
+            "Internal error while fetching staff runs.",
+            status_code=500,
+            error_type="staff_runs_error",
             context={"date": day.isoformat(), "airline": airline, "detail": str(exc)},
         )
 
