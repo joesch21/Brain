@@ -96,7 +96,11 @@ def generate_runs_for_date_airline(target_date, airline: str) -> dict:
                 RunFlight(
                     run_id=run.id,
                     flight_id=flight.id,
+                    sequence_index=position,
                     position=position,
+                    planned_time=(flight.etd_local or start_time).time()
+                    if flight.etd_local or start_time
+                    else None,
                 )
             )
             flights_assigned += 1
@@ -137,7 +141,10 @@ def get_runs_for_date_airline(target_date, airline: str) -> dict:
     payload: list[dict] = []
     for run in runs:
         flights_payload: list[dict] = []
-        for rf in sorted(run.run_flights, key=lambda r: r.position):
+        for rf in sorted(
+            run.run_flights,
+            key=lambda r: r.sequence_index if r.sequence_index is not None else r.position,
+        ):
             flight = rf.flight
             etd_local = flight.etd_local if flight else None
             if isinstance(etd_local, datetime) and etd_local.tzinfo is None:
@@ -149,7 +156,8 @@ def get_runs_for_date_airline(target_date, airline: str) -> dict:
                     "flight_id": flight.id if flight else None,
                     "flight_number": flight.flight_number if flight else None,
                     "etd_local": etd_local.isoformat() if etd_local else None,
-                    "position": rf.position,
+                    "sequence_index": rf.sequence_index if rf.sequence_index is not None else rf.position,
+                    "status": rf.status,
                 }
             )
 
@@ -159,6 +167,8 @@ def get_runs_for_date_airline(target_date, airline: str) -> dict:
                 "date": run.date.isoformat(),
                 "airline": run.airline,
                 "registration": run.registration,
+                "label": run.label,
+                "truck_id": run.truck_id,
                 "start_time": run.start_time.isoformat() if run.start_time else None,
                 "end_time": run.end_time.isoformat() if run.end_time else None,
                 "flights": flights_payload,

@@ -32,7 +32,7 @@ from dotenv import load_dotenv
 load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
 
 from config import CODE_CRAFTER2_API_BASE
-from scripts.schema_utils import ensure_flights_schema
+from scripts.schema_utils import ensure_flights_schema, ensure_run_schema
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
@@ -90,6 +90,13 @@ def syd_now():
     return datetime.now(SYD_TZ)
 
 
+def json_error(message: str, *, status_code: int = 500, error_type: str = "internal_error", context: dict | None = None):
+    payload = {"ok": False, "error": message, "type": error_type}
+    if context:
+        payload["context"] = context
+    return jsonify(payload), status_code
+
+
 TRUCKS = [
     {
         "id": "Truck-1",
@@ -122,6 +129,16 @@ def ensure_flight_schema():
         return ensure_flights_schema(db.engine)
     except Exception as exc:  # noqa: BLE001
         print(f"[schema] Failed to ensure flight schema: {exc}")
+        raise
+
+
+def ensure_runs_schema():
+    """Ensure the runs tables exist with the latest columns."""
+
+    try:
+        return ensure_run_schema(db.engine)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[schema] Failed to ensure run schema: {exc}")
         raise
 
 
@@ -311,8 +328,12 @@ class Run(db.Model):
     date = db.Column(db.Date, nullable=False)
     airline = db.Column(db.String(8), nullable=False)
     registration = db.Column(db.String(32), nullable=False)
+    operator_code = db.Column(db.String(16), nullable=True)
+    label = db.Column(db.String(64), nullable=True)
     start_time = db.Column(db.DateTime(timezone=True), nullable=True)
     end_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    truck_id = db.Column(db.String(64), nullable=True)
+    shift_id = db.Column(db.Integer, db.ForeignKey("shifts.id"), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True),
@@ -325,7 +346,7 @@ class Run(db.Model):
         "RunFlight",
         backref="run",
         cascade="all, delete-orphan",
-        order_by="RunFlight.position",
+        order_by="RunFlight.sequence_index",
     )
 
 
@@ -335,7 +356,10 @@ class RunFlight(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     run_id = db.Column(db.Integer, db.ForeignKey("runs.id"), nullable=False)
     flight_id = db.Column(db.Integer, db.ForeignKey("flights.id"), nullable=False)
-    position = db.Column(db.Integer, nullable=False)
+    sequence_index = db.Column(db.Integer, nullable=False)
+    planned_time = db.Column(db.Time, nullable=True)
+    status = db.Column(db.String(32), nullable=False, default="planned")
+    position = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True),
@@ -345,6 +369,17 @@ class RunFlight(db.Model):
     )
 
     flight = db.relationship("Flight")
+
+    @property
+    def sequence(self):
+        """Compatibility accessor for legacy templates expecting position."""
+
+        return self.sequence_index if self.sequence_index is not None else self.position
+
+    @sequence.setter
+    def sequence(self, value):
+        self.sequence_index = value
+        self.position = value
 
 
 class FlightRun(db.Model):
@@ -359,6 +394,29 @@ class FlightRun(db.Model):
     status = db.Column(db.String(32), nullable=False, default="planned")
     start_figure = db.Column(db.Integer, nullable=True)
     uplift = db.Column(db.Integer, nullable=True)
+    sequence_index = db.Column(db.Integer, nullable=True)
+    planned_time = db.Column(db.Time, nullable=True)
+
+
+class ServiceProfile(db.Model):
+    __tablename__ = "service_profiles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(64), unique=True, nullable=False)
+    name = db.Column(db.String(128), nullable=True)
+    airline = db.Column(db.String(8), nullable=True)
+    window_start_mins = db.Column(db.Integer, nullable=True)
+    window_end_mins = db.Column(db.Integer, nullable=True)
+
+
+class Shift(db.Model):
+    __tablename__ = "shifts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    label = db.Column(db.String(64), nullable=True)
+    start_time = db.Column(db.Time, nullable=True)
+    end_time = db.Column(db.Time, nullable=True)
 
 
 class MaintenanceItem(db.Model):
@@ -2074,16 +2132,27 @@ def api_generate_runs():
 
     day = _ops_get_date_from_query(default_to_today=False)
     if day is None:
-        return jsonify({"error": "date is required"}), 400
+        return json_error("date is required", status_code=400, error_type="validation_error")
 
     airline, error = parse_airline_filter(request.args.get("airline"), allow_all=False)
     if error:
-        return jsonify({"error": error}), 400
+        return json_error(error, status_code=400, error_type="validation_error")
     if not airline:
-        return jsonify({"error": "airline is required"}), 400
+        return json_error("airline is required", status_code=400, error_type="validation_error")
 
-    summary = generate_runs_for_date_airline(day, airline)
-    return jsonify(summary)
+    try:
+        ensure_runs_schema()
+        summary = generate_runs_for_date_airline(day, airline)
+        summary["ok"] = True
+        return jsonify(summary)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("runs.generate failed")
+        return json_error(
+            "Internal error while generating runs.",
+            status_code=500,
+            error_type="runs_error",
+            context={"date": day.isoformat(), "airline": airline, "detail": str(exc)},
+        )
 
 
 @app.get("/api/runs")
@@ -2092,17 +2161,235 @@ def api_runs_for_date():
 
     day = _ops_get_date_from_query(default_to_today=False)
     if day is None:
-        return jsonify({"error": "date is required"}), 400
+        return json_error("date is required", status_code=400, error_type="validation_error")
 
     airline, error = parse_airline_filter(request.args.get("airline"), allow_all=False)
     if error:
-        return jsonify({"error": error}), 400
+        return json_error(error, status_code=400, error_type="validation_error")
     if not airline:
-        return jsonify({"error": "airline is required"}), 400
+        return json_error("airline is required", status_code=400, error_type="validation_error")
 
-    runs_payload = get_runs_for_date_airline(day, airline)
+    try:
+        ensure_runs_schema()
+        runs_payload = get_runs_for_date_airline(day, airline)
+        runs_payload["ok"] = True
+        return jsonify(runs_payload)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("runs.fetch failed")
+        return json_error(
+            "Internal error while fetching runs.",
+            status_code=500,
+            error_type="runs_error",
+            context={"date": day.isoformat(), "airline": airline, "detail": str(exc)},
+        )
 
-    return jsonify(runs_payload)
+
+@app.post("/api/flight_runs/assign")
+def api_assign_flight_run():
+    data = request.get_json(silent=True) or {}
+    run_id = data.get("run_id")
+    flight_id = data.get("flight_id")
+    if run_id is None or flight_id is None:
+        return json_error("run_id and flight_id are required", status_code=400, error_type="validation_error")
+
+    try:
+        ensure_runs_schema()
+        run = Run.query.get(run_id)
+        flight = Flight.query.get(flight_id)
+        if not run or not flight:
+            return json_error("run or flight not found", status_code=404, error_type="not_found")
+        if run.date != flight.date:
+            return json_error(
+                "Run and flight must be on the same date",
+                status_code=400,
+                error_type="validation_error",
+                context={"run_date": run.date.isoformat(), "flight_date": flight.date.isoformat()},
+            )
+
+        # Remove any existing assignments for this flight
+        RunFlight.query.filter_by(flight_id=flight.id).delete(synchronize_session=False)
+
+        max_index = (
+            db.session.query(db.func.max(RunFlight.sequence_index))
+            .filter(RunFlight.run_id == run.id)
+            .scalar()
+        )
+        next_index = 0 if max_index is None else max_index + 1
+
+        rf = RunFlight(
+            run_id=run.id,
+            flight_id=flight.id,
+            sequence_index=next_index,
+            planned_time=(flight.etd_local or run.start_time).time() if (flight.etd_local or run.start_time) else None,
+            status="planned",
+        )
+        db.session.add(rf)
+        db.session.commit()
+        return jsonify({"ok": True, "run_flight_id": rf.id})
+    except Exception as exc:  # noqa: BLE001
+        db.session.rollback()
+        app.logger.exception("flight_runs.assign failed")
+        return json_error("Failed to assign flight to run", error_type="assignment_error", context={"detail": str(exc)})
+
+
+@app.post("/api/runs/update_layout")
+def api_runs_update_layout():
+    payload = request.get_json(silent=True) or {}
+    date_str = payload.get("date")
+    runs_data = payload.get("runs") or []
+    if not date_str:
+        return json_error("date is required", status_code=400, error_type="validation_error")
+
+    try:
+        day = date.fromisoformat(date_str)
+    except Exception:
+        return json_error("Invalid date format", status_code=400, error_type="validation_error")
+
+    try:
+        ensure_runs_schema()
+        updated = 0
+        seen_ids = set()
+
+        for run_entry in runs_data:
+            run_id = run_entry.get("id")
+            flight_run_ids = run_entry.get("flight_run_ids") or []
+            run = Run.query.get(run_id)
+            if not run:
+                continue
+            if run.date != day:
+                continue
+
+            seen_ids.update(flight_run_ids)
+            for seq, fr_id in enumerate(flight_run_ids):
+                rf = RunFlight.query.get(fr_id)
+                if not rf:
+                    continue
+                rf.run_id = run.id
+                rf.sequence_index = seq
+                rf.position = seq
+                updated += 1
+            # Remove any run flights for this run/date that are not mentioned
+            RunFlight.query.filter(RunFlight.run_id == run.id, RunFlight.id.notin_(flight_run_ids)).delete(synchronize_session=False)
+
+        # Remove stray run flights on this date that were not referenced
+        RunFlight.query.filter(
+            RunFlight.id.notin_(seen_ids),
+            RunFlight.run.has(Run.date == day),
+        ).delete(synchronize_session=False)
+
+        db.session.commit()
+        return jsonify({"ok": True, "updated_flight_runs": updated})
+    except Exception as exc:  # noqa: BLE001
+        db.session.rollback()
+        app.logger.exception("runs.update_layout failed")
+        return json_error(
+            "Failed to update run layout",
+            error_type="runs_error",
+            context={"date": date_str, "detail": str(exc)},
+        )
+
+
+def _find_service_window(flight: Flight, profiles: dict[str, ServiceProfile]):
+    profile_code = getattr(flight, "service_profile_code", None)
+    profile = profiles.get(profile_code) if profile_code else None
+    etd_dt = flight.etd_local or flight.eta_local
+    if not etd_dt:
+        return None
+
+    start_offset = profile.window_start_mins if profile and profile.window_start_mins is not None else -45
+    end_offset = profile.window_end_mins if profile and profile.window_end_mins is not None else 45
+    start_dt = etd_dt + timedelta(minutes=start_offset)
+    end_dt = etd_dt + timedelta(minutes=end_offset)
+    return start_dt, end_dt
+
+
+@app.post("/api/assignments/generate")
+def api_assignments_generate():
+    payload = request.get_json(silent=True) or {}
+    date_str = payload.get("date")
+    respect_existing = bool(payload.get("respect_existing_runs", False))
+    if not date_str:
+        return json_error("date is required", status_code=400, error_type="validation_error")
+
+    try:
+        target_date = date.fromisoformat(date_str)
+    except Exception:
+        return json_error("Invalid date format", status_code=400, error_type="validation_error")
+
+    try:
+        ensure_runs_schema()
+        flights = Flight.query.filter(Flight.date == target_date).all()
+        runs = Run.query.filter(Run.date == target_date).options(db.selectinload(Run.run_flights)).all()
+        profiles = {p.code: p for p in ServiceProfile.query.all()}
+
+        assigned = 0
+        unassigned = 0
+        unprofiled = 0
+
+        # Build existing mapping if respecting
+        if respect_existing:
+            existing_flight_ids = {rf.flight_id for r in runs for rf in r.run_flights}
+        else:
+            RunFlight.query.filter(RunFlight.run.has(Run.date == target_date)).delete(synchronize_session=False)
+            existing_flight_ids = set()
+
+        for flight in flights:
+            if respect_existing and flight.id in existing_flight_ids:
+                continue
+
+            window = _find_service_window(flight, profiles)
+            if not window:
+                unprofiled += 1
+                continue
+
+            start_dt, end_dt = window
+            placed = False
+            for run in runs:
+                if run.start_time and run.end_time:
+                    if start_dt >= run.start_time and end_dt <= run.end_time:
+                        pass
+                    elif end_dt < run.start_time or start_dt > run.end_time:
+                        continue
+                if run.airline and flight.airline and run.airline != flight.airline:
+                    continue
+
+                max_index = (
+                    db.session.query(db.func.max(RunFlight.sequence_index))
+                    .filter(RunFlight.run_id == run.id)
+                    .scalar()
+                )
+                next_index = 0 if max_index is None else max_index + 1
+                rf = RunFlight(
+                    run_id=run.id,
+                    flight_id=flight.id,
+                    sequence_index=next_index,
+                    planned_time=(flight.etd_local or flight.eta_local).time() if (flight.etd_local or flight.eta_local) else None,
+                    status="planned",
+                )
+                db.session.add(rf)
+                assigned += 1
+                placed = True
+                break
+
+            if not placed:
+                unassigned += 1
+
+        db.session.commit()
+        return jsonify({
+            "ok": True,
+            "date": target_date.isoformat(),
+            "assigned": assigned,
+            "unassigned": unassigned,
+            "unprofiled": unprofiled,
+        })
+    except Exception as exc:  # noqa: BLE001
+        db.session.rollback()
+        app.logger.exception("assignments.generate failed")
+        return json_error(
+            "Failed to auto-assign flights",
+            error_type="assignment_error",
+            context={"date": date_str, "detail": str(exc)},
+        )
 
 
 @app.get("/api/status")

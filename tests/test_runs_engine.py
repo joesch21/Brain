@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
-from app import SYD_TZ, Flight, Run, RunFlight, app, db, ensure_flight_schema  # noqa: E402
+from app import SYD_TZ, Flight, Run, RunFlight, app, db, ensure_flight_schema, ensure_runs_schema  # noqa: E402
 from services.runs_engine import (
     generate_runs_for_date_airline,
     get_runs_for_date_airline,
@@ -18,6 +18,7 @@ class TestRunsEngine:
             db.drop_all()
             db.create_all()
             ensure_flight_schema()
+            ensure_runs_schema()
 
     def teardown_method(self):
         with app.app_context():
@@ -50,7 +51,7 @@ class TestRunsEngine:
             run = Run.query.one()
             assert run.registration == "VH-ABC"
 
-            run_flights = RunFlight.query.filter_by(run_id=run.id).order_by(RunFlight.position).all()
+            run_flights = RunFlight.query.filter_by(run_id=run.id).order_by(RunFlight.sequence_index).all()
             assert [rf.flight_id for rf in run_flights] == [first.id, second.id]
 
     def test_generate_runs_splits_by_registration(self):
