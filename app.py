@@ -158,6 +158,18 @@ def ensure_flight_schema():
             added.append("imported_at")
             columns = {col["name"]: col for col in inspect(engine).get_columns("flights")}
 
+        if "airline" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE flights ADD COLUMN airline VARCHAR(8)"))
+            added.append("airline")
+            columns = {col["name"]: col for col in inspect(engine).get_columns("flights")}
+
+        if "registration" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE flights ADD COLUMN registration VARCHAR(32)"))
+            added.append("registration")
+            columns = {col["name"]: col for col in inspect(engine).get_columns("flights")}
+
         etd_col = columns.get("etd_local")
         col_type = etd_col.get("type") if etd_col else None
         if (
@@ -252,6 +264,16 @@ def parse_airline_filter(raw_airline: str | None, *, allow_all: bool = True) -> 
 
     supported = ", ".join(sorted(SUPPORTED_AIRLINES))
     return None, f"Unsupported airline '{code}'. Supported airlines: {supported}."
+
+
+def airline_from_flight_number(flight_number: str | None) -> str | None:
+    """Extract a plausible airline code from a flight number."""
+
+    if not flight_number:
+        return None
+
+    letters = "".join(ch for ch in flight_number if ch.isalpha()).upper()
+    return letters[:3] or None
 
 
 def build_source_urls(airline: str, target_date: date) -> list[str]:
@@ -350,6 +372,7 @@ class Flight(db.Model):
     etd_local = db.Column(db.DateTime(timezone=True), nullable=True)
     registration = db.Column(db.String(32), nullable=True)
     tail_number = db.Column(db.String(32), nullable=True)
+    registration = db.Column(db.String(32), nullable=True)
     truck_assignment = db.Column(db.String(64), nullable=True)
     status = db.Column(db.String(32), nullable=True)
     notes = db.Column(db.Text, nullable=True)
@@ -410,6 +433,40 @@ class FlightRun(db.Model):
     status = db.Column(db.String(32), nullable=False, default="planned")
     start_figure = db.Column(db.Integer, nullable=True)
     uplift = db.Column(db.Integer, nullable=True)
+
+
+class Run(db.Model):
+    __tablename__ = "runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    airline = db.Column(db.String(8), nullable=False)
+    registration = db.Column(db.String(32), nullable=False)
+    start_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    end_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now())
+    updated_at = db.Column(
+        db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now()
+    )
+
+    run_flights = db.relationship(
+        "RunFlight",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="RunFlight.position",
+    )
+
+
+class RunFlight(db.Model):
+    __tablename__ = "run_flights"
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey("runs.id"), nullable=False, index=True)
+    flight_id = db.Column(db.Integer, db.ForeignKey("flights.id"), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+
+    run = db.relationship("Run", back_populates="run_flights")
+    flight = db.relationship("Flight")
 
 
 class MaintenanceItem(db.Model):
@@ -691,6 +748,7 @@ def run_three_day_import(airline_prefix: str) -> dict:
 
             row = Flight(
                 flight_number=flight_number,
+                airline=airline_prefix,
                 date=target_date,
                 imported_at=syd_now(),
                 origin="SYD",
@@ -698,6 +756,7 @@ def run_three_day_import(airline_prefix: str) -> dict:
                 eta_local=None,
                 etd_local=etd_dt,
                 tail_number=tail,
+                registration=tail,
                 truck_assignment=None,
                 status=status or "scheduled",
                 notes=None,
@@ -1272,6 +1331,7 @@ def flight_create():
             else:
                 f = Flight(
                     flight_number=flight_number,
+                    airline=airline_from_flight_number(flight_number),
                     date=date_val,
                     imported_at=syd_now(),
                     origin=origin or None,
@@ -1279,6 +1339,7 @@ def flight_create():
                     eta_local=eta_val,
                     etd_local=etd_val,
                     tail_number=tail_number or None,
+                    registration=tail_number or None,
                     truck_assignment=truck_assignment or None,
                     status=status,
                     notes=notes or None,
@@ -1336,12 +1397,14 @@ def flight_edit(flight_id):
                     f"origin={f.origin} destination={f.destination}"
                 )
                 f.flight_number = flight_number
+                f.airline = airline_from_flight_number(flight_number)
                 f.date = date_val
                 f.origin = origin or None
                 f.destination = destination or None
                 f.eta_local = eta_val
                 f.etd_local = etd_val
                 f.tail_number = tail_number or None
+                f.registration = tail_number or f.registration
                 f.truck_assignment = truck_assignment or None
                 f.status = status
                 f.notes = notes or None
@@ -1519,6 +1582,7 @@ def admin_import_commit(batch_id):
 
                 f = Flight(
                     flight_number=data.get("flight_number", "").strip(),
+                    airline=data.get("airline") or airline_from_flight_number(data.get("flight_number")),
                     date=date_val,
                     imported_at=syd_now(),
                     origin=data.get("origin"),
@@ -1526,6 +1590,9 @@ def admin_import_commit(batch_id):
                     eta_local=eta_val,
                     etd_local=etd_val,
                     tail_number=data.get("tail_number"),
+                    registration=data.get("registration")
+                    or data.get("tail_number")
+                    or data.get("rego"),
                     truck_assignment=data.get("truck_assignment"),
                     status=data.get("status"),
                     notes=data.get("notes"),
@@ -2098,6 +2165,9 @@ def api_flights_import():
             etd_local=time_val,
             registration=registration or None,
             tail_number=row.get("tail_number") or None,
+            registration=row.get("registration")
+            or row.get("tail_number")
+            or row.get("rego"),
             truck_assignment=None,
             status=row.get("status") or "scheduled",
             notes=row.get("notes") or None,
