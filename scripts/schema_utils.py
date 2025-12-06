@@ -43,6 +43,15 @@ RUN_FLIGHT_NEW_COLUMNS: dict[str, str] = {
     "status": "VARCHAR(32) DEFAULT 'planned'",
 }
 
+EMPLOYEE_NEW_COLUMNS: dict[str, str] = {
+    "code": "VARCHAR(40)",
+    "employment_type": "VARCHAR(16)",
+    "weekly_hours_target": "INTEGER",
+    "notes": "TEXT",
+    "created_at": "TIMESTAMP",
+    "updated_at": "TIMESTAMP",
+}
+
 SYD_TZ_NAME = "Australia/Sydney"
 
 
@@ -116,6 +125,40 @@ def ensure_run_schema(engine: Engine) -> list[str]:
 
     if "run_flights" in existing_tables:
         actions.extend(ensure_columns(engine, "run_flights", RUN_FLIGHT_NEW_COLUMNS))
+
+    return actions
+
+
+def ensure_employee_schema(engine: Engine) -> list[str]:
+    """Ensure the employees table exists with the latest columns and indexes."""
+
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    actions: list[str] = []
+
+    if "employees" not in existing_tables:
+        from app import db  # Late import to avoid circulars
+
+        table = db.metadata.tables.get("employees")
+        if table is not None:
+            with engine.begin() as conn:
+                db.metadata.create_all(bind=conn, tables=[table])
+            actions.append("created:employees")
+        existing_tables = set(inspector.get_table_names())
+
+    if "employees" in existing_tables:
+        actions.extend(ensure_columns(engine, "employees", EMPLOYEE_NEW_COLUMNS))
+
+        # Ensure a unique index on employee code for fast lookups and de-duplication
+        indexes = inspector.get_indexes("employees")
+        has_unique_code = any(
+            idx.get("unique") and "code" in (idx.get("column_names") or [])
+            for idx in indexes
+        )
+        if not has_unique_code:
+            with engine.begin() as conn:
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_employees_code ON employees (code)"))
+            actions.append("index:employees.code")
 
     return actions
 
