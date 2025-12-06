@@ -21,11 +21,15 @@ from app import (  # noqa: E402
     Flight,
     MaintenanceItem,
     RosterEntry,
+    RosterTemplateDay,
+    RosterTemplateWeek,
+    Staff,
     SYD_TZ,
     WeeklyRosterTemplate,
     app,
     db,
     ensure_flight_schema,
+    ensure_roster_schema,
     log_audit,
 )
 
@@ -39,6 +43,7 @@ def seed_office_data():
     with app.app_context():
         db.create_all()
         ensure_flight_schema()
+        ensure_roster_schema()
 
         # Seed employees
         if Employee.query.count() == 0:
@@ -101,6 +106,68 @@ def seed_office_data():
                 notes="Night refueler",
             )
             db.session.add_all([r1, r2])
+
+        if Staff.query.count() == 0:
+            mg = Staff(
+                name="Mary Green",
+                code="MG",
+                employment_type="FT",
+                weekly_hours_target=38,
+                active=True,
+                skills=["domestic"],
+            )
+            tl = Staff(
+                name="Tom Lee",
+                code="TL",
+                employment_type="FT",
+                weekly_hours_target=38,
+                active=True,
+                skills=["intl"],
+            )
+            js = Staff(
+                name="Jada Singh",
+                code="JS",
+                employment_type="PT",
+                weekly_hours_target=24,
+                active=True,
+                skills=["domestic", "intl"],
+            )
+            db.session.add_all([mg, tl, js])
+            db.session.flush()
+
+            if RosterTemplateWeek.query.count() == 0:
+                default_template = RosterTemplateWeek(
+                    name="SYD_JQ_default_week_v1",
+                    description="Default rotating roster for SYD JQ operations",
+                    is_active=True,
+                )
+                db.session.add(default_template)
+                db.session.flush()
+
+                weekday_pattern = {
+                    0: [(mg, "05:00", "15:00", "operator"), (tl, "06:00", "16:00", "supervisor")],
+                    1: [(mg, "05:00", "15:00", "operator"), (js, "10:00", "18:00", "operator")],
+                    2: [(tl, "06:00", "16:00", "supervisor"), (js, "10:00", "18:00", "operator")],
+                    3: [(mg, "05:00", "15:00", "operator")],
+                    4: [(tl, "06:00", "16:00", "supervisor"), (mg, "05:00", "15:00", "operator")],
+                    5: [(js, "08:00", "16:00", "operator")],
+                    6: [(tl, "06:00", "14:00", "supervisor")],
+                }
+
+                for weekday, shifts in weekday_pattern.items():
+                    for staff_member, start_str, end_str, role in shifts:
+                        start_parts = [int(part) for part in start_str.split(":")]
+                        end_parts = [int(part) for part in end_str.split(":")]
+                        db.session.add(
+                            RosterTemplateDay(
+                                template_id=default_template.id,
+                                weekday=weekday,
+                                staff_id=staff_member.id,
+                                start_local=time(start_parts[0], start_parts[1]),
+                                end_local=time(end_parts[0], end_parts[1]),
+                                role=role,
+                            )
+                        )
 
         if WeeklyRosterTemplate.query.count() == 0:
             employees = {emp.name: emp for emp in Employee.query.all()}
