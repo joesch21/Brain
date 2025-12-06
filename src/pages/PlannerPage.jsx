@@ -2,7 +2,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import "../styles/planner.css";
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
-import { fetchFlights, fetchRuns } from "../lib/apiClient";
+import {
+  fetchDailyRoster,
+  fetchFlights,
+  fetchRuns,
+  fetchStaffRuns,
+} from "../lib/apiClient";
 
 // --- small helpers ---------------------------------------------------------
 
@@ -13,6 +18,8 @@ function todayISO() {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
+
+const DEFAULT_AIRLINE = "JQ";
 
 // Extract airline code from a flight number, e.g. "JQ719" -> "JQ".
 function getAirlineCode(flightNumber) {
@@ -52,6 +59,13 @@ function classifyRunGroup(run) {
   if (mins < 12 * 60) return "AM";
   if (mins < 17 * 60) return "MIDDAY";
   return "EVENING";
+}
+
+function formatLocalTimeLabel(value) {
+  if (!value || typeof value !== "string") return "—";
+  if (value.length >= 16) return value.slice(11, 16);
+  if (value.length >= 5) return value.slice(0, 5);
+  return value;
 }
 
 // --- summary computation ----------------------------------------------------
@@ -119,9 +133,29 @@ function normalizeRuns(data) {
 
 function formatRequestError(label, err) {
   if (!err) return label;
+  const validationMessage =
+    err?.data && err.data.type === "validation_error" && err.data.error;
+  if (validationMessage) {
+    return `${label} validation – ${validationMessage}`;
+  }
+
   const statusLabel = err.status ?? "network";
-  const message = err.message || "Request failed";
+  const message = (err.data && err.data.error) || err.message || "Request failed";
   return `${label} ${statusLabel} – ${message}`;
+}
+
+function normalizeRoster(data) {
+  if (!data) return [];
+  if (Array.isArray(data.shifts)) return data.shifts;
+  if (Array.isArray(data?.roster?.shifts)) return data.roster.shifts;
+  return [];
+}
+
+function normalizeStaffRuns(data) {
+  if (!data) return { runs: [], unassigned: [] };
+  const runs = Array.isArray(data.runs) ? data.runs : Array.isArray(data) ? data : [];
+  const unassigned = Array.isArray(data.unassigned) ? data.unassigned : [];
+  return { runs, unassigned };
 }
 
 // --- subcomponents ----------------------------------------------------------
@@ -702,11 +736,17 @@ const PlannerPage = () => {
   const [date, setDate] = useState(todayISO());
   const [flights, setFlights] = useState([]);
   const [runs, setRuns] = useState([]);
+  const [staffRuns, setStaffRuns] = useState({ runs: [], unassigned: [] });
+  const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
+  const [loadingStaffRuns, setLoadingStaffRuns] = useState(false);
   const [error, setError] = useState("");
   const [runsError, setRunsError] = useState("");
+  const [staffViewError, setStaffViewError] = useState("");
   const [selectedRunId, setSelectedRunId] = useState(null);
+  const [selectedStaffId, setSelectedStaffId] = useState(null);
+  const [activeTab, setActiveTab] = useState("runs");
   const [selectedFlightKey, setSelectedFlightKey] = useState(null);
   const [dragPayload, setDragPayload] = useState(null); // for cross-column DnD
   // Which run card (if any) is currently hovered as a drop target
@@ -763,13 +803,37 @@ const PlannerPage = () => {
     );
   }, [flights, runs]);
 
+  const staffRunsByStaffId = useMemo(() => {
+    const map = new Map();
+    (staffRuns.runs || []).forEach((run) => {
+      const staffId = run.staff_id || run.staffId || run.staff?.id;
+      if (staffId == null) return;
+      const existing = map.get(staffId) || [];
+      existing.push(run);
+      map.set(staffId, existing);
+    });
+    return map;
+  }, [staffRuns]);
+
+  const selectedStaff = useMemo(
+    () => roster.find((s) => (s.staff_id || s.staffId) === selectedStaffId),
+    [roster, selectedStaffId]
+  );
+
+  const selectedStaffRuns = useMemo(
+    () => staffRunsByStaffId.get(selectedStaffId) || [],
+    [selectedStaffId, staffRunsByStaffId]
+  );
+
   async function loadPlannerData(signal) {
     if (!date) return;
 
     setLoading(true);
     setLoadingRuns(true);
+    setLoadingStaffRuns(true);
     setError("");
     setRunsError("");
+    setStaffViewError("");
 
     try {
       const flightsResp = await fetchFlights(date, "all", { signal });
@@ -784,7 +848,7 @@ const PlannerPage = () => {
     }
 
     try {
-      const runsResp = await fetchRuns(date, { signal });
+      const runsResp = await fetchRuns(date, DEFAULT_AIRLINE, { signal });
       if (!signal?.aborted) {
         setRuns(normalizeRuns(runsResp.data));
       }
@@ -795,9 +859,34 @@ const PlannerPage = () => {
       }
     }
 
+    try {
+      const rosterResp = await fetchDailyRoster(date, { signal });
+      if (!signal?.aborted) {
+        setRoster(normalizeRoster(rosterResp.data));
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setRoster([]);
+        setStaffViewError(formatRequestError("Roster", err));
+      }
+    }
+
+    try {
+      const staffRunsResp = await fetchStaffRuns(date, DEFAULT_AIRLINE, { signal });
+      if (!signal?.aborted) {
+        setStaffRuns(normalizeStaffRuns(staffRunsResp.data));
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setStaffRuns({ runs: [], unassigned: [] });
+        setStaffViewError(formatRequestError("Staff runs", err));
+      }
+    }
+
     if (!signal?.aborted) {
       setLoading(false);
       setLoadingRuns(false);
+      setLoadingStaffRuns(false);
     }
   }
 
@@ -808,6 +897,20 @@ const PlannerPage = () => {
     loadPlannerData(controller.signal);
     return () => controller.abort();
   }, [date]);
+
+  useEffect(() => {
+    if (!roster.length) {
+      setSelectedStaffId(null);
+      return;
+    }
+    const stillExists = roster.some(
+      (s) => (s.staff_id || s.staffId) === selectedStaffId
+    );
+    if (!stillExists) {
+      const firstStaff = roster[0];
+      setSelectedStaffId(firstStaff.staff_id || firstStaff.staffId);
+    }
+  }, [roster, selectedStaffId]);
 
   async function updateFlightRun(flightRunId, patch) {
     try {
@@ -898,7 +1001,7 @@ const PlannerPage = () => {
       }
 
       setLoadingRuns(true);
-      const runsResp = await fetchRuns(date);
+      const runsResp = await fetchRuns(date, DEFAULT_AIRLINE);
       const runsData = runsResp.data || {};
       setRuns(normalizeRuns(runsData));
 
@@ -1093,38 +1196,185 @@ const PlannerPage = () => {
         )}
 
       {!error && (
-        <main className="planner-main">
-          <FlightListColumn
-            flights={flights}
-            unassignedFlights={unassignedFlights}
-            flightToRunMap={flightToRunMap}
-            selectedFlightKey={selectedFlightKey}
-            onSelectFlight={handleSelectFlight}
-            onUnassignedDragStart={handleUnassignedDragStart}
-            onUnassignedDrop={handleDropOnUnassigned}
-            isDraggingRunFlight={isDraggingRunFlight}
-            isUnassignedHover={hoverUnassigned}
-            onUnassignedDragEnter={() => setHoverUnassigned(true)}
-            onUnassignedDragLeave={() => setHoverUnassigned(false)}
-          />
-          <RunsGridColumn
-            runs={runs}
-            selectedRunId={selectedRunId}
-            onSelectRun={handleSelectRun}
-            onRunsReorder={handleRunsReorder}
-            onRunDropFromOutside={handleDropOnRunCard}
-            onRunFlightDragStart={handleRunFlightDragStart}
-            isDraggingUnassignedFlight={isDraggingUnassignedFlight}
-            hoverRunId={hoverRunId}
-            onRunCardDragEnter={setHoverRunId}
-            onRunCardDragLeave={() => setHoverRunId(null)}
-          />
-          <RunSheetColumn
-            runs={runs}
-            selectedRunId={selectedRunId}
-            onUpdateFlightRun={updateFlightRun}
-          />
-        </main>
+        <>
+          <div className="planner-tabs">
+            <button
+              type="button"
+              className={activeTab === "runs" ? "active" : ""}
+              onClick={() => setActiveTab("runs")}
+            >
+              Runs View
+            </button>
+            <button
+              type="button"
+              className={activeTab === "staff" ? "active" : ""}
+              onClick={() => setActiveTab("staff")}
+            >
+              Staff View
+            </button>
+          </div>
+
+          {activeTab === "runs" ? (
+            <main className="planner-main">
+              <FlightListColumn
+                flights={flights}
+                unassignedFlights={unassignedFlights}
+                flightToRunMap={flightToRunMap}
+                selectedFlightKey={selectedFlightKey}
+                onSelectFlight={handleSelectFlight}
+                onUnassignedDragStart={handleUnassignedDragStart}
+                onUnassignedDrop={handleDropOnUnassigned}
+                isDraggingRunFlight={isDraggingRunFlight}
+                isUnassignedHover={hoverUnassigned}
+                onUnassignedDragEnter={() => setHoverUnassigned(true)}
+                onUnassignedDragLeave={() => setHoverUnassigned(false)}
+              />
+              <RunsGridColumn
+                runs={runs}
+                selectedRunId={selectedRunId}
+                onSelectRun={handleSelectRun}
+                onRunsReorder={handleRunsReorder}
+                onRunDropFromOutside={handleDropOnRunCard}
+                onRunFlightDragStart={handleRunFlightDragStart}
+                isDraggingUnassignedFlight={isDraggingUnassignedFlight}
+                hoverRunId={hoverRunId}
+                onRunCardDragEnter={setHoverRunId}
+                onRunCardDragLeave={() => setHoverRunId(null)}
+              />
+              <RunSheetColumn
+                runs={runs}
+                selectedRunId={selectedRunId}
+                onUpdateFlightRun={updateFlightRun}
+              />
+            </main>
+          ) : (
+            <section className="planner-staff-view">
+              <div className="planner-staff-columns">
+                <div className="planner-staff-roster">
+                  <div className="planner-staff-header">
+                    <h3>Rostered staff</h3>
+                    {loadingStaffRuns && <span className="muted">Loading…</span>}
+                  </div>
+                  {staffViewError && (
+                    <div className="planner-status planner-status--warn">
+                      {staffViewError}
+                    </div>
+                  )}
+                  {!staffViewError && !roster.length && !loadingStaffRuns && (
+                    <div className="planner-status planner-status--warn">
+                      No roster entries for this date.
+                    </div>
+                  )}
+                  <ul>
+                    {roster.map((shift) => {
+                      const runList = staffRunsByStaffId.get(
+                        shift.staff_id || shift.staffId
+                      );
+                      const assignedFlights =
+                        runList?.reduce(
+                          (acc, r) => acc + (Array.isArray(r.jobs) ? r.jobs.length : 0),
+                          0
+                        ) || 0;
+                      const isSelected =
+                        selectedStaffId === (shift.staff_id || shift.staffId);
+                      return (
+                        <li
+                          key={shift.staff_id || shift.staffId}
+                          className={isSelected ? "selected" : ""}
+                          onClick={() =>
+                            setSelectedStaffId(shift.staff_id || shift.staffId)
+                          }
+                        >
+                          <div className="planner-staff-title">
+                            <strong>{shift.staff_code}</strong> {shift.staff_name}
+                          </div>
+                          <div className="planner-staff-meta">
+                            Shift {shift.start_local || "?"}–
+                            {shift.end_local || "?"} · Flights: {assignedFlights}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+                <div className="planner-staff-runs">
+                  <h3>Staff runs</h3>
+                  {!selectedStaff && (
+                    <p className="muted">Select a rostered staff member.</p>
+                  )}
+                  {selectedStaff && (
+                    <div className="planner-staff-detail">
+                      <div className="planner-staff-detail-header">
+                        <div>
+                          <div className="planner-staff-title">
+                            <strong>{selectedStaff.staff_code}</strong>{" "}
+                            {selectedStaff.staff_name}
+                          </div>
+                          <div className="planner-staff-meta">
+                            Shift {selectedStaff.start_local || "?"}–
+                            {selectedStaff.end_local || "?"}
+                          </div>
+                        </div>
+                        <div className="planner-staff-meta">
+                          Employment: {selectedStaff.employment_type || "n/a"}
+                        </div>
+                      </div>
+
+                      {!selectedStaffRuns.length && (
+                        <div className="planner-status planner-status--warn">
+                          No flights assigned to this staff member.
+                        </div>
+                      )}
+
+                      {selectedStaffRuns.map((run) => (
+                        <div key={run.id} className="planner-staff-run-card">
+                          <div className="planner-staff-run-header">
+                            <div>
+                              <strong>Run #{run.id}</strong>
+                            </div>
+                            <div className="planner-staff-meta">
+                              {run.shift_start || "?"}–{run.shift_end || "?"}
+                            </div>
+                          </div>
+                          <ul>
+                            {(run.jobs || []).map((job) => (
+                              <li key={`${run.id}-${job.sequence}`}>
+                                <span className="planner-job-seq">{job.sequence + 1}.</span>
+                                <span className="planner-job-flight">{job.flight_number || ""}</span>
+                                <span className="planner-job-time">
+                                  {formatLocalTimeLabel(job.etd_local)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="planner-unassigned-staff">
+                <h4>
+                  Unassigned flights ({(staffRuns.unassigned || []).length})
+                </h4>
+                {(staffRuns.unassigned || []).length === 0 ? (
+                  <p className="muted">All flights are assigned to staff.</p>
+                ) : (
+                  <ul>
+                    {(staffRuns.unassigned || []).map((f) => (
+                      <li key={f.flight_id}>
+                        <span className="planner-job-flight">{f.flight_number}</span>
+                        <span className="planner-job-time">
+                          {formatLocalTimeLabel(f.etd_local)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       <footer className="planner-footer">
