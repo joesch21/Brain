@@ -152,12 +152,24 @@ def ensure_roster_schema():
     existing_tables = set(inspector.get_table_names())
     actions: list[str] = []
 
-    if "weekly_roster_templates" not in existing_tables:
-        table = db.metadata.tables.get("weekly_roster_templates")
-        if table is not None:
-            with db.engine.begin() as conn:
-                db.metadata.create_all(bind=conn, tables=[table])
-            actions.append("created:weekly_roster_templates")
+    roster_tables = (
+        "staff",
+        "roster_template_weeks",
+        "roster_template_days",
+        "weekly_roster_templates",
+    )
+
+    to_create = [
+        db.metadata.tables[name]
+        for name in roster_tables
+        if name in db.metadata.tables and name not in existing_tables
+    ]
+
+    if to_create:
+        with db.engine.begin() as conn:
+            db.metadata.create_all(bind=conn, tables=to_create)
+        for table in to_create:
+            actions.append(f"created:{table.name}")
 
     return actions
 
@@ -489,6 +501,49 @@ class WeeklyRosterTemplate(db.Model):
     employee = db.relationship("Employee")
 
 
+class Staff(db.Model):
+    __tablename__ = "staff"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    code = db.Column(db.String(20), nullable=False)
+    employment_type = db.Column(db.String(2), nullable=False)
+    weekly_hours_target = db.Column(db.Integer, nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    skills = db.Column(db.JSON, nullable=True)
+
+
+class RosterTemplateWeek(db.Model):
+    __tablename__ = "roster_template_weeks"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    description = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=False)
+
+    days = db.relationship(
+        "RosterTemplateDay", back_populates="template", cascade="all, delete-orphan"
+    )
+
+
+class RosterTemplateDay(db.Model):
+    __tablename__ = "roster_template_days"
+
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(
+        db.Integer, db.ForeignKey("roster_template_weeks.id"), nullable=False
+    )
+    weekday = db.Column(db.Integer, nullable=False)  # 0=Mon .. 6=Sun
+    staff_id = db.Column(db.Integer, db.ForeignKey("staff.id"), nullable=False)
+    start_local = db.Column(db.Time, nullable=False)
+    end_local = db.Column(db.Time, nullable=False)
+    role = db.Column(db.String(64), nullable=False)
+
+    template = db.relationship("RosterTemplateWeek", back_populates="days")
+    staff = db.relationship("Staff")
+
+
+from services.roster import get_daily_roster
 from services.roster_engine import auto_assign_employees_for_date, generate_roster_for_date_range
 
 
@@ -2177,6 +2232,43 @@ def api_flights_import():
 
     db.session.commit()
     return jsonify({"ok": True, "imported": created, "date": day.isoformat()}), 201
+
+
+@app.get("/api/roster/daily")
+def api_roster_daily():
+    date_str = request.args.get("date")
+    if not date_str:
+        return json_error(
+            "date is required", status_code=400, error_type="validation_error"
+        )
+
+    try:
+        target_date = date.fromisoformat(date_str)
+    except Exception:
+        return json_error(
+            "Invalid date format; expected YYYY-MM-DD.",
+            status_code=400,
+            error_type="validation_error",
+            context={"date": date_str},
+        )
+
+    try:
+        ensure_roster_schema()
+        roster = get_daily_roster(target_date)
+        return jsonify({"ok": True, "roster": roster})
+    except ValueError as exc:
+        return json_error(
+            str(exc),
+            status_code=400,
+            error_type="validation_error",
+            context={"date": target_date.isoformat()},
+        )
+    except Exception:  # noqa: BLE001
+        app.logger.exception("Failed to build daily roster")
+        return json_error(
+            "Internal error while building roster.",
+            context={"date": target_date.isoformat()},
+        )
 
 
 @app.post("/api/roster/generate")
