@@ -41,10 +41,6 @@ from scripts.schema_utils import (
     ensure_flights_schema,
     ensure_run_schema,
 )
-from scripts.employee_importer import (
-    format_import_summary,
-    import_employees_from_csv,
-)
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
@@ -201,8 +197,14 @@ def ensure_staff_run_schema():
 def import_employees_command(csv_path: str):
     """Import employees from a CSV file."""
 
+    from scripts.import_employees_from_csv import import_employees_from_csv
+
     summary = import_employees_from_csv(csv_path)
-    click.echo(format_import_summary(summary))
+    click.echo(
+        f"Import complete: processed={summary['processed']}, "
+        f"created={summary['created']}, updated={summary['updated']}, "
+        f"skipped={summary['skipped']}"
+    )
 
 
 def ensure_roster_schema():

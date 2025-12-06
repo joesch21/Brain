@@ -1,0 +1,4 @@
+name,code,role,shift,base,employment_type,weekly_hours_target,active,notes
+Mary Green,MG,operator,Day,SYD,FT,38,yes,Lead operator
+Tom Lee,TL,supervisor,Day,SYD,FT,38,yes,Supervises JQ ops
+Jada Singh,JS,operator,Evening,SYD,PT,24,yes,PT support
