@@ -26,6 +26,20 @@ FLIGHT_NEW_COLUMNS: dict[str, str] = {
     "status_code": "VARCHAR(32)",
 }
 
+# New runs schema additions (idempotent)
+RUN_NEW_COLUMNS: dict[str, str] = {
+    "operator_code": "VARCHAR(16)",
+    "label": "VARCHAR(64)",
+    "truck_id": "VARCHAR(64)",
+    "shift_id": "INTEGER",
+}
+
+RUN_FLIGHT_NEW_COLUMNS: dict[str, str] = {
+    "sequence_index": "INTEGER",
+    "planned_time": "TIME",
+    "status": "VARCHAR(32) DEFAULT 'planned'",
+}
+
 SYD_TZ_NAME = "Australia/Sydney"
 
 
@@ -62,6 +76,45 @@ def ensure_flight_columns(engine: Engine) -> list[str]:
     """Ensure the flights table has the new canonical fields."""
 
     return ensure_columns(engine, "flights", FLIGHT_NEW_COLUMNS)
+
+
+def ensure_run_schema(engine: Engine) -> list[str]:
+    """Ensure the runs-related tables exist and include new columns.
+
+    This helper keeps compatibility with legacy deployments by adding only the
+    missing columns; it is safe to run multiple times.
+    """
+
+    actions: list[str] = []
+    inspector = inspect(engine)
+
+    # Create tables if they do not exist
+    existing_tables = set(inspector.get_table_names())
+    if {"runs", "run_flights", "service_profiles", "shifts"} - existing_tables:
+        from app import db  # Late import to avoid circulars when app imports us
+
+        tables = [
+            t
+            for t in (
+                db.metadata.tables.get("runs"),
+                db.metadata.tables.get("run_flights"),
+                db.metadata.tables.get("service_profiles"),
+                db.metadata.tables.get("shifts"),
+            )
+            if t is not None
+        ]
+        if tables:
+            with engine.begin() as conn:
+                db.metadata.create_all(bind=conn, tables=tables)
+        existing_tables = set(inspector.get_table_names())
+
+    if "runs" in existing_tables:
+        actions.extend(ensure_columns(engine, "runs", RUN_NEW_COLUMNS))
+
+    if "run_flights" in existing_tables:
+        actions.extend(ensure_columns(engine, "run_flights", RUN_FLIGHT_NEW_COLUMNS))
+
+    return actions
 
 
 def _refresh_columns(engine: Engine, table: str) -> dict[str, dict]:
