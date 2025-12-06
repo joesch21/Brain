@@ -88,10 +88,30 @@ export async function fetchFlights(date, operator = "all", options = {}) {
   return request(`/api/flights?${qs.toString()}`, options);
 }
 
-export async function fetchRuns(date, options = {}) {
+export async function fetchRuns(date, airline = "JQ", options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
+  if (airline) qs.set("airline", airline);
   return request(`/api/runs${qs.toString() ? `?${qs.toString()}` : ""}`, options);
+}
+
+export async function fetchStaffRuns(date, airline = "JQ", options = {}) {
+  const qs = new URLSearchParams();
+  if (date) qs.set("date", date);
+  if (airline) qs.set("airline", airline);
+  return request(
+    `/api/staff_runs${qs.toString() ? `?${qs.toString()}` : ""}`,
+    options
+  );
+}
+
+export async function fetchDailyRoster(date, options = {}) {
+  const qs = new URLSearchParams();
+  if (date) qs.set("date", date);
+  return request(
+    `/api/roster/daily${qs.toString() ? `?${qs.toString()}` : ""}`,
+    options
+  );
 }
 
 export async function seedDemoDay(date, options = {}) {

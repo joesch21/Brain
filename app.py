@@ -2427,7 +2427,7 @@ def api_generate_runs():
     if error:
         return json_error(error, status_code=400, error_type="validation_error")
     if not airline:
-        return json_error("airline is required", status_code=400, error_type="validation_error")
+        airline = DEFAULT_AIRLINE
 
     try:
         ensure_runs_schema()
@@ -2456,7 +2456,7 @@ def api_generate_staff_runs():
     if error:
         return json_error(error, status_code=400, error_type="validation_error")
     if not airline:
-        return json_error("airline is required", status_code=400, error_type="validation_error")
+        airline = DEFAULT_AIRLINE
 
     try:
         from services.staff_runs import generate_staff_runs_for_date_airline
@@ -2488,7 +2488,7 @@ def api_runs_for_date():
     if error:
         return json_error(error, status_code=400, error_type="validation_error")
     if not airline:
-        return json_error("airline is required", status_code=400, error_type="validation_error")
+        airline = DEFAULT_AIRLINE
 
     try:
         ensure_runs_schema()
@@ -2517,7 +2517,7 @@ def api_staff_runs_for_date():
     if error:
         return json_error(error, status_code=400, error_type="validation_error")
     if not airline:
-        return json_error("airline is required", status_code=400, error_type="validation_error")
+        airline = DEFAULT_AIRLINE
 
     try:
         from services.staff_runs import get_staff_runs_for_date_airline

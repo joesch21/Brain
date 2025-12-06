@@ -190,3 +190,111 @@
   background-color: rgba(33, 150, 243, 0.06);
   transition: background-color 120ms ease-out, outline-color 120ms ease-out;
 }
+
+.planner-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.planner-tabs button {
+  border: 1px solid #ddd;
+  background: #f8f9fa;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.planner-tabs button.active {
+  background: #e3f2fd;
+  border-color: #90caf9;
+  color: #0d47a1;
+  font-weight: 600;
+}
+
+.planner-staff-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.planner-staff-columns {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 1rem;
+}
+
+.planner-staff-roster ul,
+.planner-staff-runs ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.planner-staff-roster li {
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.35rem;
+  cursor: pointer;
+}
+
+.planner-staff-roster li.selected {
+  border-color: #1976d2;
+  background: #e3f2fd;
+}
+
+.planner-staff-title {
+  font-weight: 600;
+}
+
+.planner-staff-meta {
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.planner-staff-run-card {
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.5rem;
+  background: #fafafa;
+}
+
+.planner-staff-run-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.planner-job-seq {
+  display: inline-block;
+  width: 1.5rem;
+  color: #666;
+}
+
+.planner-job-flight {
+  font-weight: 600;
+  margin-right: 0.5rem;
+}
+
+.planner-job-time {
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.planner-unassigned-staff ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.35rem;
+}
+
+.planner-unassigned-staff li {
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  background: #fff;
+}

@@ -38,6 +38,10 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [roster, setRoster] = useState([]);
+  const [staffRuns, setStaffRuns] = useState({ runs: [], unassigned: [] });
+  const [staffingError, setStaffingError] = useState("");
+
   const [testingApis, setTestingApis] = useState(false);
   const [apiTests, setApiTests] = useState([]);
 
@@ -49,6 +53,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
     try {
       setLoading(true);
       setError("");
+      setStaffingError("");
       const airlineSuffix =
         selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
           ? `&airline=${encodeURIComponent(selectedAirline)}`
@@ -69,10 +74,46 @@ const SystemStatusCard = ({ selectedAirline }) => {
           "Scheduling backend unavailable – check Code_Crafter2 / database."
         );
       }
+
+      const rosterResp = await fetchApiStatus(
+        `/api/roster/daily?date=${encodeURIComponent(targetDate)}`
+      );
+      if (rosterResp.ok) {
+        const shifts =
+          rosterResp.data?.roster?.shifts || rosterResp.data?.shifts || [];
+        setRoster(Array.isArray(shifts) ? shifts : []);
+      } else {
+        setRoster([]);
+        setStaffingError(formatApiError("Roster", rosterResp));
+      }
+
+      const staffAirline =
+        selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
+          ? selectedAirline
+          : DEFAULT_AIRLINE;
+      const staffRunsResp = await fetchApiStatus(
+        `/api/staff_runs?date=${encodeURIComponent(targetDate)}&airline=${encodeURIComponent(
+          staffAirline
+        )}`
+      );
+      if (staffRunsResp.ok) {
+        const runsPayload = staffRunsResp.data || {};
+        setStaffRuns({
+          runs: Array.isArray(runsPayload.runs) ? runsPayload.runs : [],
+          unassigned: Array.isArray(runsPayload.unassigned)
+            ? runsPayload.unassigned
+            : [],
+        });
+      } else {
+        setStaffRuns({ runs: [], unassigned: [] });
+        setStaffingError(formatApiError("Staff runs", staffRunsResp));
+      }
     } catch (err) {
       console.error(err);
       setError(err.message || "Error checking backend status.");
       setStatus(null);
+      setRoster([]);
+      setStaffRuns({ runs: [], unassigned: [] });
     } finally {
       setLoading(false);
     }
@@ -96,6 +137,14 @@ const SystemStatusCard = ({ selectedAirline }) => {
       {
         name: "Runs (date)",
         url: `/api/runs?date=${encodeURIComponent(date)}${airlineSuffix}`,
+      },
+      {
+        name: "Roster (date)",
+        url: `/api/roster/daily?date=${encodeURIComponent(date)}`,
+      },
+      {
+        name: "Staff runs (date)",
+        url: `/api/staff_runs?date=${encodeURIComponent(date)}${airlineSuffix || `&airline=${DEFAULT_AIRLINE}`}`,
       },
       {
         name: "Service profiles",
@@ -208,6 +257,13 @@ const SystemStatusCard = ({ selectedAirline }) => {
     with_flights: 0,
     unassigned_flights: 0,
   };
+
+  const rosteredCount = Array.isArray(roster) ? roster.length : 0;
+  const staffAssignedFlights = (staffRuns.runs || []).reduce(
+    (acc, run) => acc + (Array.isArray(run.jobs) ? run.jobs.length : 0),
+    0
+  );
+  const staffUnassignedFlights = (staffRuns.unassigned || []).length;
 
   const byAirlineEntries = Object.entries(flights.by_airline || {}).sort(
     ([a], [b]) => a.localeCompare(b)
@@ -349,6 +405,27 @@ const SystemStatusCard = ({ selectedAirline }) => {
                 <strong>“Auto-assign runs for this day”</strong> on Runs
                 Overview or Planner.
               </p>
+            </div>
+
+            <div className="machine-room-status-col" style={{ minWidth: 220 }}>
+              <h4>Staffing snapshot ({status.date})</h4>
+              <p>
+                <strong>Rostered staff:</strong> {rosteredCount}
+              </p>
+              <p>
+                <strong>Flights assigned:</strong> {staffAssignedFlights}
+              </p>
+              <p>
+                <strong>Unassigned flights:</strong> {staffUnassignedFlights}
+              </p>
+              {staffingError && (
+                <p style={{ color: "#b71c1c" }}>{staffingError}</p>
+              )}
+              {staffUnassignedFlights > 0 && !staffingError && (
+                <p style={{ fontSize: "0.85rem", color: "#b26a00" }}>
+                  {staffUnassignedFlights} flights unassigned today. <a href="/planner">Review in Planner.</a>
+                </p>
+              )}
             </div>
           </div>
         </>
