@@ -90,6 +90,82 @@ class TestImportFlow:
         assert len(data["flights"]) == 1
         assert data["flights"][0]["flight_number"] == "QF200"
 
+    def test_api_flights_returns_empty_payload_when_no_flights(self):
+        target_date = date(2025, 12, 6)
+
+        resp = self.client.get("/api/flights", query_string={"date": target_date.isoformat()})
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data == {"date": target_date.isoformat(), "flights": []}
+
+    def test_api_flights_orders_results_by_time(self):
+        target_date = date(2025, 12, 6)
+        with app.app_context():
+            db.session.add(
+                Flight(
+                    flight_number="JQ300",
+                    date=target_date,
+                    origin="SYD",
+                    destination="MEL",
+                    etd_local=datetime(2025, 12, 6, 11, 0, tzinfo=SYD_TZ),
+                )
+            )
+            db.session.add(
+                Flight(
+                    flight_number="QF100",
+                    date=target_date,
+                    origin="SYD",
+                    destination="BNE",
+                    etd_local=datetime(2025, 12, 6, 9, 0, tzinfo=SYD_TZ),
+                )
+            )
+            db.session.commit()
+
+        resp = self.client.get("/api/flights", query_string={"date": target_date.isoformat()})
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert [f["flight_number"] for f in data["flights"]] == ["QF100", "JQ300"]
+
+    def test_api_flights_accepts_operator_alias(self):
+        target_date = date(2025, 12, 6)
+        with app.app_context():
+            db.session.add(
+                Flight(
+                    flight_number="JQ400",
+                    date=target_date,
+                    origin="SYD",
+                    destination="MEL",
+                )
+            )
+            db.session.add(
+                Flight(
+                    flight_number="VA500",
+                    date=target_date,
+                    origin="SYD",
+                    destination="BNE",
+                )
+            )
+            db.session.commit()
+
+        resp = self.client.get(
+            "/api/flights", query_string={"date": target_date.isoformat(), "operator": "all"}
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert len(data["flights"]) == 2
+        assert {f["flight_number"] for f in data["flights"]} == {"JQ400", "VA500"}
+
+    def test_api_flights_rejects_invalid_airline(self):
+        resp = self.client.get(
+            "/api/flights", query_string={"date": date(2025, 12, 6).isoformat(), "airline": "XXX"}
+        )
+
+        assert resp.status_code == 400
+        assert "Unsupported airline" in resp.get_json().get("error", "")
+
     def test_import_live_validates_airline_param(self):
         resp = self.client.post("/api/import/live")
         assert resp.status_code == 400

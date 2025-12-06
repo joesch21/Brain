@@ -2004,41 +2004,59 @@ def api_flights_for_date():
       { "date": "YYYY-MM-DD", "flights": [ ... ] }
     """
     day = _ops_get_date_from_query()
-    airline_filter, error = parse_airline_filter(request.args.get("airline"))
+    raw_airline = request.args.get("airline")
+    if raw_airline is None:
+        raw_airline = request.args.get("operator")
+
+    airline_filter, error = parse_airline_filter(raw_airline)
     if error:
         return jsonify({"error": error}), 400
 
-    query = Flight.query.filter(Flight.date == day)
-    if airline_filter:
-        query = query.filter(Flight.flight_number.ilike(f"{airline_filter}%"))
+    try:
+        query = Flight.query.filter(Flight.date == day)
+        if airline_filter:
+            query = query.filter(Flight.flight_number.ilike(f"{airline_filter}%"))
 
-    flights = query.order_by(Flight.etd_local.asc().nullslast(), Flight.eta_local.asc().nullslast()).all()
+        flights = query.order_by(Flight.etd_local.asc(), Flight.eta_local.asc()).all()
 
-    payload: list[dict] = []
-    for f in flights:
-        etd_local = f.etd_local
-        if isinstance(etd_local, datetime) and etd_local.tzinfo is None:
-            etd_local = etd_local.replace(tzinfo=SYD_TZ)
+        payload: list[dict] = []
+        for f in flights:
+            etd_local = f.etd_local
+            if isinstance(etd_local, datetime) and etd_local.tzinfo is None:
+                etd_local = etd_local.replace(tzinfo=SYD_TZ)
 
-        time_val = etd_local or f.eta_local
-        time_local = _format_time_for_display(time_val)
-        airline = "".join(ch for ch in (f.flight_number or "") if ch.isalpha())[:3] or "UNK"
+            time_val = etd_local or f.eta_local
+            time_local = _format_time_for_display(time_val)
+            airline = "".join(ch for ch in (f.flight_number or "") if ch.isalpha())[:3] or "UNK"
 
-        payload.append(
-            {
-                "id": f.id,
-                "flight_number": f.flight_number,
-                "destination": f.destination,
-                "origin": f.origin,
-                "time_local": time_local,
-                "etd_local": etd_local.isoformat() if etd_local else None,
-                "operator_code": airline,
-                "aircraft_type": None,
-                "notes": f.notes or "",
-            }
+            payload.append(
+                {
+                    "id": f.id,
+                    "flight_number": f.flight_number,
+                    "destination": f.destination,
+                    "origin": f.origin,
+                    "time_local": time_local,
+                    "etd_local": etd_local.isoformat() if etd_local else None,
+                    "operator_code": airline,
+                    "aircraft_type": None,
+                    "notes": f.notes or "",
+                }
+            )
+
+        return jsonify({"date": day.isoformat(), "flights": payload}), 200
+
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("/api/flights failed for date=%s airline=%s", day, airline_filter)
+        return (
+            jsonify(
+                {
+                    "error": "Internal error while fetching flights.",
+                    "date": day.isoformat() if day else None,
+                    "airline": airline_filter,
+                }
+            ),
+            500,
         )
-
-    return jsonify({"date": day.isoformat(), "flights": payload})
 
 
 @app.post("/api/flights/import")
