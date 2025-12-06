@@ -2426,6 +2426,36 @@ def api_roster_daily():
         )
 
 
+@app.post("/api/roster/load_seed")
+def api_roster_load_seed():
+    """Proxy to CodeCrafter2 to load seed staff + roster templates."""
+
+    try:
+        upstream_resp = requests.post(
+            f"{CODECRAFTER_BASE}/api/roster/load_seed", timeout=60
+        )
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to call CodeCrafter2 roster seed endpoint")
+        return jsonify({"ok": False, "error": f"Failed to load roster seed: {exc}"}), 502
+
+    try:
+        payload = upstream_resp.json()
+    except ValueError:
+        payload = None
+
+    if not upstream_resp.ok:
+        message = None
+        if isinstance(payload, dict):
+            message = payload.get("error") or payload.get("message")
+        message = message or upstream_resp.text or "Upstream roster seed failed"
+        return (
+            jsonify({"ok": False, "error": message}),
+            upstream_resp.status_code or 502,
+        )
+
+    return jsonify(payload or {"ok": True}), upstream_resp.status_code
+
+
 @app.post("/api/roster/generate")
 def api_generate_roster_from_template():
     payload = request.get_json(silent=True) or {}

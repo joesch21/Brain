@@ -50,6 +50,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [seeding, setSeeding] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState("");
+  const [rosterSeedLoading, setRosterSeedLoading] = useState(false);
+  const [rosterSeedStatus, setRosterSeedStatus] = useState(null);
 
   async function loadStatus(targetDate) {
     try {
@@ -229,6 +231,40 @@ const SystemStatusCard = ({ selectedAirline }) => {
     }
   }
 
+  async function loadRosterSeed() {
+    setRosterSeedStatus(null);
+    try {
+      setRosterSeedLoading(true);
+      const resp = await fetch("/api/roster/load_seed", { method: "POST" });
+      const body = await resp.json().catch(() => null);
+
+      if (!resp.ok || body?.ok === false) {
+        const message =
+          (body && (body.error || body.message)) ||
+          `Failed to load roster seed (${resp.status})`;
+        setRosterSeedStatus({ ok: false, message, summary: body || null });
+        return;
+      }
+
+      setRosterSeedStatus({
+        ok: true,
+        message: "Staff + roster template loaded.",
+        summary: body,
+      });
+
+      await loadStatus(date);
+    } catch (err) {
+      console.error(err);
+      setRosterSeedStatus({
+        ok: false,
+        message: err?.message || "Network error while loading roster seed.",
+        summary: null,
+      });
+    } finally {
+      setRosterSeedLoading(false);
+    }
+  }
+
   async function autoAssignEmployees() {
     const targetAirline =
       selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
@@ -351,12 +387,42 @@ const SystemStatusCard = ({ selectedAirline }) => {
           >
             {assigning ? "Assigning…" : "Auto-assign employees"}
           </button>
+          <button
+            type="button"
+            onClick={loadRosterSeed}
+            disabled={rosterSeedLoading}
+            style={{ fontSize: "0.8rem", marginLeft: "0.5rem" }}
+          >
+            {rosterSeedLoading
+              ? "Loading roster template…"
+              : "Load staff & roster template"}
+          </button>
         </div>
       </div>
       {assignmentMessage && (
         <p className="muted" style={{ marginTop: "0.35rem" }}>
           {assignmentMessage}
         </p>
+      )}
+      {rosterSeedStatus && (
+        <div
+          className={`roster-seed-status ${
+            rosterSeedStatus.ok
+              ? "roster-seed-status--ok"
+              : "roster-seed-status--error"
+          }`}
+        >
+          <div>{rosterSeedStatus.message}</div>
+          {rosterSeedStatus.summary?.roster_result?.templates?.length > 0 && (
+            <div className="roster-seed-summary">
+              {rosterSeedStatus.summary.roster_result.templates.map((tpl) => (
+                <div key={tpl.template} className="roster-seed-summary__item">
+                  <strong>{tpl.template}</strong>: {tpl.lines} lines
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {loading && <p>Checking backend…</p>}
