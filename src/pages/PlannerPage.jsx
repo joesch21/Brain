@@ -195,12 +195,13 @@ function FlightListColumn({
                 <th>Flight</th>
                 <th>Dest</th>
                 <th>Airline</th>
+                <th>Assigned</th>
               </tr>
             </thead>
             <tbody>
               {safeUnassigned.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={{ fontStyle: "italic" }}>
+                  <td colSpan={5} style={{ fontStyle: "italic" }}>
                     All flights assigned for this day.
                   </td>
                 </tr>
@@ -210,6 +211,8 @@ function FlightListColumn({
                   const timeStr = f.time_local || f.timeLocal || "";
                   const dest = f.destination || f.dest || "";
                   const airline = getAirlineCode(flightNumber);
+                  const assignedLabel =
+                    f.assigned_employee_name || f.assigned_employee || "Unassigned";
                   const key = `${flightNumber}|${timeStr}`;
                   const isSelected = selectedFlightKey === key;
 
@@ -233,6 +236,7 @@ function FlightListColumn({
                       <td>{flightNumber}</td>
                       <td>{dest}</td>
                       <td>{airline}</td>
+                      <td>{assignedLabel}</td>
                     </tr>
                   );
                 })
