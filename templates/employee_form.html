@@ -19,18 +19,38 @@
 
   <form method="post" class="form-grid">
     <label>
+      Code
+      <input type="text" name="code" required value="{{ employee.code if employee else '' }}" />
+    </label>
+
+    <label>
       Name
-      <input type="text" name="name" required value="{{ employee.name if employee else '' }}" />
+      <input type="text" name="name" value="{{ employee.name if employee else '' }}" />
     </label>
 
     <label>
       Role
-      <input type="text" name="role" required value="{{ employee.role if employee else '' }}" />
+      <input type="text" name="role" value="{{ employee.role if employee else '' }}" />
+    </label>
+
+    <label>
+      Employment type
+      <input type="text" name="employment_type" placeholder="FT / PT / Casual" value="{{ employee.employment_type if employee else '' }}" />
+    </label>
+
+    <label>
+      Weekly hours target
+      <input type="text" name="weekly_hours_target" placeholder="38" value="{{ employee.weekly_hours_target if employee and employee.weekly_hours_target is not none else '' }}" />
+    </label>
+
+    <label>
+      Notes
+      <input type="text" name="notes" placeholder="Optional" value="{{ employee.notes if employee and employee.notes else '' }}" />
     </label>
 
     <label>
       Shift
-      <input type="text" name="shift" placeholder="Day / Night" required value="{{ employee.shift if employee else '' }}" />
+      <input type="text" name="shift" placeholder="Day / Night" value="{{ employee.shift if employee else '' }}" />
     </label>
 
     <label>
@@ -39,7 +59,7 @@
     </label>
 
     <label class="checkbox-row">
-      <input type="checkbox" name="active" {% if not employee or employee.active %}checked{% endif %} />
+      <input type="checkbox" name="active" {% if not employee or employee.is_active %}checked{% endif %} />
       Active
     </label>
 

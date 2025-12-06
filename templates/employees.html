@@ -14,21 +14,23 @@
 
     <div class="cc-table cc-table--dense">
       <div class="cc-table__head">
+        <div>Code</div>
         <div>Name</div>
         <div>Role</div>
-        <div>Shift</div>
-        <div>Base</div>
+        <div>Employment</div>
+        <div>Weekly hrs</div>
         <div>Active</div>
         <div class="cc-table__actions">Actions</div>
       </div>
       <div class="cc-table__body">
         {% for e in employees %}
           <div class="cc-table__row">
+            <div>{{ e.code }}</div>
             <div>{{ e.name }}</div>
             <div>{{ e.role }}</div>
-            <div>{{ e.shift }}</div>
-            <div>{{ e.base or "-" }}</div>
-            <div>{% if e.active %}Yes{% else %}No{% endif %}</div>
+            <div>{{ e.employment_type or "-" }}</div>
+            <div>{{ e.weekly_hours_target if e.weekly_hours_target is not none else '-' }}</div>
+            <div>{% if e.is_active %}Yes{% else %}No{% endif %}</div>
             <div class="cc-table__actions">
               <a class="btn-secondary" href="{{ url_for('employee_edit', employee_id=e.id) }}">
                 Edit

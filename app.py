@@ -36,7 +36,15 @@ from dotenv import load_dotenv
 load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
 
 from config import CODE_CRAFTER2_API_BASE
-from scripts.schema_utils import ensure_flights_schema, ensure_run_schema
+from scripts.schema_utils import (
+    ensure_employee_schema,
+    ensure_flights_schema,
+    ensure_run_schema,
+)
+from scripts.employee_importer import (
+    format_import_summary,
+    import_employees_from_csv,
+)
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
@@ -165,6 +173,16 @@ def ensure_runs_schema():
         raise
 
 
+def ensure_employee_table():
+    """Ensure the employees table includes the latest columns/indexes."""
+
+    try:
+        return ensure_employee_schema(db.engine)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[schema] Failed to ensure employee schema: {exc}")
+        raise
+
+
 def ensure_staff_run_schema():
     """Ensure the staff run tables exist."""
 
@@ -176,6 +194,15 @@ def ensure_staff_run_schema():
     except Exception as exc:  # noqa: BLE001
         print(f"[schema] Failed to ensure staff run schema: {exc}")
         raise
+
+
+@app.cli.command("import-employees")
+@click.argument("csv_path")
+def import_employees_command(csv_path: str):
+    """Import employees from a CSV file."""
+
+    summary = import_employees_from_csv(csv_path)
+    click.echo(format_import_summary(summary))
 
 
 def ensure_roster_schema():
@@ -360,11 +387,25 @@ class Employee(db.Model):
     __tablename__ = "employees"
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), nullable=False)
-    role = db.Column(db.String(80), nullable=False)
-    shift = db.Column(db.String(40), nullable=False)
+    code = db.Column(db.String(40), unique=True, nullable=False)
+    name = db.Column(db.String(120), nullable=True)
+    role = db.Column(db.String(80), nullable=True)
+    shift = db.Column(db.String(40), nullable=True)
     base = db.Column(db.String(40), nullable=True)
-    active = db.Column(db.Boolean, default=True)
+    employment_type = db.Column(db.String(16), nullable=True)
+    weekly_hours_target = db.Column(db.Integer, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    is_active = db.Column("active", db.Boolean, default=True, nullable=False)
+    active = db.synonym("is_active")
+    created_at = db.Column(
+        db.DateTime(timezone=True), server_default=db.func.now(), nullable=False
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        server_default=db.func.now(),
+        onupdate=db.func.now(),
+        nullable=False,
+    )
 
 
 class Flight(db.Model):
@@ -1289,7 +1330,8 @@ def employees_index():
     """
     List all employees (crew members) for supervisors/admins.
     """
-    employees = Employee.query.order_by(Employee.name.asc()).all()
+    ensure_employee_table()
+    employees = Employee.query.order_by(Employee.name.asc(), Employee.code.asc()).all()
     return render_template("employees.html", employees=employees)
 
 
@@ -1301,22 +1343,39 @@ def employee_create():
     GET: render empty form.
     POST: validate fields and insert Employee row.
     """
+    ensure_employee_table()
     if request.method == "POST":
+        code = request.form.get("code", "").strip().upper()
         name = request.form.get("name", "").strip()
         role = request.form.get("role", "").strip()
+        employment_type = request.form.get("employment_type", "").strip()
+        weekly_hours_raw = request.form.get("weekly_hours_target", "").strip()
+        notes = request.form.get("notes", "").strip()
         shift = request.form.get("shift", "").strip()
         base = request.form.get("base", "").strip()
-        active = request.form.get("active") == "on"
+        is_active = request.form.get("active") == "on"
 
-        if not name or not role or not shift:
-            flash("Name, role and shift are required.", "error")
+        weekly_hours_target = None
+        if weekly_hours_raw:
+            try:
+                weekly_hours_target = int(weekly_hours_raw)
+            except ValueError:
+                flash("Weekly hours target must be a whole number.", "error")
+                return render_template("employee_form.html", employee=None)
+
+        if not code:
+            flash("Code is required.", "error")
         else:
             emp = Employee(
+                code=code,
                 name=name,
                 role=role,
+                employment_type=employment_type or None,
+                weekly_hours_target=weekly_hours_target,
+                notes=notes or None,
                 shift=shift,
                 base=base or None,
-                active=active,
+                is_active=is_active,
             )
             db.session.add(emp)
             db.session.flush()
@@ -1341,23 +1400,47 @@ def employee_edit(employee_id):
     """
     emp = Employee.query.get_or_404(employee_id)
 
+    ensure_employee_table()
+
     if request.method == "POST":
+        code = request.form.get("code", "").strip().upper()
         name = request.form.get("name", "").strip()
         role = request.form.get("role", "").strip()
+        employment_type = request.form.get("employment_type", "").strip()
+        weekly_hours_raw = request.form.get("weekly_hours_target", "").strip()
+        notes = request.form.get("notes", "").strip()
         shift = request.form.get("shift", "").strip()
         base = request.form.get("base", "").strip()
-        active = request.form.get("active") == "on"
+        is_active = request.form.get("active") == "on"
 
-        if not name or not role or not shift:
-            flash("Name, role and shift are required.", "error")
+        weekly_hours_target = None
+        if weekly_hours_raw:
+            try:
+                weekly_hours_target = int(weekly_hours_raw)
+            except ValueError:
+                flash("Weekly hours target must be a whole number.", "error")
+                return render_template("employee_form.html", employee=emp)
+
+        if not code:
+            flash("Code is required.", "error")
         else:
-            before = f"{emp.name} role={emp.role} shift={emp.shift} base={emp.base} active={emp.active}"
-            emp.name = name
-            emp.role = role
-            emp.shift = shift
+            before = (
+                f"{emp.code} {emp.name} role={emp.role} shift={emp.shift} base={emp.base} "
+                f"active={emp.is_active} type={emp.employment_type} hours={emp.weekly_hours_target}"
+            )
+            emp.code = code
+            emp.name = name or None
+            emp.role = role or None
+            emp.employment_type = employment_type or None
+            emp.weekly_hours_target = weekly_hours_target
+            emp.notes = notes or None
+            emp.shift = shift or None
             emp.base = base or None
-            emp.active = active
-            after = f"{emp.name} role={emp.role} shift={emp.shift} base={emp.base} active={emp.active}"
+            emp.is_active = is_active
+            after = (
+                f"{emp.code} {emp.name} role={emp.role} shift={emp.shift} base={emp.base} "
+                f"active={emp.is_active} type={emp.employment_type} hours={emp.weekly_hours_target}"
+            )
             db.session.flush()
             log_audit(
                 entity_type="Employee",
@@ -1910,6 +1993,8 @@ def render_machine_room_template():
     db_type = detect_db_type(uri)
 
     project_summary = load_project_summary()
+
+    ensure_employee_table()
 
     employee_count = Employee.query.count()
     flight_count = Flight.query.count()
