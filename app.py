@@ -795,7 +795,32 @@ def import_live():
         summary = run_three_day_import(airline)
     except FlightFetchError as exc:  # noqa: PERF203
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(exc), "airline": airline}), 503
+        app.logger.exception("Flight fetch failed for airline %s", airline)
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": str(exc),
+                    "airline": airline,
+                    "type": "fetch_error",
+                }
+            ),
+            503,
+        )
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        app.logger.exception("Unexpected error during live import for %s", airline)
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Unexpected error during import.",
+                    "airline": airline,
+                    "type": "internal_error",
+                }
+            ),
+            500,
+        )
 
     return jsonify({"ok": True, "summary": summary}), 200
 
@@ -808,7 +833,34 @@ def import_jq_live_local():
         summary = run_three_day_import(DEFAULT_AIRLINE)
     except FlightFetchError as exc:  # noqa: PERF203
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(exc), "airline": DEFAULT_AIRLINE}), 503
+        app.logger.exception("Flight fetch failed for airline %s", DEFAULT_AIRLINE)
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": str(exc),
+                    "airline": DEFAULT_AIRLINE,
+                    "type": "fetch_error",
+                }
+            ),
+            503,
+        )
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        app.logger.exception(
+            "Unexpected error during live import for %s", DEFAULT_AIRLINE
+        )
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Unexpected error during import.",
+                    "airline": DEFAULT_AIRLINE,
+                    "type": "internal_error",
+                }
+            ),
+            500,
+        )
 
     return jsonify({"ok": True, "summary": summary}), 200
 
@@ -835,6 +887,9 @@ def import_status():
             )
         except Exception:  # noqa: BLE001
             db.session.rollback()
+            app.logger.exception(
+                "Failed to fetch last import timestamp for airline %s", airline
+            )
             value = None
 
         last_import[airline] = _serialize_timestamp(value)
@@ -2089,6 +2144,8 @@ def api_status():
     flights_summary = {"total": 0, "am_total": 0, "pm_total": 0, "by_airline": {}}
     runs_summary = {"total": 0, "with_flights": 0, "unassigned_flights": 0}
 
+    flights: list[Flight] = []
+
     try:
         query = Flight.query.filter(Flight.date == day)
         if airline_filter:
@@ -2113,7 +2170,12 @@ def api_status():
                 flights_summary["am_total"] += 1
             elif 12 * 60 + 1 <= mins <= 23 * 60:
                 flights_summary["pm_total"] += 1
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        db_ok = False
+        app.logger.exception("[status] Flights query failed")
 
+    try:
         runs_query = Run.query.filter(Run.date == day)
         if airline_filter:
             runs_query = runs_query.filter(Run.airline == airline_filter)
@@ -2125,9 +2187,12 @@ def api_status():
         runs_summary["unassigned_flights"] = len(
             [f for f in flights if f.id not in assigned_flight_ids]
         )
-    except Exception as exc:  # noqa: BLE001
-        db_ok = False
-        print(f"[status] DB query failed: {exc}")
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        app.logger.exception("[status] Runs query failed")
+        runs_summary["error"] = "runs_unavailable"
+
+    runs_supported = "error" not in runs_summary
 
     payload = {
         "ok": db_ok,
@@ -2137,6 +2202,7 @@ def api_status():
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "flights": flights_summary,
         "runs": runs_summary,
+        "runs_supported": runs_supported,
     }
     return jsonify(payload)
 
