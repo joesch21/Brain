@@ -113,11 +113,42 @@
   padding: 0.25rem 0.4rem;
   background: #f0f4ff;
   border-bottom: 1px solid #ddd;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.planner-run-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.planner-run-title {
+  font-weight: 700;
 }
 
 .planner-run-card-sub {
   font-size: 0.75rem;
   color: #555;
+}
+
+.planner-run-card-meta {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f3a93;
+  white-space: nowrap;
+}
+
+.planner-subtext {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.planner-reason {
+  font-size: 0.75rem;
+  color: #9c27b0;
 }
 
 .planner-status {
@@ -138,6 +169,17 @@
   background: rgba(255, 193, 7, 0.12);
   border-left: 3px solid rgba(255, 193, 7, 0.9);
   color: #795548;
+}
+
+.planner-status--success {
+  background: rgba(76, 175, 80, 0.12);
+  border-left: 3px solid rgba(76, 175, 80, 0.9);
+  color: #2e7d32;
+}
+
+.planner-autoassign-row {
+  min-height: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 /* CWO-12/CWO-13: row containing SystemHealthBar + API test button */
