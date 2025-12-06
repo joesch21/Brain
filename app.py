@@ -25,7 +25,6 @@ from flask import (
     has_request_context,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect, text
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from dotenv import load_dotenv
@@ -33,7 +32,7 @@ from dotenv import load_dotenv
 load_dotenv()  # loads OPENAI_API_KEY, FLASK_SECRET_KEY, etc.
 
 from config import CODE_CRAFTER2_API_BASE
-from scripts.schema_utils import ensure_flight_columns
+from scripts.schema_utils import ensure_flights_schema
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
@@ -111,69 +110,19 @@ db = SQLAlchemy(app)
 
 
 def ensure_flight_schema():
-    """Ensure the flights table supports timezone-aware ETD values.
+    """Ensure the flights table matches the daa586a contract.
 
-    This lightweight helper adds ``etd_local`` when missing, ensures a
-    timestamped ``imported_at`` column for tracking import freshness, and
-    upgrades ``etd_local`` to ``TIMESTAMPTZ`` on PostgreSQL deployments where
-    the historical type was a plain ``TIME``. SQLite keeps the existing columns
-    untouched but will happily accept timezone-aware datetimes for new rows.
+    Delegates to :func:`scripts.schema_utils.ensure_flights_schema` for
+    idempotent, dialiect-aware migrations.
+
+    Returns a list of actions performed.
     """
 
     try:
-        engine = db.engine
-        inspector = inspect(engine)
-
-        if "flights" not in inspector.get_table_names():
-            return []
-
-        added: list[str] = []
-        columns = {col["name"]: col for col in inspector.get_columns("flights")}
-
-        if "etd_local" not in columns:
-            ddl = (
-                "TIMESTAMP WITH TIME ZONE"
-                if engine.dialect.name == "postgresql"
-                else "TIMESTAMP"
-            )
-            with engine.begin() as conn:
-                conn.execute(text(f"ALTER TABLE flights ADD COLUMN etd_local {ddl}"))
-            added.append("etd_local")
-            columns = {col["name"]: col for col in inspect(engine).get_columns("flights")}
-
-        if "imported_at" not in columns:
-            ddl = (
-                "TIMESTAMP WITH TIME ZONE"
-                if engine.dialect.name == "postgresql"
-                else "TIMESTAMP"
-            )
-            with engine.begin() as conn:
-                conn.execute(text(f"ALTER TABLE flights ADD COLUMN imported_at {ddl}"))
-                conn.execute(
-                    text(
-                        "UPDATE flights "
-                        "SET imported_at = COALESCE(imported_at, etd_local, CURRENT_TIMESTAMP)"
-                    )
-                )
-            added.append("imported_at")
-            columns = {col["name"]: col for col in inspect(engine).get_columns("flights")}
-
-        etd_col = columns.get("etd_local")
-        col_type = etd_col.get("type") if etd_col else None
-        if (
-            engine.dialect.name == "postgresql"
-            and col_type is not None
-            and getattr(col_type, "timezone", None) is False
-        ):
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE flights ALTER COLUMN etd_local TYPE TIMESTAMPTZ"))
-
-        added.extend(ensure_flight_columns(engine))
-
-        return added
+        return ensure_flights_schema(db.engine)
     except Exception as exc:  # noqa: BLE001
         print(f"[schema] Failed to ensure flight schema: {exc}")
-        return []
+        raise
 
 
 _PROJECT_SUMMARY_CACHE = None
@@ -341,12 +290,12 @@ class Flight(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     flight_number = db.Column(db.String(32), nullable=False)
-    airline = db.Column(db.String(8), nullable=True)
+    airline = db.Column(db.String(4), nullable=True)
     date = db.Column(db.Date, nullable=False)
     imported_at = db.Column(db.DateTime(timezone=True), nullable=True)
     origin = db.Column(db.String(32), nullable=True)
     destination = db.Column(db.String(32), nullable=True)
-    eta_local = db.Column(db.Time, nullable=True)
+    eta_local = db.Column(db.DateTime(timezone=True), nullable=True)
     etd_local = db.Column(db.DateTime(timezone=True), nullable=True)
     registration = db.Column(db.String(32), nullable=True)
     tail_number = db.Column(db.String(32), nullable=True)
@@ -605,6 +554,16 @@ def _parse_time(val):
             return dt.datetime.strptime(s, fmt).time()
         except ValueError:
             continue
+    return None
+
+
+def _combine_date_and_time(date_val: date | None, time_val: time | datetime | None):
+    if not date_val or not time_val:
+        return None
+    if isinstance(time_val, datetime):
+        return time_val if time_val.tzinfo else time_val.replace(tzinfo=SYD_TZ)
+    if isinstance(time_val, time):
+        return datetime.combine(date_val, time_val, tzinfo=SYD_TZ)
     return None
 
 
@@ -1264,7 +1223,7 @@ def flight_create():
             flash("Flight number and date are required.", "error")
         else:
             date_val = _parse_date(date_str)
-            eta_val = _parse_time(eta_str)
+            eta_val = _combine_date_and_time(date_val, _parse_time(eta_str))
             etd_val = parse_scheduled_time(date_val, etd_str, flight_number)
 
             if not date_val:
@@ -1325,7 +1284,7 @@ def flight_edit(flight_id):
             flash("Flight number and date are required.", "error")
         else:
             date_val = _parse_date(date_str)
-            eta_val = _parse_time(eta_str)
+            eta_val = _combine_date_and_time(date_val, _parse_time(eta_str))
             etd_val = parse_scheduled_time(date_val, etd_str, flight_number)
 
             if not date_val:
@@ -1360,7 +1319,7 @@ def flight_edit(flight_id):
                 flash("Flight updated.", "success")
                 return redirect(url_for("schedule_page"))
 
-    eta_value = f.eta_local.strftime("%H:%M") if f.eta_local else ""
+    eta_value = _format_time_for_display(f.eta_local)
     etd_value = _format_time_for_display(f.etd_local)
     return render_template(
         "flight_form.html",
@@ -1510,7 +1469,7 @@ def admin_import_commit(batch_id):
         try:
             if batch.import_type == "flights":
                 date_val = _parse_date(data.get("date"))
-                eta_val = _parse_time(data.get("eta_local"))
+                eta_val = _combine_date_and_time(date_val, _parse_time(data.get("eta_local")))
                 etd_val = (
                     parse_scheduled_time(date_val, data.get("etd_local"), data.get("flight_number"))
                     if date_val
