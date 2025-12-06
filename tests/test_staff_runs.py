@@ -154,6 +154,7 @@ class TestStaffRuns:
             )
             db.session.commit()
 
+        with app.app_context():
             first = generate_staff_runs_for_date_airline(target_date, "JQ")
             second = generate_staff_runs_for_date_airline(target_date, "JQ")
 
@@ -163,6 +164,19 @@ class TestStaffRuns:
             assert len(runs) == 1
             jobs = StaffRunJob.query.filter_by(staff_run_id=runs[0].id).all()
             assert len(jobs) == 1
+
+    def test_staff_runs_validation_requires_airline(self):
+        target_date = date(2025, 1, 5)
+
+        resp = self.client.get(
+            "/api/staff_runs",
+            query_string={"date": target_date.isoformat()},
+        )
+
+        assert resp.status_code == 400
+        payload = resp.get_json()
+        assert payload["ok"] is False
+        assert payload["type"] == "validation_error"
 
     def test_api_generate_and_fetch_staff_runs(self):
         target_date = date(2025, 1, 2)
@@ -195,3 +209,52 @@ class TestStaffRuns:
         assert len(data["runs"]) == 1
         assert len(data["runs"][0]["jobs"]) == 1
         assert data["runs"][0]["jobs"][0]["flight_number"] == "JQ900"
+
+    def test_runs_status_returns_per_airline_counts(self):
+        target_date = date(2025, 1, 3)
+        with app.app_context():
+            staff_a = self._seed_staff("Mary Green", "MG")
+            db.session.flush()
+            self._seed_roster(target_date, [(staff_a, time(5, 0), time(15, 0))])
+            self._seed_flight(
+                "JQ100",
+                datetime(2025, 1, 3, 6, 0, tzinfo=SYD_TZ),
+            )
+            self._seed_flight(
+                "JQ200",
+                datetime(2025, 1, 3, 7, 30, tzinfo=SYD_TZ),
+            )
+            self._seed_flight(
+                "QF300",
+                datetime(2025, 1, 3, 8, 0, tzinfo=SYD_TZ),
+                airline="QF",
+            )
+            db.session.commit()
+
+        # Generate JQ runs (QF stays unassigned)
+        resp = self.client.post(
+            "/api/staff_runs/generate",
+            query_string={"date": target_date.isoformat(), "airline": "JQ"},
+        )
+        assert resp.status_code == 200
+
+        status_resp = self.client.get(
+            "/api/runs_status",
+            query_string={"date": target_date.isoformat()},
+        )
+        assert status_resp.status_code == 200
+        summary = status_resp.get_json()
+        assert summary["ok"] is True
+
+        jq = next(item for item in summary["airlines"] if item["airline"] == "JQ")
+        qf = next(item for item in summary["airlines"] if item["airline"] == "QF")
+
+        assert jq["flights"] == 2
+        assert jq["runs"] == 1
+        assert jq["jobs"] == 2
+        assert jq["unassigned"] == 0
+
+        assert qf["flights"] == 1
+        assert qf["runs"] == 0
+        assert qf["jobs"] == 0
+        assert qf["unassigned"] == 1

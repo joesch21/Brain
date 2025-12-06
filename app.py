@@ -28,6 +28,7 @@ from flask import (
     has_request_context,
 )
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from dotenv import load_dotenv
@@ -98,6 +99,25 @@ def json_error(message: str, *, status_code: int = 500, error_type: str = "inter
     if context:
         payload["context"] = context
     return jsonify(payload), status_code
+
+
+@app.errorhandler(Exception)
+def handle_api_errors(err):
+    """Ensure all /api/* routes return JSON, even on unexpected errors."""
+
+    if not request.path.startswith("/api/"):
+        raise err
+
+    if isinstance(err, HTTPException):
+        error_type = "validation_error" if (err.code or 500) < 500 else "internal_error"
+        return json_error(
+            err.description or err.name or "Request failed",
+            status_code=err.code or 500,
+            error_type=error_type,
+        )
+
+    app.logger.exception("Unhandled API error")
+    return json_error("Internal server error", status_code=500, error_type="internal_error")
 
 
 TRUCKS = [
@@ -2456,7 +2476,12 @@ def api_generate_staff_runs():
     if error:
         return json_error(error, status_code=400, error_type="validation_error")
     if not airline:
-        airline = DEFAULT_AIRLINE
+        return json_error(
+            "airline is required",
+            status_code=400,
+            error_type="validation_error",
+            context={"date": day.isoformat()},
+        )
 
     try:
         from services.staff_runs import generate_staff_runs_for_date_airline
@@ -2517,7 +2542,12 @@ def api_staff_runs_for_date():
     if error:
         return json_error(error, status_code=400, error_type="validation_error")
     if not airline:
-        airline = DEFAULT_AIRLINE
+        return json_error(
+            "airline is required",
+            status_code=400,
+            error_type="validation_error",
+            context={"date": day.isoformat()},
+        )
 
     try:
         from services.staff_runs import get_staff_runs_for_date_airline
@@ -2525,7 +2555,7 @@ def api_staff_runs_for_date():
         ensure_flight_schema()
         ensure_staff_run_schema()
         runs_payload = get_staff_runs_for_date_airline(day, airline)
-        return jsonify(runs_payload)
+        return jsonify({"ok": True, **runs_payload})
     except Exception as exc:  # noqa: BLE001
         app.logger.exception("staff runs.fetch failed")
         return json_error(
@@ -2533,6 +2563,79 @@ def api_staff_runs_for_date():
             status_code=500,
             error_type="staff_runs_error",
             context={"date": day.isoformat(), "airline": airline, "detail": str(exc)},
+        )
+
+
+def _flight_matches_airline_code(flight, airline: str) -> bool:
+    if flight.airline and flight.airline.upper() == airline:
+        return True
+    return (flight.flight_number or "").upper().startswith(airline)
+
+
+@app.get("/api/runs_status")
+def api_runs_status():
+    day = _ops_get_date_from_query(default_to_today=False)
+    if day is None:
+        return json_error("date is required", status_code=400, error_type="validation_error")
+
+    try:
+        ensure_flight_schema()
+        ensure_staff_run_schema()
+
+        flights = Flight.query.filter(Flight.date == day).all()
+        runs = StaffRun.query.filter(StaffRun.date == day).all()
+        jobs = (
+            StaffRunJob.query.join(StaffRun)
+            .filter(StaffRun.date == day)
+            .options(db.joinedload(StaffRunJob.staff_run))
+            .all()
+        )
+
+        flights_by_airline: dict[str, list[Flight]] = {code: [] for code in SUPPORTED_AIRLINES}
+        for flight in flights:
+            for code in SUPPORTED_AIRLINES:
+                if _flight_matches_airline_code(flight, code):
+                    flights_by_airline.setdefault(code, []).append(flight)
+                    break
+
+        runs_by_airline: dict[str, list[StaffRun]] = {code: [] for code in SUPPORTED_AIRLINES}
+        for run in runs:
+            runs_by_airline.setdefault(run.airline, []).append(run)
+
+        jobs_by_airline: dict[str, list[StaffRunJob]] = {code: [] for code in SUPPORTED_AIRLINES}
+        for job in jobs:
+            if job.staff_run and job.staff_run.airline:
+                jobs_by_airline.setdefault(job.staff_run.airline, []).append(job)
+
+        airlines_summary = []
+        for airline in SUPPORTED_AIRLINES_ORDERED:
+            airline_flights = flights_by_airline.get(airline, [])
+            airline_runs = runs_by_airline.get(airline, [])
+            airline_jobs = jobs_by_airline.get(airline, [])
+
+            assigned_flight_ids = {job.flight_id for job in airline_jobs if job.flight_id is not None}
+            unassigned = len(
+                [flight for flight in airline_flights if flight.id not in assigned_flight_ids]
+            )
+
+            airlines_summary.append(
+                {
+                    "airline": airline,
+                    "flights": len(airline_flights),
+                    "runs": len(airline_runs),
+                    "jobs": len(airline_jobs),
+                    "unassigned": unassigned,
+                }
+            )
+
+        return jsonify({"ok": True, "date": day.isoformat(), "airlines": airlines_summary})
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("runs status fetch failed")
+        return json_error(
+            "Internal error while fetching runs status.",
+            status_code=500,
+            error_type="staff_runs_error",
+            context={"date": day.isoformat(), "detail": str(exc)},
         )
 
 

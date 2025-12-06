@@ -105,6 +105,15 @@ export async function fetchStaffRuns(date, airline = "JQ", options = {}) {
   );
 }
 
+export async function fetchRunsStatus(date, options = {}) {
+  const qs = new URLSearchParams();
+  if (date) qs.set("date", date);
+  return request(
+    `/api/runs_status${qs.toString() ? `?${qs.toString()}` : ""}`,
+    options
+  );
+}
+
 export async function fetchDailyRoster(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
