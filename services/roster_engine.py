@@ -113,6 +113,12 @@ def generate_roster_for_date_range(start_date: date, end_date: date) -> dict:
     return {"days": days, "entries_created": created, "entries_updated": updated}
 
 
+def generate_roster_for_date(target_date: date) -> dict:
+    """Populate dated roster entries for a single day from the weekly template."""
+
+    return generate_roster_for_date_range(target_date, target_date)
+
+
 def auto_assign_employees_for_date(target_date: date, airline: str = "JQ") -> dict:
     """Assign rostered employees to flights for the given airline/day."""
 
