@@ -4,6 +4,7 @@ import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 import {
   fetchDailyRoster,
+  fetchEmployeeAssignments,
   fetchFlights,
   fetchRuns,
   fetchStaffRuns,
@@ -175,6 +176,8 @@ function FlightListColumn({
   flights,
   unassignedFlights,
   flightToRunMap,
+  assignmentByFlightId,
+  assignmentsLoading,
   selectedFlightKey,
   onSelectFlight,
   onUnassignedDragStart,
@@ -312,6 +315,7 @@ function FlightListColumn({
               <th>Flight</th>
               <th>Dest</th>
               <th>Airline</th>
+              <th>Staff</th>
               <th>Assigned</th>
             </tr>
           </thead>
@@ -321,8 +325,12 @@ function FlightListColumn({
               const timeStr = f.time_local || f.timeLocal || "";
               const dest = f.destination || f.dest || "";
               const airline = getAirlineCode(flightNumber);
+              const flightId = f.id || f.flight_id;
               const key = `${flightNumber}|${timeStr}`;
               const assignedRun = flightToRunMap[key];
+              const assignedForFlight =
+                assignmentByFlightId?.get(flightId) || [];
+              const primaryAssignment = assignedForFlight[0];
               const isSelected = selectedFlightKey === key;
 
               return (
@@ -338,6 +346,18 @@ function FlightListColumn({
                   <td>{flightNumber}</td>
                   <td>{dest}</td>
                   <td>{airline}</td>
+                  <td>
+                    {assignmentsLoading ? (
+                      <span className="planner-subtext">Loading…</span>
+                    ) : primaryAssignment ? (
+                      <>
+                        <strong>{primaryAssignment.staff_code}</strong>{" "}
+                        {primaryAssignment.staff_name}
+                      </>
+                    ) : (
+                      <span className="flight-unassigned">Unassigned</span>
+                    )}
+                  </td>
                   <td>
                     {assignedRun ? (
                       <span className="tag tag--assigned">
@@ -850,12 +870,14 @@ const PlannerPage = () => {
   const [date, setDate] = useState(todayISO());
   const [airline, setAirline] = useState(DEFAULT_AIRLINE);
   const [flights, setFlights] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [runs, setRuns] = useState([]);
   const [unassigned, setUnassigned] = useState([]);
   const [staffRuns, setStaffRuns] = useState({ runs: [], unassigned: [] });
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [loadingStaffRuns, setLoadingStaffRuns] = useState(false);
   const [generatingStaffRuns, setGeneratingStaffRuns] = useState(false);
   const [autoAssignLoading, setAutoAssignLoading] = useState(false);
@@ -863,6 +885,7 @@ const PlannerPage = () => {
   const [autoAssignSuccess, setAutoAssignSuccess] = useState(false);
   const [error, setError] = useState("");
   const [runsError, setRunsError] = useState("");
+  const [assignmentsError, setAssignmentsError] = useState("");
   const [staffViewError, setStaffViewError] = useState("");
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [selectedStaffId, setSelectedStaffId] = useState(null);
@@ -933,6 +956,19 @@ const PlannerPage = () => {
     return fallbackUnassignedFlights.length;
   }, [fallbackUnassignedFlights, unassigned]);
 
+  const assignmentByFlightId = useMemo(() => {
+    const map = new Map();
+    (assignments || []).forEach((assignment) => {
+      const fid = assignment.flight_id || assignment.flightId;
+      if (fid == null) return;
+      if (!map.has(fid)) {
+        map.set(fid, []);
+      }
+      map.get(fid).push(assignment);
+    });
+    return map;
+  }, [assignments]);
+
   const staffRunsByStaffId = useMemo(() => {
     const map = new Map();
     (staffRuns.runs || []).forEach((run) => {
@@ -955,6 +991,37 @@ const PlannerPage = () => {
     [selectedStaffId, staffRunsByStaffId]
   );
 
+  async function loadAssignmentsForDate(dateStr, signal) {
+    if (!dateStr) return;
+
+    setAssignmentsLoading(true);
+    setAssignmentsError("");
+
+    try {
+      const resp = await fetchEmployeeAssignments(dateStr, { signal });
+      const payload = resp.data || {};
+      if (!signal?.aborted) {
+        const list = Array.isArray(payload.assignments)
+          ? payload.assignments
+          : Array.isArray(payload)
+            ? payload
+            : [];
+        setAssignments(list);
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setAssignments([]);
+        setAssignmentsError(
+          err?.message || "Failed to load employee assignments."
+        );
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setAssignmentsLoading(false);
+      }
+    }
+  }
+
   async function loadPlannerData(signal) {
     if (!date) return;
 
@@ -962,9 +1029,11 @@ const PlannerPage = () => {
 
     setLoading(true);
     setLoadingRuns(true);
+    setAssignmentsLoading(true);
     setLoadingStaffRuns(true);
     setError("");
     setRunsError("");
+    setAssignmentsError("");
     setStaffViewError("");
 
     try {
@@ -993,6 +1062,8 @@ const PlannerPage = () => {
       }
     }
 
+    await loadAssignmentsForDate(date, signal);
+
     try {
       const rosterResp = await fetchDailyRoster(date, { signal });
       if (!signal?.aborted) {
@@ -1020,6 +1091,7 @@ const PlannerPage = () => {
     if (!signal?.aborted) {
       setLoading(false);
       setLoadingRuns(false);
+      setAssignmentsLoading(false);
       setLoadingStaffRuns(false);
     }
   }
@@ -1168,6 +1240,7 @@ const PlannerPage = () => {
         const flightsResp = await fetchFlights(date, airlineCode);
         const flightsData = flightsResp.data || {};
         setFlights(normalizeFlights(flightsData));
+        await loadAssignmentsForDate(date);
       } catch (flightErr) {
         console.error("Auto-assign refresh flights failed", flightErr);
       }
@@ -1402,6 +1475,11 @@ const PlannerPage = () => {
           {runsError || "Runs could not be loaded."}
         </div>
       )}
+      {!loading && !assignmentsLoading && !error && assignmentsError && (
+        <div className="planner-status planner-status--warn">
+          {assignmentsError}
+        </div>
+      )}
 
       {/* CWO-12: page-specific missing-data indicators */}
       {!loading &&
@@ -1422,6 +1500,18 @@ const PlannerPage = () => {
           <div className="planner-status planner-status--warn">
             No runs returned for this date from the backend.
             If this looks wrong, check the office runs configuration.
+          </div>
+        )}
+
+      {!loading &&
+        !assignmentsLoading &&
+        !error &&
+        !assignmentsError &&
+        flights.length > 0 &&
+        assignments.length === 0 && (
+          <div className="planner-status planner-status--warn">
+            No assignments found for this date — run “Prepare ops day” from
+            Machine Room.
           </div>
         )}
 
@@ -1450,6 +1540,8 @@ const PlannerPage = () => {
                 flights={flights}
                 unassignedFlights={displayedUnassignedFlights}
                 flightToRunMap={flightToRunMap}
+                assignmentByFlightId={assignmentByFlightId}
+                assignmentsLoading={assignmentsLoading}
                 selectedFlightKey={selectedFlightKey}
                 onSelectFlight={handleSelectFlight}
                 onUnassignedDragStart={handleUnassignedDragStart}

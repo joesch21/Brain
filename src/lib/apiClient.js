@@ -123,6 +123,15 @@ export async function fetchDailyRoster(date, options = {}) {
   );
 }
 
+export async function fetchEmployeeAssignments(date, options = {}) {
+  const qs = new URLSearchParams();
+  if (date) qs.set("date", date);
+  return request(
+    `/api/employee_assignments/daily${qs.toString() ? `?${qs.toString()}` : ""}`,
+    options
+  );
+}
+
 export async function seedDemoDay(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
