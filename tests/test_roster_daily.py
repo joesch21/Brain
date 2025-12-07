@@ -69,12 +69,13 @@ class TestDailyRoster:
 
         assert roster["date"] == target_date.isoformat()
         assert roster["template_id"] == template.id
-        assert len(roster["shifts"]) == 1
-        shift = roster["shifts"][0]
+        assert len(roster["entries"]) == 1
+        shift = roster["entries"][0]
         assert shift["staff_id"] == staff.id
         assert shift["staff_code"] == "MG"
         assert shift["start_local"] == "05:00"
         assert shift["role"] == "operator"
+        assert shift["weekday"] == target_date.weekday()
 
     def test_api_daily_roster_happy_path(self):
         target_date = date(2024, 12, 30)
@@ -86,7 +87,7 @@ class TestDailyRoster:
         payload = resp.get_json()
         assert payload["ok"] is True
         assert payload["roster"]["date"] == target_date.isoformat()
-        assert len(payload["roster"]["shifts"]) == 1
+        assert len(payload["roster"]["entries"]) == 1
 
     @pytest.mark.parametrize("bad_date", ["2024-13-01", "", None])
     def test_api_daily_roster_validation_errors(self, bad_date):
