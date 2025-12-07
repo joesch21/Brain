@@ -98,6 +98,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [prepareStatus, setPrepareStatus] = useState(null);
   const [rosterSeedLoading, setRosterSeedLoading] = useState(false);
   const [rosterSeedStatus, setRosterSeedStatus] = useState(null);
+  const [autoAssignLoading, setAutoAssignLoading] = useState(false);
+  const [autoAssignStatus, setAutoAssignStatus] = useState(null);
 
   async function loadStatus(targetDate) {
     try {
@@ -439,6 +441,76 @@ const SystemStatusCard = ({ selectedAirline }) => {
     }
   };
 
+  const handleAutoAssignFlights = async () => {
+    if (!date) {
+      setAutoAssignStatus({
+        ok: false,
+        message: "No date selected for auto-assign.",
+      });
+      return;
+    }
+
+    const params = new URLSearchParams({ date });
+    if (selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION) {
+      params.set("airline", selectedAirline);
+    }
+
+    setAutoAssignLoading(true);
+    setAutoAssignStatus(null);
+
+    try {
+      const runsResp = await fetch(`/api/runs/generate?${params.toString()}`, {
+        method: "POST",
+      });
+      const runsBody = await runsResp.json().catch(() => ({}));
+
+      if (!runsResp.ok || runsBody?.ok === false) {
+        setAutoAssignStatus({
+          ok: false,
+          message:
+            runsBody?.error || `Failed to generate runs for ${date}.`,
+        });
+        return;
+      }
+
+      const assignResp = await fetch(
+        `/api/flight_runs/auto_assign?${params.toString()}`,
+        { method: "POST" }
+      );
+      const assignBody = await assignResp.json().catch(() => ({}));
+
+      if (!assignResp.ok || assignBody?.ok === false) {
+        setAutoAssignStatus({
+          ok: false,
+          message:
+            assignBody?.error || `Failed to auto-assign flights for ${date}.`,
+        });
+        return;
+      }
+
+      const assignedCount =
+        assignBody.assigned ?? assignBody.assigned_count ?? assignBody.count;
+      const successMessage = assignedCount
+        ? `Auto-assigned ${assignedCount} flights into runs for ${date}.`
+        : `Auto-assigned flights into runs for ${date}.`;
+
+      setAutoAssignStatus({
+        ok: true,
+        message: successMessage,
+      });
+
+      await loadStatus(date);
+    } catch (err) {
+      setAutoAssignStatus({
+        ok: false,
+        message:
+          err?.message || "Network error while auto-assigning flights to runs.",
+      });
+    } finally {
+      setAutoAssignLoading(false);
+    }
+  };
+
   async function autoAssignEmployees() {
     const targetAirline =
       selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
@@ -604,6 +676,14 @@ const SystemStatusCard = ({ selectedAirline }) => {
         <button
           type="button"
           className="pill-button"
+          onClick={handleAutoAssignFlights}
+          disabled={autoAssignLoading}
+        >
+          {autoAssignLoading ? "Assigning flights…" : "Auto-assign flights"}
+        </button>
+        <button
+          type="button"
+          className="pill-button"
           onClick={autoAssignEmployees}
           disabled={assigning}
         >
@@ -626,6 +706,18 @@ const SystemStatusCard = ({ selectedAirline }) => {
           {rosterSeedLoading ? "Loading DEC24 roster…" : "Load DEC24 roster"}
         </button>
       </div>
+      {autoAssignStatus && (
+        <div
+          className={
+            "autoassign-banner " +
+            (autoAssignStatus.ok
+              ? "autoassign-banner--ok"
+              : "autoassign-banner--error")
+          }
+        >
+          {autoAssignStatus.message}
+        </div>
+      )}
       {rosterSeedStatus && (
         <div
           className={

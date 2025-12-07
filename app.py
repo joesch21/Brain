@@ -47,7 +47,7 @@ from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
 from services.importer import ImportService
-from services.runs_engine import generate_runs_for_date_airline, get_runs_for_date_airline
+from services.runs_engine import get_runs_for_date_airline
 from flight_matcher import filter_flights_by_prefix, match_flights_by_rego
 from scraper import get_flight_details
 app = Flask(__name__)
@@ -69,6 +69,9 @@ SUPPORTED_AIRLINES = {"JQ", "QF", "VA", "ZL"}
 DEFAULT_AIRLINE = "JQ"
 ALLOWED_DAY_OFFSETS = {0, 1, 2}
 CODECRAFTER_BASE = os.environ.get("CODECRAFTER_BASE", "https://codecrafter2.onrender.com")
+CC2_BASE_URL = os.environ.get(
+    "CODE_CRAFTER2_BASE_URL", "https://code-crafter2.onrender.com"
+)
 
 # Preserve a predictable airline order for observability endpoints
 SUPPORTED_AIRLINES_ORDERED = ["JQ", "QF", "VA", "ZL"]
@@ -2668,32 +2671,89 @@ def api_employee_assignments_generate():
 
 
 @app.post("/api/runs/generate")
-def api_generate_runs():
-    """Generate runs for the requested date and airline."""
+def proxy_runs_generate():
+    """Proxy POST /api/runs/generate to Code_Crafter2."""
 
-    day = _ops_get_date_from_query(default_to_today=False)
-    if day is None:
-        return json_error("date is required", status_code=400, error_type="validation_error")
+    date_str = request.args.get("date")
+    airline = request.args.get("airline")
 
-    airline, error = parse_airline_filter(request.args.get("airline"), allow_all=False)
-    if error:
-        return json_error(error, status_code=400, error_type="validation_error")
-    if not airline:
-        airline = DEFAULT_AIRLINE
+    if not date_str:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Missing required 'date' query parameter.",
+                "type": "validation_error",
+            }
+        ), 400
+
+    params = {"date": date_str}
+    if airline:
+        params["airline"] = airline
 
     try:
-        ensure_runs_schema()
-        summary = generate_runs_for_date_airline(day, airline)
-        summary["ok"] = True
-        return jsonify(summary)
-    except Exception as exc:  # noqa: BLE001
-        app.logger.exception("runs.generate failed")
-        return json_error(
-            "Internal error while generating runs.",
-            status_code=500,
-            error_type="runs_error",
-            context={"date": day.isoformat(), "airline": airline, "detail": str(exc)},
+        resp = requests.post(
+            f"{CC2_BASE_URL}/api/runs/generate", params=params, timeout=20
         )
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to reach Code_Crafter2 /api/runs/generate")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Upstream scheduling backend unavailable",
+                "type": "upstream_error",
+                "context": {"detail": str(exc)},
+            }
+        ), 502
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = {"ok": False, "error": "Invalid JSON from scheduling backend."}
+
+    return jsonify(payload), resp.status_code
+
+
+@app.post("/api/flight_runs/auto_assign")
+def proxy_flight_runs_auto_assign():
+    """Proxy POST /api/flight_runs/auto_assign to Code_Crafter2."""
+
+    date_str = request.args.get("date")
+    airline = request.args.get("airline")
+
+    if not date_str:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Missing required 'date' query parameter.",
+                "type": "validation_error",
+            }
+        ), 400
+
+    params = {"date": date_str}
+    if airline:
+        params["airline"] = airline
+
+    try:
+        resp = requests.post(
+            f"{CC2_BASE_URL}/api/flight_runs/auto_assign", params=params, timeout=30
+        )
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to reach Code_Crafter2 /api/flight_runs/auto_assign")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Upstream scheduling backend unavailable",
+                "type": "upstream_error",
+                "context": {"detail": str(exc)},
+            }
+        ), 502
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = {"ok": False, "error": "Invalid JSON from scheduling backend."}
+
+    return jsonify(payload), resp.status_code
 
 
 @app.post("/api/staff_runs/generate")
