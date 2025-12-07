@@ -3,18 +3,19 @@ from __future__ import annotations
 import json
 from datetime import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from flask import current_app
 
-from app import (
-    Employee,
-    RosterTemplateDay,
-    RosterTemplateWeek,
-    Staff,
-    db,
-    ensure_roster_schema,
-)
+if TYPE_CHECKING:  # pragma: no cover
+    from app import (
+        Employee,
+        RosterTemplateDay,
+        RosterTemplateWeek,
+        Staff,
+        db,
+        ensure_roster_schema,
+    )
 
 
 def _parse_time(value: str | None) -> time | None:
@@ -52,6 +53,15 @@ def seed_staff_and_roster_from_file() -> Dict[str, Any]:
 
     Idempotent: re-running will update existing rows instead of duplicating them.
     """
+
+    from app import (
+        Employee,
+        RosterTemplateDay,
+        RosterTemplateWeek,
+        Staff,
+        db,
+        ensure_roster_schema,
+    )
 
     ensure_roster_schema()
     data = _load_seed_json()

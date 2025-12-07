@@ -94,8 +94,6 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [seeding, setSeeding] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState("");
-  const [rosterSeedLoading, setRosterSeedLoading] = useState(false);
-  const [rosterSeedStatus, setRosterSeedStatus] = useState(null);
   const [prepareLoading, setPrepareLoading] = useState(false);
   const [prepareStatus, setPrepareStatus] = useState(null);
 
@@ -369,40 +367,6 @@ const SystemStatusCard = ({ selectedAirline }) => {
     }
   }
 
-  async function loadRosterSeed() {
-    setRosterSeedStatus(null);
-    try {
-      setRosterSeedLoading(true);
-      const resp = await fetch("/api/roster/load_seed", { method: "POST" });
-      const body = await resp.json().catch(() => null);
-
-      if (!resp.ok || body?.ok === false) {
-        const message =
-          (body && (body.error || body.message)) ||
-          `Failed to load roster seed (${resp.status})`;
-        setRosterSeedStatus({ ok: false, message, summary: body || null });
-        return;
-      }
-
-      setRosterSeedStatus({
-        ok: true,
-        message: "Staff + roster template loaded.",
-        summary: body,
-      });
-
-      await loadStatus(date);
-    } catch (err) {
-      console.error(err);
-      setRosterSeedStatus({
-        ok: false,
-        message: err?.message || "Network error while loading roster seed.",
-        summary: null,
-      });
-    } finally {
-      setRosterSeedLoading(false);
-    }
-  }
-
   const handlePrepareOpsDay = async () => {
     setPrepareStatus(null);
     setPrepareLoading(true);
@@ -614,16 +578,6 @@ const SystemStatusCard = ({ selectedAirline }) => {
           </button>
           <button
             type="button"
-            onClick={loadRosterSeed}
-            disabled={rosterSeedLoading}
-            style={{ fontSize: "0.8rem", marginLeft: "0.5rem" }}
-          >
-            {rosterSeedLoading
-              ? "Loading roster template…"
-              : "Load staff & roster template"}
-          </button>
-          <button
-            type="button"
             onClick={handlePrepareOpsDay}
             disabled={prepareLoading}
             style={{ fontSize: "0.8rem", marginLeft: "0.5rem" }}
@@ -637,26 +591,6 @@ const SystemStatusCard = ({ selectedAirline }) => {
         <p className="muted" style={{ marginTop: "0.35rem" }}>
           {assignmentMessage}
         </p>
-      )}
-      {rosterSeedStatus && (
-        <div
-          className={`roster-seed-status ${
-            rosterSeedStatus.ok
-              ? "roster-seed-status--ok"
-              : "roster-seed-status--error"
-          }`}
-        >
-          <div>{rosterSeedStatus.message}</div>
-          {rosterSeedStatus.summary?.roster_result?.templates?.length > 0 && (
-            <div className="roster-seed-summary">
-              {rosterSeedStatus.summary.roster_result.templates.map((tpl) => (
-                <div key={tpl.template} className="roster-seed-summary__item">
-                  <strong>{tpl.template}</strong>: {tpl.lines} lines
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       )}
       {prepareStatus && (
         <div
@@ -873,6 +807,8 @@ const MachineRoomPage = () => {
   const [airline, setAirline] = useState(DEFAULT_AIRLINE);
   const [importLoading, setImportLoading] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
+  const [seedLoading, setSeedLoading] = useState(false);
+  const [seedStatus, setSeedStatus] = useState(null);
 
   const importDisabled = importLoading || airline === ALL_AIRLINE_OPTION;
 
@@ -943,6 +879,39 @@ const MachineRoomPage = () => {
     );
   };
 
+  const handleLoadDec24RosterSeed = async () => {
+    setSeedLoading(true);
+    setSeedStatus(null);
+    try {
+      const resp = await fetch("/api/roster/load_seed", { method: "POST" });
+      const body = await resp.json();
+      // Surface in console for quick debugging
+      console.debug("DEC24 roster seed result", body);
+
+      if (!resp.ok || body.ok === false) {
+        setSeedStatus({
+          ok: false,
+          message: body.error || "Failed to load DEC24 roster seed.",
+          summary: body,
+        });
+      } else {
+        setSeedStatus({
+          ok: true,
+          message: "DEC24 roster seed loaded.",
+          summary: body,
+        });
+      }
+    } catch (err) {
+      setSeedStatus({
+        ok: false,
+        message: err?.message || "Network error while loading roster seed.",
+        summary: null,
+      });
+    } finally {
+      setSeedLoading(false);
+    }
+  };
+
   return (
     <div className="machine-room-page">
       <h2>Machine Room</h2>
@@ -1008,6 +977,49 @@ const MachineRoomPage = () => {
 
       {/* NEW: live system status, flight/run counts, API tests, and seeding */}
       <SystemStatusCard selectedAirline={airline} />
+
+      <section className="machine-room-card roster-seed-panel">
+        <h3>DEC24 Roster Seed</h3>
+        <p className="roster-seed-panel__subtitle">
+          Load staff + standard Jetstar roster from December schedule.
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={handleLoadDec24RosterSeed}
+          disabled={seedLoading}
+        >
+          {seedLoading ? "Loading DEC24 roster…" : "Load DEC24 roster seed"}
+        </button>
+
+        {seedStatus && (
+          <div
+            className={
+              "roster-seed-status " +
+              (seedStatus.ok ? "roster-seed-status--ok" : "roster-seed-status--error")
+            }
+          >
+            {seedStatus.message}
+            {seedStatus.summary && (
+              <div className="roster-seed-summary">
+                {(() => {
+                  const summary = seedStatus.summary || {};
+                  return (
+                    <>
+                      <div className="roster-seed-summary__item">
+                        Staff: +{summary.staff_created ?? 0} / updated {summary.staff_updated ?? 0}
+                      </div>
+                      <div className="roster-seed-summary__item">
+                        Templates: {summary.templates_imported ?? 0} / lines {summary.template_days_created ?? 0}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Existing descriptive content can be kept below or simplified */}
       <section style={{ marginTop: "1.5rem" }}>
