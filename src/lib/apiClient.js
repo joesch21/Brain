@@ -1,6 +1,7 @@
 // Centralized API client for Brain frontend
 // Uses VITE_OPS_API_BASE (or same-origin) and normalizes errors for schedule/planner flows.
 import { OPS_API_BASE } from "./opsApiBase";
+import { pushBackendDebugEntry } from "./backendDebug";
 
 function buildUrl(path) {
   const base = OPS_API_BASE;
@@ -41,16 +42,15 @@ async function request(path, options = {}) {
         response.statusText ||
         "Request failed";
 
-      window.backendDebug = {
+      const debugEntry = pushBackendDebugEntry({
         type: "http-error",
-        timestamp: new Date().toISOString(),
         url,
         method,
         status,
         statusText: response.statusText,
         body,
-      };
-      console.error("[Backend HTTP Error]", window.backendDebug);
+      });
+      console.error("[Backend HTTP Error]", debugEntry);
 
       const err = new Error(errorMessage);
       err.status = status;
@@ -62,14 +62,13 @@ async function request(path, options = {}) {
     return { status, data: body };
   } catch (err) {
     if (!err.status) {
-      window.backendDebug = {
+      const debugEntry = pushBackendDebugEntry({
         type: "network-error",
-        timestamp: new Date().toISOString(),
         url,
         method,
         error: err?.message || String(err),
-      };
-      console.error("[Backend Network Error]", window.backendDebug);
+      });
+      console.error("[Backend Network Error]", debugEntry);
     }
     throw err;
   }

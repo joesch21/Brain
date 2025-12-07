@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 import ImportStatusCard from "../components/ImportStatusCard";
+import { pushBackendDebugEntry } from "../lib/backendDebug";
 import "../styles/machineRoom.css";
 
 function todayISO() {
@@ -15,6 +16,45 @@ function todayISO() {
 const AIRLINE_OPTIONS = ["JQ", "QF", "VA", "ZL"];
 const ALL_AIRLINE_OPTION = "ALL";
 const DEFAULT_AIRLINE = "JQ";
+
+const WIRING_TESTS = [
+  {
+    key: "status",
+    label: "System status",
+    method: "GET",
+    buildUrl: () => "/api/status",
+    expectsOkField: false,
+  },
+  {
+    key: "flights",
+    label: "Flights for date",
+    method: "GET",
+    buildUrl: (date) => `/api/flights?date=${encodeURIComponent(date)}`,
+    expectsOkField: true,
+  },
+  {
+    key: "roster",
+    label: "Roster for date",
+    method: "GET",
+    buildUrl: (date) => `/api/roster/daily?date=${encodeURIComponent(date)}`,
+    expectsOkField: true,
+  },
+  {
+    key: "assignments",
+    label: "Employee assignments for date",
+    method: "GET",
+    buildUrl: (date) =>
+      `/api/employee_assignments/daily?date=${encodeURIComponent(date)}`,
+    expectsOkField: true,
+  },
+  {
+    key: "runs",
+    label: "Runs for date",
+    method: "GET",
+    buildUrl: (date) => `/api/runs?date=${encodeURIComponent(date)}`,
+    expectsOkField: true,
+  },
+];
 
 const StatusPill = ({ ok, label }) => (
   <span
@@ -43,6 +83,10 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [runsStatus, setRunsStatus] = useState(null);
   const [runsStatusError, setRunsStatusError] = useState("");
   const [staffingError, setStaffingError] = useState("");
+
+  const [wiringRunning, setWiringRunning] = useState(false);
+  const [wiringResults, setWiringResults] = useState([]);
+  const [wiringError, setWiringError] = useState(null);
 
   const [testingApis, setTestingApis] = useState(false);
   const [apiTests, setApiTests] = useState([]);
@@ -201,6 +245,98 @@ const SystemStatusCard = ({ selectedAirline }) => {
       setTestingApis(false);
     }
   }
+
+  const runWiringTest = async () => {
+    const dateStr = date || todayISO();
+
+    setWiringRunning(true);
+    setWiringResults([]);
+    setWiringError(null);
+
+    const results = [];
+
+    for (const test of WIRING_TESTS) {
+      const url = test.buildUrl(dateStr);
+      const result = {
+        key: test.key,
+        label: test.label,
+        url,
+        status: "pending",
+        httpStatus: null,
+        message: "",
+      };
+
+      try {
+        const resp = await fetch(url, {
+          method: test.method,
+          credentials: "include",
+        });
+        const httpStatus = resp.status;
+        result.httpStatus = httpStatus;
+
+        let body = null;
+        try {
+          body = await resp.json();
+        } catch (jsonErr) {
+          console.debug("Wiring test non-JSON body", jsonErr);
+        }
+
+        const baseOk = resp.ok;
+        const logicalOk = test.expectsOkField ? body?.ok !== false : true;
+
+        if (baseOk && logicalOk) {
+          result.status = "ok";
+          if (body && typeof body === "object") {
+            const extra =
+              body.count != null
+                ? `count=${body.count}`
+                : body.summary
+                ? "summary returned"
+                : "";
+            result.message = extra || "OK";
+          } else {
+            result.message = "OK";
+          }
+        } else if (baseOk && !logicalOk) {
+          result.status = "warn";
+          result.message = body?.error || body?.message || "ok=false in body";
+        } else {
+          result.status = "error";
+          result.message = body?.error || body?.message || `HTTP ${httpStatus}`;
+        }
+
+        pushBackendDebugEntry({
+          type: "wiring-test",
+          testKey: test.key,
+          label: test.label,
+          url,
+          httpStatus,
+          status: result.status,
+          message: result.message,
+          body,
+        });
+      } catch (err) {
+        result.status = "error";
+        result.httpStatus = null;
+        result.message = err?.message || "Network error";
+
+        pushBackendDebugEntry({
+          type: "wiring-test",
+          testKey: test.key,
+          label: test.label,
+          url,
+          status: "error",
+          message: result.message,
+        });
+      }
+
+      results.push(result);
+      setWiringResults((prev) => [...prev, result]);
+    }
+
+    setWiringRunning(false);
+    setWiringResults(results);
+  };
 
   async function seedDemoFlights() {
     try {
@@ -376,6 +512,51 @@ const SystemStatusCard = ({ selectedAirline }) => {
       ? selectedAirline
       : "All airlines";
 
+  const renderWiringPanel = () => {
+    const dateStr = date || todayISO();
+
+    return (
+      <section className="wiring-panel">
+        <div className="wiring-panel__header">
+          <h4 style={{ margin: 0 }}>Wiring Test</h4>
+          <span className="wiring-panel__subtitle">
+            Check backend endpoints for {dateStr}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={runWiringTest}
+          disabled={wiringRunning}
+          style={{ padding: "0.35rem 0.6rem" }}
+        >
+          {wiringRunning ? "Running wiring test…" : "Run wiring test"}
+        </button>
+
+        {wiringError && <div className="wiring-panel__error">{wiringError}</div>}
+
+        <ul className="wiring-panel__list">
+          {wiringResults.map((r) => (
+            <li key={r.key} className="wiring-panel__item">
+              <span className="wiring-panel__icon">
+                {r.status === "ok" && "✅"}
+                {r.status === "warn" && "⚠️"}
+                {r.status === "error" && "❌"}
+                {r.status === "pending" && "…"}
+              </span>
+              <span className="wiring-panel__label">{r.label}</span>
+              <span className="wiring-panel__status">
+                {r.httpStatus != null ? `HTTP ${r.httpStatus}` : ""}
+                {r.message && ` – ${r.message}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  };
+
   return (
     <div className="machine-room-status-card" style={{ marginTop: "1rem" }}>
       <div
@@ -451,6 +632,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
           </button>
         </div>
       </div>
+      {renderWiringPanel()}
       {assignmentMessage && (
         <p className="muted" style={{ marginTop: "0.35rem" }}>
           {assignmentMessage}

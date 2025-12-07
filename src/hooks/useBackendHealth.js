@@ -1,6 +1,7 @@
 // /src/hooks/useBackendHealth.js
 import { useEffect } from "react";
 import { opsGet } from "../lib/opsApi";
+import { pushBackendDebugEntry } from "../lib/backendDebug";
 
 export default function useBackendHealth() {
   useEffect(() => {
@@ -8,19 +9,17 @@ export default function useBackendHealth() {
       try {
         const res = await opsGet(`/api/status`);
         if (!res.ok) {
-          window.backendDebug = {
+          pushBackendDebugEntry({
             type: "status-error",
-            timestamp: new Date().toISOString(),
             status: res.status,
             statusText: res.statusText,
-          };
+          });
         }
       } catch (err) {
-        window.backendDebug = {
+        pushBackendDebugEntry({
           type: "status-offline",
-          timestamp: new Date().toISOString(),
           error: err.message,
-        };
+        });
       }
     };
 
