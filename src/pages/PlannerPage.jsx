@@ -187,6 +187,7 @@ function FlightListColumn({
   isUnassignedHover,
   onUnassignedDragEnter,
   onUnassignedDragLeave,
+  handleStaffClick,
 }) {
   const safeUnassigned = Array.isArray(unassignedFlights)
     ? unassignedFlights
@@ -350,10 +351,19 @@ function FlightListColumn({
                     {assignmentsLoading ? (
                       <span className="planner-subtext">Loading…</span>
                     ) : primaryAssignment ? (
-                      <>
-                        <strong>{primaryAssignment.staff_code}</strong>{" "}
-                        {primaryAssignment.staff_name}
-                      </>
+                      <button
+                        type="button"
+                        className="link-button staff-link"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleStaffClick(
+                            primaryAssignment.staff_code,
+                            primaryAssignment.staff_name
+                          );
+                        }}
+                      >
+                        {primaryAssignment.staff_code} – {primaryAssignment.staff_name}
+                      </button>
                     ) : (
                       <span className="flight-unassigned">Unassigned</span>
                     )}
@@ -896,6 +906,8 @@ const PlannerPage = () => {
   const [hoverRunId, setHoverRunId] = useState(null);
   // Whether the Unassigned panel is currently hovered as a drop target
   const [hoverUnassigned, setHoverUnassigned] = useState(false);
+  const [selectedStaffKey, setSelectedStaffKey] = useState(null);
+  const [isStaffPanelOpen, setIsStaffPanelOpen] = useState(false);
 
   // Convenience flags based on dragPayload type
   const isDraggingUnassignedFlight = dragPayload?.type === "UNASSIGNED_FLIGHT";
@@ -968,6 +980,26 @@ const PlannerPage = () => {
     });
     return map;
   }, [assignments]);
+
+  const assignmentsByStaff = useMemo(() => {
+    const map = new Map();
+    (assignments || []).forEach((a) => {
+      const key = `${a.staff_code}::${a.staff_name}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(a);
+    });
+
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.dep_time || "").localeCompare(b.dep_time || ""));
+    }
+
+    return map;
+  }, [assignments]);
+
+  const selectedStaffAssignments = useMemo(() => {
+    if (!selectedStaffKey) return [];
+    return assignmentsByStaff.get(selectedStaffKey) || [];
+  }, [selectedStaffKey, assignmentsByStaff]);
 
   const staffRunsByStaffId = useMemo(() => {
     const map = new Map();
@@ -1288,6 +1320,12 @@ const PlannerPage = () => {
     setSelectedRunId(runId);
   }
 
+  function handleStaffClick(staffCode, staffName) {
+    const key = `${staffCode}::${staffName}`;
+    setSelectedStaffKey(key);
+    setIsStaffPanelOpen(true);
+  }
+
   // --- Drag & Drop: Unassigned <-> Runs ------------------------------------
 
   // Start dragging a flight from a run row.
@@ -1392,6 +1430,71 @@ const PlannerPage = () => {
       setDragPayload(null);
     }
   }
+
+  const renderStaffDayPanel = () => {
+    if (!isStaffPanelOpen || !selectedStaffKey) return null;
+
+    const [code = "", name = ""] = selectedStaffKey.split("::");
+    const list = selectedStaffAssignments;
+
+    return (
+      <div
+        className="staff-panel-overlay"
+        onClick={() => setIsStaffPanelOpen(false)}
+        role="presentation"
+      >
+        <aside
+          className="staff-panel"
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Staff day schedule"
+        >
+          <header className="staff-panel__header">
+            <div>
+              <div className="staff-panel__title">{name}</div>
+              <div className="staff-panel__subtitle">
+                {code} · Schedule for {date}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="staff-panel__close"
+              onClick={() => setIsStaffPanelOpen(false)}
+              aria-label="Close staff schedule"
+            >
+              ×
+            </button>
+          </header>
+
+          <section className="staff-panel__body">
+            {list.length === 0 ? (
+              <p>No assignments for this staff member on this date.</p>
+            ) : (
+              <ul className="staff-panel__list">
+                {list.map((a) => {
+                  const key =
+                    a.flight_id ||
+                    a.flightId ||
+                    `${a.flight_number || a.flightNumber || ""}-${a.dep_time}`;
+                  return (
+                    <li key={key} className="staff-panel__item">
+                      <div className="staff-panel__time">{a.dep_time}</div>
+                      <div className="staff-panel__flight">
+                        <div className="staff-panel__flight-main">
+                          {a.flight_number || a.flightNumber}
+                          {a.dest && <> → {a.dest}</>}
+                        </div>
+                        {a.role && <div className="staff-panel__role">Role: {a.role}</div>}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </aside>
+      </div>
+    );
+  };
 
   return (
     <div className="planner-page">
@@ -1550,6 +1653,7 @@ const PlannerPage = () => {
                 isUnassignedHover={hoverUnassigned}
                 onUnassignedDragEnter={() => setHoverUnassigned(true)}
                 onUnassignedDragLeave={() => setHoverUnassigned(false)}
+                handleStaffClick={handleStaffClick}
               />
               <RunsGridColumn
                 runs={runs}
@@ -1608,7 +1712,19 @@ const PlannerPage = () => {
                           }
                         >
                           <div className="planner-staff-title">
-                            <strong>{shift.staff_code}</strong> {shift.staff_name}
+                            <button
+                              type="button"
+                              className="link-button staff-link"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleStaffClick(
+                                  shift.staff_code,
+                                  shift.staff_name
+                                );
+                              }}
+                            >
+                              <strong>{shift.staff_name}</strong> ({shift.staff_code})
+                            </button>
                           </div>
                           <div className="planner-staff-meta">
                             Shift {shift.start_local || "?"}–
@@ -1637,8 +1753,20 @@ const PlannerPage = () => {
                       <div className="planner-staff-detail-header">
                         <div>
                           <div className="planner-staff-title">
-                            <strong>{selectedStaff.staff_code}</strong>{" "}
-                            {selectedStaff.staff_name}
+                            <button
+                              type="button"
+                              className="link-button staff-link"
+                              onClick={() =>
+                                handleStaffClick(
+                                  selectedStaff.staff_code,
+                                  selectedStaff.staff_name
+                                )
+                              }
+                            >
+                              <strong>{selectedStaff.staff_name}</strong> ({
+                                selectedStaff.staff_code
+                              })
+                            </button>
                           </div>
                           <div className="planner-staff-meta">
                             Shift {selectedStaff.start_local || "?"}–
@@ -1725,6 +1853,7 @@ const PlannerPage = () => {
           </span>
         </div>
       </footer>
+      {renderStaffDayPanel()}
     </div>
   );
 };
