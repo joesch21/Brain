@@ -1,0 +1,90 @@
+{
+  "version": "DEC24-demo-v1",
+  "airline": "JQ",
+  "employees": [
+    { "code": "R1", "name": "Refueller One" },
+    { "code": "R2", "name": "Refueller Two" },
+    { "code": "R3", "name": "Refueller Three" },
+    { "code": "R4", "name": "Refueller Four" }
+  ],
+  "trucks": [
+    { "id": "T1", "label": "Truck 1" },
+    { "id": "T2", "label": "Truck 2" }
+  ],
+  "shifts": [
+    { "code": "AM",  "start": "05:00", "end": "13:00" },
+    { "code": "PM",  "start": "13:00", "end": "21:00" }
+  ],
+  "templates": [
+    {
+      "weekday": 0,
+      "label": "Monday base roster",
+      "lines": [
+        { "employee_code": "R1", "truck_id": "T1", "shift_code": "AM" },
+        { "employee_code": "R2", "truck_id": "T2", "shift_code": "AM" },
+        { "employee_code": "R3", "truck_id": "T1", "shift_code": "PM" },
+        { "employee_code": "R4", "truck_id": "T2", "shift_code": "PM" }
+      ]
+    },
+    {
+      "weekday": 1,
+      "label": "Tuesday base roster",
+      "lines": [
+        { "employee_code": "R1", "truck_id": "T1", "shift_code": "AM" },
+        { "employee_code": "R2", "truck_id": "T2", "shift_code": "AM" },
+        { "employee_code": "R3", "truck_id": "T1", "shift_code": "PM" },
+        { "employee_code": "R4", "truck_id": "T2", "shift_code": "PM" }
+      ]
+    },
+    {
+      "weekday": 2,
+      "label": "Wednesday base roster",
+      "lines": [
+        { "employee_code": "R1", "truck_id": "T1", "shift_code": "AM" },
+        { "employee_code": "R2", "truck_id": "T2", "shift_code": "AM" },
+        { "employee_code": "R3", "truck_id": "T1", "shift_code": "PM" },
+        { "employee_code": "R4", "truck_id": "T2", "shift_code": "PM" }
+      ]
+    },
+    {
+      "weekday": 3,
+      "label": "Thursday base roster",
+      "lines": [
+        { "employee_code": "R1", "truck_id": "T1", "shift_code": "AM" },
+        { "employee_code": "R2", "truck_id": "T2", "shift_code": "AM" },
+        { "employee_code": "R3", "truck_id": "T1", "shift_code": "PM" },
+        { "employee_code": "R4", "truck_id": "T2", "shift_code": "PM" }
+      ]
+    },
+    {
+      "weekday": 4,
+      "label": "Friday base roster",
+      "lines": [
+        { "employee_code": "R1", "truck_id": "T1", "shift_code": "AM" },
+        { "employee_code": "R2", "truck_id": "T2", "shift_code": "AM" },
+        { "employee_code": "R3", "truck_id": "T1", "shift_code": "PM" },
+        { "employee_code": "R4", "truck_id": "T2", "shift_code": "PM" }
+      ]
+    },
+    {
+      "weekday": 5,
+      "label": "Saturday base roster",
+      "lines": [
+        { "employee_code": "R1", "truck_id": "T1", "shift_code": "AM" },
+        { "employee_code": "R2", "truck_id": "T2", "shift_code": "AM" },
+        { "employee_code": "R3", "truck_id": "T1", "shift_code": "PM" },
+        { "employee_code": "R4", "truck_id": "T2", "shift_code": "PM" }
+      ]
+    },
+    {
+      "weekday": 6,
+      "label": "Sunday base roster",
+      "lines": [
+        { "employee_code": "R1", "truck_id": "T1", "shift_code": "AM" },
+        { "employee_code": "R2", "truck_id": "T2", "shift_code": "AM" },
+        { "employee_code": "R3", "truck_id": "T1", "shift_code": "PM" },
+        { "employee_code": "R4", "truck_id": "T2", "shift_code": "PM" }
+      ]
+    }
+  ]
+}

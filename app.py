@@ -42,6 +42,7 @@ from scripts.schema_utils import (
     ensure_run_schema,
 )
 from TheBrain.scripts.roster_seed_dec24 import load_dec24_roster_seed
+from scripts.roster_seed_dec24_office import load_dec24_office_roster_seed
 from scripts.seed_roster_local import seed_staff_and_roster_from_file
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
@@ -2574,6 +2575,27 @@ def api_roster_load_seed():
                 "employees_updated": 0,
                 "templates_created": 0,
                 "template_lines_created": 0,
+            }
+        ), 500
+
+
+@app.post("/api/roster/seed_dec24")
+def api_roster_seed_dec24():
+    """Seed staff, employees, and roster templates from the DEC24 office seed."""
+
+    try:
+        summary = load_dec24_office_roster_seed()
+        return jsonify(summary), 200
+    except FileNotFoundError as exc:
+        app.logger.exception("Roster seed file missing")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Failed to seed DEC24 roster")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Failed to seed DEC24 roster.",
+                "detail": str(exc),
             }
         ), 500
 
