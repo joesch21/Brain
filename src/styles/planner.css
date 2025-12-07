@@ -85,6 +85,10 @@
   background: #e3f2fd;
 }
 
+.planner-run-row--tight {
+  background: rgba(255, 165, 0, 0.12);
+}
+
 .planner-run-group {
   margin-bottom: 0.75rem;
 }
@@ -107,6 +111,15 @@
 .planner-run-card--selected {
   border-color: #1976d2;
   box-shadow: 0 0 0 1px #1976d2;
+}
+
+.planner-run-card--has-conflict {
+  box-shadow: 0 0 0 1px rgba(220, 53, 69, 0.25);
+}
+
+.planner-run-card--overloaded {
+  border-color: rgba(220, 53, 69, 0.7);
+  background: rgba(220, 53, 69, 0.03);
 }
 
 .planner-run-card-header {
@@ -139,6 +152,37 @@
   font-weight: 600;
   color: #1f3a93;
   white-space: nowrap;
+}
+
+.planner-run-card-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.8rem;
+}
+
+.planner-run-card-stat {
+  color: #444;
+}
+
+.planner-run-chip {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.planner-run-chip--overloaded {
+  background: rgba(220, 53, 69, 0.12);
+  color: #b3202c;
+}
+
+.planner-run-chip--tight {
+  background: rgba(255, 165, 0, 0.13);
+  color: #a56700;
 }
 
 .planner-subtext {
@@ -242,6 +286,36 @@
   display: flex;
   gap: 0.5rem;
   margin: 0.5rem 0;
+}
+
+.planner-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+  opacity: 0.85;
+  align-items: center;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.legend-swatch--overloaded {
+  background: rgba(220, 53, 69, 0.7);
+}
+
+.legend-swatch--tight {
+  background: rgba(255, 165, 0, 0.9);
 }
 
 .planner-tabs button {
