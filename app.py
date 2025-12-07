@@ -41,6 +41,7 @@ from scripts.schema_utils import (
     ensure_flights_schema,
     ensure_run_schema,
 )
+from scripts.seed_roster_local import seed_staff_and_roster_from_file
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
 from services.knowledge import KnowledgeService
@@ -2428,32 +2429,29 @@ def api_roster_daily():
 
 @app.post("/api/roster/load_seed")
 def api_roster_load_seed():
-    """Proxy to CodeCrafter2 to load seed staff + roster templates."""
+    """
+    Seed staff + weekly roster template directly in the Office DB.
 
+    Safe to run multiple times; re-runs will update existing rows
+    rather than duplicating them.
+    """
     try:
-        upstream_resp = requests.post(
-            f"{CODECRAFTER_BASE}/api/roster/load_seed", timeout=60
+        summary = seed_staff_and_roster_from_file()
+        return jsonify(summary), 200
+    except FileNotFoundError as exc:
+        return json_error(
+            str(exc),
+            status_code=500,
+            error_type="seed_error",
         )
-    except requests.RequestException as exc:
-        app.logger.exception("Failed to call CodeCrafter2 roster seed endpoint")
-        return jsonify({"ok": False, "error": f"Failed to load roster seed: {exc}"}), 502
-
-    try:
-        payload = upstream_resp.json()
-    except ValueError:
-        payload = None
-
-    if not upstream_resp.ok:
-        message = None
-        if isinstance(payload, dict):
-            message = payload.get("error") or payload.get("message")
-        message = message or upstream_resp.text or "Upstream roster seed failed"
-        return (
-            jsonify({"ok": False, "error": message}),
-            upstream_resp.status_code or 502,
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Failed to seed roster locally")
+        return json_error(
+            "Failed to seed roster.",
+            status_code=500,
+            error_type="seed_error",
+            context={"detail": str(exc)},
         )
-
-    return jsonify(payload or {"ok": True}), upstream_resp.status_code
 
 
 @app.post("/api/roster/generate")
