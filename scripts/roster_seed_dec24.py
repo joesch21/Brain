@@ -1,24 +1,31 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
 from flask import current_app
 
-from app import Employee, RosterTemplateDay, RosterTemplateWeek, Staff, db, ensure_roster_schema
+from app import (
+    Employee,
+    RosterTemplateDay,
+    RosterTemplateWeek,
+    Staff,
+    db,
+    ensure_roster_schema,
+)
 
 
-def _parse_time(value: str | None) -> time | None:
-    if not value:
+def _parse_time(s: str | None):
+    if not s:
         return None
-    value = value.strip()
-    if not value:
+    s = s.strip()
+    if not s:
         return None
     for fmt in ("%H:%M", "%H:%M:%S"):
         try:
-            return datetime.strptime(value, fmt).time()
+            return datetime.strptime(s, fmt).time()
         except ValueError:
             continue
     return None
@@ -41,15 +48,15 @@ def load_dec24_roster_seed() -> Dict[str, Any]:
     tpl_seed: Dict[str, Any] = data.get("weekly_template") or {}
 
     created_staff = updated_staff = 0
-    created_emps = updated_emps = 0
+    created_emp = updated_emp = 0
 
-    # Staff + Employee mirror
+    # ---- Staff + Employee mirror ----
     for item in staff_seed:
         code = (item.get("code") or "").strip()
         if not code:
             continue
-        name = (item.get("name") or "").strip() or code
-        emp_type = (item.get("employment_type") or "").strip() or "FT"
+        name = (item.get("name") or code).strip()
+        emp_type = (item.get("employment_type") or "FT").strip()
         active = bool(item.get("active", True))
 
         staff = Staff.query.filter_by(code=code).first()
@@ -68,15 +75,15 @@ def load_dec24_roster_seed() -> Dict[str, Any]:
         if not emp:
             emp = Employee(code=code)
             db.session.add(emp)
-            created_emps += 1
+            created_emp += 1
         else:
-            updated_emps += 1
+            updated_emp += 1
 
         emp.name = name
         emp.role = "refueler"
         emp.employment_type = emp_type
         emp.base = "SYD"
-        emp.shift = None
+        emp.shift = ""
         emp.is_active = active
 
     db.session.flush()
@@ -88,18 +95,17 @@ def load_dec24_roster_seed() -> Dict[str, Any]:
 
     tpl = RosterTemplateWeek.query.filter_by(name=name).first()
     if not tpl:
-        tpl = RosterTemplateWeek(name=name, description=desc, is_active=is_active)
+        tpl = RosterTemplateWeek(name=name)
         db.session.add(tpl)
-    else:
-        tpl.description = desc
-        tpl.is_active = is_active
+    tpl.description = desc
+    tpl.is_active = is_active
 
     db.session.flush()
     RosterTemplateDay.query.filter_by(template_id=tpl.id).delete()
 
     lines_created = 0
-    days = tpl_seed.get("days") or {}
-    for weekday_str, entries in days.items():
+    days_map: Dict[str, List[Dict[str, Any]]] = tpl_seed.get("days") or {}
+    for weekday_str, entries in days_map.items():
         try:
             weekday = int(weekday_str)
         except ValueError:
@@ -135,7 +141,8 @@ def load_dec24_roster_seed() -> Dict[str, Any]:
         "template_id": tpl.id,
         "staff_created": created_staff,
         "staff_updated": updated_staff,
-        "employees_created": created_emps,
-        "employees_updated": updated_emps,
+        "employees_created": created_emp,
+        "employees_updated": updated_emp,
+        "templates_created": 1,
         "template_lines_created": lines_created,
     }

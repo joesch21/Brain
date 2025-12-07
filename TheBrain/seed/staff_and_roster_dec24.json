@@ -39,7 +39,7 @@
 
   "weekly_template": {
     "name": "SYD_JQ_default_week_dec24",
-    "description": "Starter weekly roster for Jetstar SYD based on DEC 24 schedule.",
+    "description": "Starter weekly roster for Jetstar SYD based on December 2024 schedule.",
     "is_active": true,
     "days": {
       "0": [

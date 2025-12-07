@@ -2537,24 +2537,38 @@ def api_prepare_ops_day():
 @app.post("/api/roster/load_seed")
 def api_roster_load_seed():
     """
-    Seed staff + weekly roster template from the DEC24 schedule directly in the Office DB.
+    Seed staff + weekly roster templates from DEC24 JSON.
 
-    Safe to run multiple times; re-runs will update existing rows
-    rather than duplicating them.
+    Safe to call multiple times – it will upsert staff and template rows.
     """
     try:
         summary = load_dec24_roster_seed()
         return jsonify(summary), 200
     except FileNotFoundError as exc:
-        return json_error(str(exc), status_code=500, error_type="seed_error")
+        app.logger.exception("Roster seed file missing")
+        return jsonify(
+            {
+                "ok": False,
+                "error": str(exc),
+                "staff_created": 0,
+                "staff_updated": 0,
+                "templates_created": 0,
+                "template_lines_created": 0,
+            }
+        ), 500
     except Exception as exc:  # noqa: BLE001
-        app.logger.exception("Failed to seed roster locally")
-        return json_error(
-            "Failed to load DEC24 roster seed.",
-            status_code=500,
-            error_type="seed_error",
-            context={"detail": str(exc)},
-        )
+        app.logger.exception("Failed to load DEC24 roster seed")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Failed to load DEC24 roster seed.",
+                "detail": str(exc),
+                "staff_created": 0,
+                "staff_updated": 0,
+                "templates_created": 0,
+                "template_lines_created": 0,
+            }
+        ), 500
 
 
 @app.post("/api/roster/generate")
