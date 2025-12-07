@@ -52,6 +52,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [assignmentMessage, setAssignmentMessage] = useState("");
   const [rosterSeedLoading, setRosterSeedLoading] = useState(false);
   const [rosterSeedStatus, setRosterSeedStatus] = useState(null);
+  const [prepareLoading, setPrepareLoading] = useState(false);
+  const [prepareStatus, setPrepareStatus] = useState(null);
 
   async function loadStatus(targetDate) {
     try {
@@ -265,6 +267,48 @@ const SystemStatusCard = ({ selectedAirline }) => {
     }
   }
 
+  const handlePrepareOpsDay = async () => {
+    setPrepareStatus(null);
+    setPrepareLoading(true);
+
+    const params = new URLSearchParams({
+      date,
+    });
+
+    try {
+      const resp = await fetch(`/api/ops/prepare_day?${params.toString()}`, {
+        method: "POST",
+      });
+      const body = await resp.json().catch(() => ({}));
+      const ok = resp.ok && body?.ok !== false;
+
+      if (!ok) {
+        setPrepareStatus({
+          ok: false,
+          message: body?.error || "Ops day preparation failed.",
+          summary: body?.summary || null,
+        });
+        return;
+      }
+
+      setPrepareStatus({
+        ok: true,
+        message: `Ops day prepared for ${body.date || date}.`,
+        summary: body?.summary || null,
+      });
+
+      await loadStatus(body?.date || date);
+    } catch (err) {
+      setPrepareStatus({
+        ok: false,
+        message: err?.message || "Network error preparing ops day.",
+        summary: null,
+      });
+    } finally {
+      setPrepareLoading(false);
+    }
+  };
+
   async function autoAssignEmployees() {
     const targetAirline =
       selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
@@ -397,6 +441,14 @@ const SystemStatusCard = ({ selectedAirline }) => {
               ? "Loading roster template…"
               : "Load staff & roster template"}
           </button>
+          <button
+            type="button"
+            onClick={handlePrepareOpsDay}
+            disabled={prepareLoading}
+            style={{ fontSize: "0.8rem", marginLeft: "0.5rem" }}
+          >
+            {prepareLoading ? "Preparing ops day…" : "Prepare ops day"}
+          </button>
         </div>
       </div>
       {assignmentMessage && (
@@ -421,6 +473,20 @@ const SystemStatusCard = ({ selectedAirline }) => {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+      {prepareStatus && (
+        <div
+          className={`opsday-status ${
+            prepareStatus.ok ? "opsday-status--ok" : "opsday-status--error"
+          }`}
+        >
+          {prepareStatus.message}
+          {prepareStatus.summary && (
+            <pre className="opsday-summary">
+              {JSON.stringify(prepareStatus.summary, null, 2)}
+            </pre>
           )}
         </div>
       )}

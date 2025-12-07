@@ -225,3 +225,26 @@
 .roster-seed-summary__item {
   margin-top: 0.15rem;
 }
+
+.opsday-status {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.opsday-status--ok {
+  background: rgba(80, 200, 120, 0.15);
+  border: 1px solid rgba(80, 200, 120, 0.6);
+}
+
+.opsday-status--error {
+  background: rgba(255, 80, 80, 0.15);
+  border: 1px solid rgba(255, 80, 80, 0.6);
+}
+
+.opsday-summary {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}

@@ -656,7 +656,11 @@ class RosterTemplateDay(db.Model):
 
 
 from services.roster import get_daily_roster
-from services.roster_engine import auto_assign_employees_for_date, generate_roster_for_date_range
+from services.roster_engine import (
+    auto_assign_employees_for_date,
+    generate_roster_for_date,
+    generate_roster_for_date_range,
+)
 
 
 class ImportBatch(db.Model):
@@ -2425,6 +2429,64 @@ def api_roster_daily():
             "Internal error while building roster.",
             context={"date": target_date.isoformat()},
         )
+
+
+@app.post("/api/ops/prepare_day")
+def api_prepare_ops_day():
+    """Prepare an operations day in one call."""
+
+    date_str = request.args.get("date")
+    if not date_str:
+        return json_error("Missing ?date=YYYY-MM-DD", status_code=400)
+
+    try:
+        target_date = date.fromisoformat(date_str)
+    except Exception:
+        return json_error(
+            "Invalid date format; expected YYYY-MM-DD.",
+            status_code=400,
+            error_type="validation_error",
+            context={"date": date_str},
+        )
+
+    results: dict[str, object] = {}
+
+    try:
+        ensure_roster_schema()
+        ensure_employee_table()
+        results["seed"] = seed_staff_and_roster_from_file()
+    except Exception as exc:  # noqa: BLE001
+        return json_error(
+            "Failed during seed phase",
+            status_code=500,
+            context={"detail": str(exc)},
+            error_type="prepare_day_error",
+        )
+
+    try:
+        ensure_roster_schema()
+        results["generate_roster"] = generate_roster_for_date(target_date)
+    except Exception as exc:  # noqa: BLE001
+        return json_error(
+            "Failed during roster generation",
+            status_code=500,
+            context={"detail": str(exc)},
+            error_type="prepare_day_error",
+        )
+
+    try:
+        ensure_flight_schema()
+        ensure_roster_schema()
+        results["assignments"] = auto_assign_employees_for_date(target_date)
+    except Exception as exc:  # noqa: BLE001
+        return json_error(
+            "Failed during employee assignment",
+            status_code=500,
+            context={"detail": str(exc)},
+            error_type="prepare_day_error",
+        )
+
+    return jsonify({"ok": True, "date": target_date.isoformat(), "summary": results}), 200
 
 
 @app.post("/api/roster/load_seed")
