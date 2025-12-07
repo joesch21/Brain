@@ -41,7 +41,15 @@ export default function BackendDebugConsole() {
     };
   }, []);
 
-  if (!debug) return null;
+  const entries = Array.isArray(debug?.entries)
+    ? debug.entries
+    : debug
+    ? [debug]
+    : [];
+
+  if (!entries.length) return null;
+
+  const latest = entries[entries.length - 1];
 
   return (
     <div
@@ -72,6 +80,11 @@ export default function BackendDebugConsole() {
         }}
       >
         ⚠ Backend Debug
+        {latest?.type && (
+          <span style={{ fontSize: "11px", marginLeft: "8px", color: "#ffd1d1" }}>
+            {latest.type}
+          </span>
+        )}
         <button
           style={{
             marginLeft: "10px",
@@ -90,17 +103,50 @@ export default function BackendDebugConsole() {
       </div>
 
       {!collapsed && (
-        <pre
+        <div
           style={{
-            whiteSpace: "pre-wrap",
             fontSize: "11px",
             marginTop: "8px",
             maxHeight: "300px",
             overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
           }}
         >
-          {JSON.stringify(debug, null, 2)}
-        </pre>
+          {[...entries].reverse().map((entry, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: "6px",
+                background: "rgba(255, 255, 255, 0.04)",
+                borderRadius: "6px",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+              }}
+            >
+              <div style={{ marginBottom: "4px" }}>
+                <strong>{entry.type || "log"}</strong>
+                {entry.timestamp && (
+                  <span style={{ marginLeft: "6px", opacity: 0.8 }}>
+                    {entry.timestamp}
+                  </span>
+                )}
+                {entry.url && (
+                  <div style={{ fontSize: "10px", opacity: 0.8 }}>{entry.url}</div>
+                )}
+              </div>
+              <pre
+                style={{
+                  whiteSpace: "pre-wrap",
+                  fontSize: "10px",
+                  margin: 0,
+                }}
+              >
+                {JSON.stringify(entry, null, 2)}
+              </pre>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

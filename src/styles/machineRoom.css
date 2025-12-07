@@ -248,3 +248,55 @@
   font-size: 0.75rem;
   white-space: pre-wrap;
 }
+
+.wiring-panel {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.wiring-panel__header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.5rem;
+}
+
+.wiring-panel__subtitle {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.wiring-panel__error {
+  margin-top: 0.5rem;
+  color: #d32f2f;
+  font-size: 0.85rem;
+}
+
+.wiring-panel__list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+
+.wiring-panel__item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  padding: 0.15rem 0;
+}
+
+.wiring-panel__icon {
+  width: 1.5rem;
+}
+
+.wiring-panel__label {
+  flex: 0 0 180px;
+}
+
+.wiring-panel__status {
+  flex: 1;
+  opacity: 0.8;
+}
