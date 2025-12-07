@@ -6,14 +6,16 @@ from sqlalchemy.orm import joinedload
 
 from app import RosterTemplateDay, RosterTemplateWeek, Staff
 
-DEFAULT_TEMPLATE_NAME = "SYD_JQ_default_week_v1"
+DEFAULT_TEMPLATE_NAME = "SYD_JQ_default_week_dec24"
 
 
 def _serialize_time(value: time | None) -> str | None:
     return value.strftime("%H:%M") if value else None
 
 
-def _resolve_template(template_name: str | None) -> RosterTemplateWeek | None:
+def _resolve_template(
+    template_name: str | None, weekday: int | None = None
+) -> RosterTemplateWeek | None:
     query = RosterTemplateWeek.query
     template = None
 
@@ -23,6 +25,17 @@ def _resolve_template(template_name: str | None) -> RosterTemplateWeek | None:
             return template
 
         template = query.filter_by(name=template_name).first()
+        if template:
+            return template
+
+    if weekday is not None:
+        template = (
+            query.join(RosterTemplateDay)
+            .filter(RosterTemplateWeek.is_active.is_(True))
+            .filter(RosterTemplateDay.weekday == weekday)
+            .distinct()
+            .first()
+        )
         if template:
             return template
 
@@ -42,9 +55,9 @@ def get_daily_roster(
         raise ValueError("date is required")
 
     weekday = target_date.weekday()
-    template = _resolve_template(template_name)
+    template = _resolve_template(template_name, weekday)
     if not template:
-        raise ValueError("No active roster template found.")
+        raise ValueError(f"No active roster template found for weekday {weekday}.")
 
     day_rows: list[RosterTemplateDay] = (
         RosterTemplateDay.query.options(joinedload(RosterTemplateDay.staff))
@@ -52,11 +65,11 @@ def get_daily_roster(
         .all()
     )
 
-    shifts = []
+    entries = []
     for day in day_rows:
         if not day.staff:
             continue
-        shifts.append(
+        entries.append(
             {
                 "staff_id": day.staff.id,
                 "staff_code": day.staff.code,
@@ -65,7 +78,14 @@ def get_daily_roster(
                 "start_local": _serialize_time(day.start_local),
                 "end_local": _serialize_time(day.end_local),
                 "role": day.role,
+                "weekday": day.weekday,
             }
         )
 
-    return {"date": target_date.isoformat(), "template_id": template.id, "shifts": shifts}
+    return {
+        "date": target_date.isoformat(),
+        "template_id": template.id,
+        "template_name": template.name,
+        "entries": entries,
+        "shifts": entries,
+    }

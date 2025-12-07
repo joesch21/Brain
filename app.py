@@ -41,7 +41,7 @@ from scripts.schema_utils import (
     ensure_flights_schema,
     ensure_run_schema,
 )
-from scripts.roster_seed_dec24 import load_dec24_roster_seed
+from TheBrain.scripts.roster_seed_dec24 import load_dec24_roster_seed
 from scripts.seed_roster_local import seed_staff_and_roster_from_file
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
@@ -2555,6 +2555,8 @@ def api_roster_load_seed():
                 "error": str(exc),
                 "staff_created": 0,
                 "staff_updated": 0,
+                "employees_created": 0,
+                "employees_updated": 0,
                 "templates_created": 0,
                 "template_lines_created": 0,
             }
@@ -2568,6 +2570,8 @@ def api_roster_load_seed():
                 "detail": str(exc),
                 "staff_created": 0,
                 "staff_updated": 0,
+                "employees_created": 0,
+                "employees_updated": 0,
                 "templates_created": 0,
                 "template_lines_created": 0,
             }
