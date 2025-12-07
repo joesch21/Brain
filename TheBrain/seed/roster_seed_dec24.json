@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "source": "Copy of DEC 24 Schedule.xlsx.pdf",
+  "staff": [
+    { "staff_code": "S1", "display_name": "S1", "employment_type": "supervisor", "active": true },
+    { "staff_code": "S2", "display_name": "S2", "employment_type": "supervisor", "active": true },
+    { "staff_code": "S3", "display_name": "S3", "employment_type": "supervisor", "active": true },
+    { "staff_code": "S4", "display_name": "S4", "employment_type": "supervisor", "active": true },
+    { "staff_code": "TL", "display_name": "Team Lead", "employment_type": "lead", "active": true },
+    { "staff_code": "MOM", "display_name": "MOM", "employment_type": "manager", "active": true },
+    { "staff_code": "AB", "display_name": "AB", "employment_type": "manager", "active": true },
+    { "staff_code": "RG", "display_name": "RG", "employment_type": "manager", "active": true },
+    { "staff_code": "TM", "display_name": "TM", "employment_type": "manager", "active": true },
+    { "staff_code": "MG", "display_name": "MG", "employment_type": "manager", "active": true },
+    { "staff_code": "FT1", "display_name": "FT1", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT2", "display_name": "FT2", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT3", "display_name": "FT3", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT4", "display_name": "FT4", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT5", "display_name": "FT5", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT6", "display_name": "FT6", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT7", "display_name": "FT7", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT8", "display_name": "FT8", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT9", "display_name": "FT9", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT10", "display_name": "FT10", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT11", "display_name": "FT11", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT12", "display_name": "FT12", "employment_type": "full_time", "active": true },
+    { "staff_code": "FT13", "display_name": "FT13", "employment_type": "full_time", "active": true },
+    { "staff_code": "PT1", "display_name": "PT1", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT2", "display_name": "PT2", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT3", "display_name": "PT3", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT4", "display_name": "PT4", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT5", "display_name": "PT5", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT6", "display_name": "PT6", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT7", "display_name": "PT7", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT8", "display_name": "PT8", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT9", "display_name": "PT9", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT10", "display_name": "PT10", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT11", "display_name": "PT11", "employment_type": "part_time", "active": true },
+    { "staff_code": "PT12", "display_name": "PT12", "employment_type": "part_time", "active": true }
+  ],
+  "shift_codes": [
+    { "code": "AM", "label": "Morning shift", "start_time": "05:00", "end_time": "12:00" },
+    { "code": "PM", "label": "Afternoon shift", "start_time": "12:00", "end_time": "23:00" },
+    { "code": "NIGHT", "label": "Night shift", "start_time": "23:00", "end_time": "05:00" }
+  ],
+  "templates": [
+    {
+      "template_code": "JQ_MON_STD",
+      "label": "Jetstar – Standard Monday",
+      "day_of_week": "MONDAY",
+      "airline": "JQ",
+      "lines": [
+        { "truck_label": "JQ-TRK-1", "shift_code": "AM", "staff_code": "S4" },
+        { "truck_label": "JQ-TRK-1", "shift_code": "AM", "staff_code": "FT9" },
+        { "truck_label": "JQ-TRK-2", "shift_code": "AM", "staff_code": "FT10" },
+        { "truck_label": "JQ-TRK-3", "shift_code": "AM", "staff_code": "FT3" },
+        { "truck_label": "JQ-TRK-3", "shift_code": "AM", "staff_code": "FT2" },
+        { "truck_label": "JQ-TRK-4", "shift_code": "AM", "staff_code": "PT5" },
+        { "truck_label": "JQ-TRK-Lead", "shift_code": "AM", "staff_code": "TL" },
+        { "truck_label": "JQ-TRK-5", "shift_code": "PM", "staff_code": "FT4" },
+        { "truck_label": "JQ-TRK-6", "shift_code": "PM", "staff_code": "FT6" },
+        { "truck_label": "JQ-TRK-7", "shift_code": "PM", "staff_code": "FT7" },
+        { "truck_label": "JQ-TRK-8", "shift_code": "PM", "staff_code": "PT6" },
+        { "truck_label": "JQ-TRK-9", "shift_code": "PM", "staff_code": "PT7" },
+        { "truck_label": "JQ-TRK-10", "shift_code": "PM", "staff_code": "MOM" },
+        { "truck_label": "JQ-TRK-OV1", "shift_code": "NIGHT", "staff_code": "FT1" },
+        { "truck_label": "JQ-TRK-OV2", "shift_code": "NIGHT", "staff_code": "FT2" },
+        { "truck_label": "JQ-TRK-OV2", "shift_code": "NIGHT", "staff_code": "S1", "role": "supervisor" }
+      ]
+    }
+  ]
+}

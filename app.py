@@ -41,6 +41,7 @@ from scripts.schema_utils import (
     ensure_flights_schema,
     ensure_run_schema,
 )
+from scripts.dec24_roster_loader import load_dec24_roster_seed
 from scripts.seed_roster_local import seed_staff_and_roster_from_file
 from services.orchestrator import BuildOrchestrator
 from services.fixer import FixService
@@ -2536,24 +2537,24 @@ def api_prepare_ops_day():
 @app.post("/api/roster/load_seed")
 def api_roster_load_seed():
     """
-    Seed staff + weekly roster template directly in the Office DB.
+    Seed staff + weekly roster template from the DEC24 schedule directly in the Office DB.
 
     Safe to run multiple times; re-runs will update existing rows
     rather than duplicating them.
     """
     try:
-        summary = seed_staff_and_roster_from_file()
+        summary = load_dec24_roster_seed()
         return jsonify(summary), 200
     except FileNotFoundError as exc:
         return json_error(
-            str(exc),
+            f"Roster seed file not found: {exc}",
             status_code=500,
             error_type="seed_error",
         )
     except Exception as exc:  # noqa: BLE001
         app.logger.exception("Failed to seed roster locally")
         return json_error(
-            "Failed to seed roster.",
+            "Failed to load DEC24 roster seed.",
             status_code=500,
             error_type="seed_error",
             context={"detail": str(exc)},
