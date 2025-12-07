@@ -396,6 +396,17 @@
   opacity: 0.8;
 }
 
+.staff-panel__load {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.staff-panel__load-warning {
+  color: #d32f2f;
+  font-weight: 600;
+}
+
 .staff-panel__close {
   border: none;
   background: none;
@@ -423,6 +434,10 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.04);
 }
 
+.staff-panel__item--conflict {
+  background: rgba(211, 47, 47, 0.06);
+}
+
 .staff-panel__time {
   font-weight: 600;
   min-width: 3.5rem;
@@ -435,4 +450,10 @@
 .staff-panel__role {
   font-size: 0.8rem;
   opacity: 0.7;
+}
+
+.staff-panel__conflict {
+  font-size: 0.78rem;
+  color: #d32f2f;
+  margin-top: 0.15rem;
 }
