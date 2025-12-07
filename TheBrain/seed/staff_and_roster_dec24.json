@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "label": "DEC 24 Jetstar SYD starter roster",
+  "staff": [
+    { "code": "S1",  "name": "S1",  "employment_type": "supervisor", "active": true },
+    { "code": "S2",  "name": "S2",  "employment_type": "supervisor", "active": true },
+    { "code": "S3",  "name": "S3",  "employment_type": "supervisor", "active": true },
+    { "code": "S4",  "name": "S4",  "employment_type": "supervisor", "active": true },
+
+    { "code": "FT1",  "name": "FT1",  "employment_type": "FT", "active": true },
+    { "code": "FT2",  "name": "FT2",  "employment_type": "FT", "active": true },
+    { "code": "FT3",  "name": "FT3",  "employment_type": "FT", "active": true },
+    { "code": "FT4",  "name": "FT4",  "employment_type": "FT", "active": true },
+    { "code": "FT5",  "name": "FT5",  "employment_type": "FT", "active": true },
+    { "code": "FT6",  "name": "FT6",  "employment_type": "FT", "active": true },
+    { "code": "FT7",  "name": "FT7",  "employment_type": "FT", "active": true },
+    { "code": "FT8",  "name": "FT8",  "employment_type": "FT", "active": true },
+    { "code": "FT9",  "name": "FT9",  "employment_type": "FT", "active": true },
+    { "code": "FT10", "name": "FT10", "employment_type": "FT", "active": true },
+    { "code": "FT11", "name": "FT11", "employment_type": "FT", "active": true },
+    { "code": "FT12", "name": "FT12", "employment_type": "FT", "active": true },
+    { "code": "FT13", "name": "FT13", "employment_type": "FT", "active": true },
+
+    { "code": "PT1",  "name": "PT1",  "employment_type": "PT", "active": true },
+    { "code": "PT2",  "name": "PT2",  "employment_type": "PT", "active": true },
+    { "code": "PT3",  "name": "PT3",  "employment_type": "PT", "active": true },
+    { "code": "PT4",  "name": "PT4",  "employment_type": "PT", "active": true },
+    { "code": "PT5",  "name": "PT5",  "employment_type": "PT", "active": true },
+    { "code": "PT6",  "name": "PT6",  "employment_type": "PT", "active": true },
+    { "code": "PT7",  "name": "PT7",  "employment_type": "PT", "active": true },
+
+    { "code": "TL",  "name": "TL",  "employment_type": "TL",  "active": true },
+    { "code": "MOM", "name": "MOM", "employment_type": "OPS", "active": true },
+    { "code": "AB",  "name": "AB",  "employment_type": "FT",  "active": true },
+    { "code": "RG",  "name": "RG",  "employment_type": "FT",  "active": true },
+    { "code": "TM",  "name": "TM",  "employment_type": "FT",  "active": true },
+    { "code": "MG",  "name": "MG",  "employment_type": "FT",  "active": true }
+  ],
+
+  "weekly_template": {
+    "name": "SYD_JQ_default_week_dec24",
+    "description": "Starter weekly roster for Jetstar SYD based on DEC 24 schedule.",
+    "is_active": true,
+    "days": {
+      "0": [
+        { "staff_code": "S4",  "start": "05:00", "end": "12:00", "role": "supervisor" },
+        { "staff_code": "FT9", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT10","start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT3", "start": "05:00", "end": "17:00", "role": "refueller" },
+        { "staff_code": "FT2", "start": "05:00", "end": "13:00", "role": "refueller" },
+        { "staff_code": "PT5", "start": "06:00", "end": "12:00", "role": "refueller" }
+      ],
+      "1": [
+        { "staff_code": "S3",  "start": "05:00", "end": "12:00", "role": "supervisor" },
+        { "staff_code": "FT1", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT4", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT5", "start": "05:00", "end": "17:00", "role": "refueller" },
+        { "staff_code": "PT1", "start": "06:00", "end": "12:00", "role": "refueller" }
+      ],
+      "2": [
+        { "staff_code": "S2",  "start": "05:00", "end": "12:00", "role": "supervisor" },
+        { "staff_code": "FT6", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT7", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT8", "start": "05:00", "end": "17:00", "role": "refueller" },
+        { "staff_code": "PT2", "start": "06:00", "end": "12:00", "role": "refueller" }
+      ],
+      "3": [
+        { "staff_code": "S1",  "start": "05:00", "end": "12:00", "role": "supervisor" },
+        { "staff_code": "FT11","start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT12","start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT13","start": "05:00", "end": "17:00", "role": "refueller" },
+        { "staff_code": "PT3", "start": "06:00", "end": "12:00", "role": "refueller" }
+      ],
+      "4": [
+        { "staff_code": "S4",  "start": "05:00", "end": "12:00", "role": "supervisor" },
+        { "staff_code": "FT2", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT3", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT4", "start": "05:00", "end": "17:00", "role": "refueller" },
+        { "staff_code": "PT4", "start": "06:00", "end": "12:00", "role": "refueller" }
+      ],
+      "5": [
+        { "staff_code": "S2",  "start": "05:00", "end": "12:00", "role": "supervisor" },
+        { "staff_code": "FT5", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT6", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT7", "start": "05:00", "end": "17:00", "role": "refueller" },
+        { "staff_code": "PT6", "start": "06:00", "end": "12:00", "role": "refueller" }
+      ],
+      "6": [
+        { "staff_code": "S3",  "start": "05:00", "end": "12:00", "role": "supervisor" },
+        { "staff_code": "FT8", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT9", "start": "05:00", "end": "15:00", "role": "refueller" },
+        { "staff_code": "FT10","start": "05:00", "end": "17:00", "role": "refueller" },
+        { "staff_code": "PT7", "start": "06:00", "end": "12:00", "role": "refueller" }
+      ]
+    }
+  }
+}

@@ -96,6 +96,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [assignmentMessage, setAssignmentMessage] = useState("");
   const [prepareLoading, setPrepareLoading] = useState(false);
   const [prepareStatus, setPrepareStatus] = useState(null);
+  const [rosterSeedLoading, setRosterSeedLoading] = useState(false);
+  const [rosterSeedStatus, setRosterSeedStatus] = useState(null);
 
   async function loadStatus(targetDate) {
     try {
@@ -243,6 +245,34 @@ const SystemStatusCard = ({ selectedAirline }) => {
       setTestingApis(false);
     }
   }
+
+  const handleLoadDec24Roster = async () => {
+    setRosterSeedLoading(true);
+    setRosterSeedStatus(null);
+    try {
+      const resp = await fetch("/api/roster/load_seed", { method: "POST" });
+      const body = await resp.json();
+      if (!resp.ok || body.ok === false) {
+        setRosterSeedStatus({
+          ok: false,
+          message: body.error || "Failed to load DEC24 roster seed.",
+        });
+      } else {
+        setRosterSeedStatus({
+          ok: true,
+          message: `DEC24 roster seed loaded (template ${body.template_name}).`,
+        });
+      }
+    } catch (err) {
+      setRosterSeedStatus({
+        ok: false,
+        message:
+          err?.message || "Network error while loading DEC24 roster seed.",
+      });
+    } finally {
+      setRosterSeedLoading(false);
+    }
+  };
 
   const runWiringTest = async () => {
     const dateStr = date || todayISO();
@@ -552,40 +582,62 @@ const SystemStatusCard = ({ selectedAirline }) => {
               onChange={(e) => setDate(e.target.value)}
             />
           </label>
-          <button
-            type="button"
-            onClick={testCoreApis}
-            disabled={testingApis || seeding}
-            style={{ fontSize: "0.8rem", marginRight: "0.5rem" }}
-          >
-            {testingApis ? "Testing APIs…" : "Test core APIs"}
-          </button>
-          <button
-            type="button"
-            onClick={seedDemoFlights}
-            disabled={seeding || testingApis}
-            style={{ fontSize: "0.8rem" }}
-          >
-            {seeding ? "Seeding…" : "Seed demo flights"}
-          </button>
-          <button
-            type="button"
-            onClick={autoAssignEmployees}
-            disabled={assigning}
-            style={{ fontSize: "0.8rem", marginLeft: "0.5rem" }}
-          >
-            {assigning ? "Assigning…" : "Auto-assign employees"}
-          </button>
-          <button
-            type="button"
-            onClick={handlePrepareOpsDay}
-            disabled={prepareLoading}
-            style={{ fontSize: "0.8rem", marginLeft: "0.5rem" }}
-          >
-            {prepareLoading ? "Preparing ops day…" : "Prepare ops day"}
-          </button>
         </div>
       </div>
+      <div className="system-actions">
+        <button
+          type="button"
+          className="pill-button"
+          onClick={testCoreApis}
+          disabled={testingApis || seeding}
+        >
+          {testingApis ? "Testing APIs…" : "Test core APIs"}
+        </button>
+        <button
+          type="button"
+          className="pill-button"
+          onClick={seedDemoFlights}
+          disabled={seeding || testingApis}
+        >
+          {seeding ? "Seeding…" : "Seed demo flights"}
+        </button>
+        <button
+          type="button"
+          className="pill-button"
+          onClick={autoAssignEmployees}
+          disabled={assigning}
+        >
+          {assigning ? "Assigning…" : "Auto-assign employees"}
+        </button>
+        <button
+          type="button"
+          className="pill-button"
+          onClick={handlePrepareOpsDay}
+          disabled={prepareLoading}
+        >
+          {prepareLoading ? "Preparing ops day…" : "Prepare ops day"}
+        </button>
+        <button
+          type="button"
+          className="pill-button"
+          onClick={handleLoadDec24Roster}
+          disabled={rosterSeedLoading}
+        >
+          {rosterSeedLoading ? "Loading DEC24 roster…" : "Load DEC24 roster"}
+        </button>
+      </div>
+      {rosterSeedStatus && (
+        <div
+          className={
+            "roster-seed-banner " +
+            (rosterSeedStatus.ok
+              ? "roster-seed-banner--ok"
+              : "roster-seed-banner--error")
+          }
+        >
+          {rosterSeedStatus.message}
+        </div>
+      )}
       {renderWiringPanel()}
       {assignmentMessage && (
         <p className="muted" style={{ marginTop: "0.35rem" }}>
@@ -807,8 +859,6 @@ const MachineRoomPage = () => {
   const [airline, setAirline] = useState(DEFAULT_AIRLINE);
   const [importLoading, setImportLoading] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
-  const [seedLoading, setSeedLoading] = useState(false);
-  const [seedStatus, setSeedStatus] = useState(null);
 
   const importDisabled = importLoading || airline === ALL_AIRLINE_OPTION;
 
@@ -879,39 +929,6 @@ const MachineRoomPage = () => {
     );
   };
 
-  const handleLoadDec24RosterSeed = async () => {
-    setSeedLoading(true);
-    setSeedStatus(null);
-    try {
-      const resp = await fetch("/api/roster/load_seed", { method: "POST" });
-      const body = await resp.json();
-      // Surface in console for quick debugging
-      console.debug("DEC24 roster seed result", body);
-
-      if (!resp.ok || body.ok === false) {
-        setSeedStatus({
-          ok: false,
-          message: body.error || "Failed to load DEC24 roster seed.",
-          summary: body,
-        });
-      } else {
-        setSeedStatus({
-          ok: true,
-          message: "DEC24 roster seed loaded.",
-          summary: body,
-        });
-      }
-    } catch (err) {
-      setSeedStatus({
-        ok: false,
-        message: err?.message || "Network error while loading roster seed.",
-        summary: null,
-      });
-    } finally {
-      setSeedLoading(false);
-    }
-  };
-
   return (
     <div className="machine-room-page">
       <h2>Machine Room</h2>
@@ -977,49 +994,6 @@ const MachineRoomPage = () => {
 
       {/* NEW: live system status, flight/run counts, API tests, and seeding */}
       <SystemStatusCard selectedAirline={airline} />
-
-      <section className="machine-room-card roster-seed-panel">
-        <h3>DEC24 Roster Seed</h3>
-        <p className="roster-seed-panel__subtitle">
-          Load staff + standard Jetstar roster from December schedule.
-        </p>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={handleLoadDec24RosterSeed}
-          disabled={seedLoading}
-        >
-          {seedLoading ? "Loading DEC24 roster…" : "Load DEC24 roster seed"}
-        </button>
-
-        {seedStatus && (
-          <div
-            className={
-              "roster-seed-status " +
-              (seedStatus.ok ? "roster-seed-status--ok" : "roster-seed-status--error")
-            }
-          >
-            {seedStatus.message}
-            {seedStatus.summary && (
-              <div className="roster-seed-summary">
-                {(() => {
-                  const summary = seedStatus.summary || {};
-                  return (
-                    <>
-                      <div className="roster-seed-summary__item">
-                        Staff: +{summary.staff_created ?? 0} / updated {summary.staff_updated ?? 0}
-                      </div>
-                      <div className="roster-seed-summary__item">
-                        Templates: {summary.templates_imported ?? 0} / lines {summary.template_days_created ?? 0}
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
 
       {/* Existing descriptive content can be kept below or simplified */}
       <section style={{ marginTop: "1.5rem" }}>
