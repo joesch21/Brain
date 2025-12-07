@@ -38,6 +38,15 @@ const WIRING_TESTS = [
     method: "GET",
     buildUrl: (date) => `/api/roster/daily?date=${encodeURIComponent(date)}`,
     expectsOkField: true,
+    validate: (body) => {
+      const entries =
+        body?.roster?.entries ||
+        body?.entries ||
+        body?.roster?.shifts ||
+        [];
+      const ok = Array.isArray(entries) && entries.length > 0;
+      return { ok, message: ok ? "" : "No roster entries returned" };
+    },
   },
   {
     key: "assignments",
@@ -252,17 +261,19 @@ const SystemStatusCard = ({ selectedAirline }) => {
     setRosterSeedLoading(true);
     setRosterSeedStatus(null);
     try {
-      const resp = await fetch("/api/roster/load_seed", { method: "POST" });
-      const body = await resp.json();
+      const resp = await fetch("/api/roster/seed_dec24", { method: "POST" });
+      const body = await resp.json().catch(() => ({}));
       if (!resp.ok || body.ok === false) {
         setRosterSeedStatus({
           ok: false,
-          message: body.error || "Failed to load DEC24 roster seed.",
+          message: body.error || body.detail || "Failed to load DEC24 roster seed.",
         });
       } else {
         setRosterSeedStatus({
           ok: true,
-          message: `DEC24 roster seed loaded (template ${body.template_name}).`,
+          message: body.template_name
+            ? `DEC24 roster loaded (${body.template_name}).`
+            : "DEC24 roster loaded.",
         });
       }
     } catch (err) {
@@ -313,8 +324,17 @@ const SystemStatusCard = ({ selectedAirline }) => {
 
         const baseOk = resp.ok;
         const logicalOk = test.expectsOkField ? body?.ok !== false : true;
+        const validation = test.validate ? test.validate(body) : { ok: true };
+        const validationOk =
+          typeof validation === "boolean" ? validation : validation?.ok !== false;
+        const validationMessage =
+          typeof validation === "object" && validation?.message
+            ? validation.message
+            : validationOk
+            ? ""
+            : "Validation failed";
 
-        if (baseOk && logicalOk) {
+        if (baseOk && logicalOk && validationOk) {
           result.status = "ok";
           if (body && typeof body === "object") {
             const extra =
@@ -322,11 +342,14 @@ const SystemStatusCard = ({ selectedAirline }) => {
                 ? `count=${body.count}`
                 : body.summary
                 ? "summary returned"
-                : "";
+                : validationMessage || "";
             result.message = extra || "OK";
           } else {
             result.message = "OK";
           }
+        } else if (baseOk && logicalOk && !validationOk) {
+          result.status = "error";
+          result.message = validationMessage || "Unexpected response";
         } else if (baseOk && !logicalOk) {
           result.status = "warn";
           result.message = body?.error || body?.message || "ok=false in body";
