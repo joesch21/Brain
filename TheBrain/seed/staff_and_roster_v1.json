@@ -1,0 +1,59 @@
+{
+  "staff": [
+    {
+      "code": "FT1",
+      "name": "Full Timer 1",
+      "employment_type": "FT",
+      "skills": ["truck", "jetfuels"]
+    },
+    {
+      "code": "FT2",
+      "name": "Full Timer 2",
+      "employment_type": "FT",
+      "skills": ["truck"]
+    },
+    {
+      "code": "PT1",
+      "name": "Part Timer 1",
+      "employment_type": "PT",
+      "skills": ["truck"]
+    },
+    {
+      "code": "SUP1",
+      "name": "Supervisor 1",
+      "employment_type": "FT",
+      "skills": ["supervisor"]
+    }
+  ],
+
+  "weekly_template": {
+    "name": "SYD_JQ_default_week_v1",
+    "description": "Default JQ roster template for SYD, used when no custom roster is defined.",
+    "is_active": true,
+
+    "days": {
+      "0": [
+        { "staff_code": "FT1",  "start": "05:00", "end": "12:00", "role": "refueller" },
+        { "staff_code": "FT2",  "start": "12:01","end": "23:00", "role": "refueller" },
+        { "staff_code": "SUP1", "start": "06:00", "end": "14:00", "role": "supervisor" }
+      ],
+      "1": [
+        { "staff_code": "FT1",  "start": "05:00", "end": "12:00", "role": "refueller" },
+        { "staff_code": "FT2",  "start": "12:01","end": "23:00", "role": "refueller" },
+        { "staff_code": "SUP1", "start": "06:00", "end": "14:00", "role": "supervisor" }
+      ],
+      "2": [
+        { "staff_code": "FT1",  "start": "05:00", "end": "12:00", "role": "refueller" },
+        { "staff_code": "PT1",  "start": "12:01","end": "23:00", "role": "refueller" },
+        { "staff_code": "SUP1", "start": "06:00", "end": "14:00", "role": "supervisor" }
+      ],
+      "3": [],
+      "4": [],
+      "5": [],
+      "6": [
+        { "staff_code": "FT1",  "start": "05:00", "end": "12:00", "role": "refueller" },
+        { "staff_code": "FT2",  "start": "12:01","end": "23:00", "role": "refueller" }
+      ]
+    }
+  }
+}
