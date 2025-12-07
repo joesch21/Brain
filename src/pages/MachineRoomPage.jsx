@@ -450,61 +450,56 @@ const SystemStatusCard = ({ selectedAirline }) => {
       return;
     }
 
+    setAutoAssignLoading(true);
+    setAutoAssignStatus(null);
+
     const params = new URLSearchParams({ date });
     if (selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION) {
       params.set("airline", selectedAirline);
     }
 
-    setAutoAssignLoading(true);
-    setAutoAssignStatus(null);
-
     try {
-      const runsResp = await fetch(`/api/runs/generate?${params.toString()}`, {
-        method: "POST",
-      });
-      const runsBody = await runsResp.json().catch(() => ({}));
-
-      if (!runsResp.ok || runsBody?.ok === false) {
-        setAutoAssignStatus({
-          ok: false,
-          message:
-            runsBody?.error || `Failed to generate runs for ${date}.`,
-        });
-        return;
-      }
-
-      const assignResp = await fetch(
-        `/api/flight_runs/auto_assign?${params.toString()}`,
-        { method: "POST" }
+      const resp = await fetch(
+        `/api/ops/auto_assign_flights?${params.toString()}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
       );
-      const assignBody = await assignResp.json().catch(() => ({}));
+      const body = await resp.json().catch(() => ({}));
 
-      if (!assignResp.ok || assignBody?.ok === false) {
+      if (!resp.ok || body?.ok === false) {
         setAutoAssignStatus({
           ok: false,
           message:
-            assignBody?.error || `Failed to auto-assign flights for ${date}.`,
+            body?.error ||
+            `Auto-assign failed for ${date}. Check Backend Debug.`,
         });
         return;
       }
 
-      const assignedCount =
-        assignBody.assigned ?? assignBody.assigned_count ?? assignBody.count;
-      const successMessage = assignedCount
-        ? `Auto-assigned ${assignedCount} flights into runs for ${date}.`
-        : `Auto-assigned flights into runs for ${date}.`;
+      await loadStatus(date);
+
+      const assigned =
+        body?.assign?.body?.assigned ??
+        body?.assign?.body?.assigned_count ??
+        body?.assign?.body?.count;
+      const createdRuns =
+        body?.runs?.body?.runs_created ?? body?.runs?.body?.created_runs;
 
       setAutoAssignStatus({
         ok: true,
-        message: successMessage,
+        message:
+          assigned != null && createdRuns != null
+            ? `Created ${createdRuns} runs and auto-assigned ${assigned} flights for ${date}.`
+            : `Auto-assign completed for ${date}.`,
       });
-
-      await loadStatus(date);
     } catch (err) {
       setAutoAssignStatus({
         ok: false,
-        message:
-          err?.message || "Network error while auto-assigning flights to runs.",
+        message: `Network error while auto-assigning flights: ${
+          err?.message || err
+        }`,
       });
     } finally {
       setAutoAssignLoading(false);

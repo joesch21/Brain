@@ -2670,6 +2670,122 @@ def api_employee_assignments_generate():
         )
 
 
+@app.post("/api/ops/auto_assign_flights")
+def api_ops_auto_assign_flights():
+    """
+    One-click pipeline for a given date (+ optional airline):
+
+    1) Generate runs for date
+    2) Auto-assign flights into those runs
+
+    Returns a combined summary payload so the frontend can show
+    what happened in a single banner.
+    """
+
+    date_str = request.args.get("date") or request.json.get("date") if request.is_json else None
+    airline = request.args.get("airline") or (
+        request.json.get("airline") if request.is_json else None
+    )
+
+    if not date_str:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Missing required 'date' parameter.",
+                "type": "validation_error",
+            }
+        ), 400
+
+    params = {"date": date_str}
+    if airline:
+        params["airline"] = airline
+
+    summary = {
+        "ok": False,
+        "date": date_str,
+        "airline": airline,
+        "runs": None,
+        "assign": None,
+    }
+
+    # 1) Generate runs
+    try:
+        runs_resp = requests.post(
+            f"{CC2_BASE_URL}/api/runs/generate",
+            params=params,
+            timeout=25,
+        )
+        try:
+            runs_body = runs_resp.json()
+        except Exception:  # noqa: BLE001
+            runs_body = {"raw": runs_resp.text}
+
+        summary["runs"] = {
+            "status": runs_resp.status_code,
+            "body": runs_body,
+        }
+
+        if not runs_resp.ok or not runs_body.get("ok", True):
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": runs_body.get("error", "Failed to generate runs."),
+                    "type": "runs_generate_error",
+                    "context": summary,
+                }
+            ), 400
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to call CC2 /api/runs/generate")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Upstream error while generating runs.",
+                "type": "runs_generate_upstream_error",
+                "detail": str(exc),
+            }
+        ), 502
+
+    # 2) Auto-assign flights into runs
+    try:
+        assign_resp = requests.post(
+            f"{CC2_BASE_URL}/api/flight_runs/auto_assign",
+            params=params,
+            timeout=40,
+        )
+        try:
+            assign_body = assign_resp.json()
+        except Exception:  # noqa: BLE001
+            assign_body = {"raw": assign_resp.text}
+
+        summary["assign"] = {
+            "status": assign_resp.status_code,
+            "body": assign_body,
+        }
+
+        if not assign_resp.ok or not assign_body.get("ok", True):
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": assign_body.get("error", "Failed to auto-assign flights."),
+                    "type": "runs_assignment_error",
+                    "context": summary,
+                }
+            ), 400
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to call CC2 /api/flight_runs/auto_assign")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Upstream error while assigning flights.",
+                "type": "runs_assignment_upstream_error",
+                "detail": str(exc),
+            }
+        ), 502
+
+    summary["ok"] = True
+    return jsonify(summary), 200
+
+
 @app.post("/api/runs/generate")
 def proxy_runs_generate():
     """Proxy POST /api/runs/generate to Code_Crafter2."""
