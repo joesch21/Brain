@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "../styles/planner.css";
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
@@ -9,6 +9,7 @@ import {
   fetchRuns,
   fetchStaffRuns,
 } from "../lib/apiClient";
+import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../utils/runConflictUtils";
 
 // --- small helpers ---------------------------------------------------------
 
@@ -542,19 +543,25 @@ function RunsGridColumn({
                     "—";
                   const flights =
                     run.flights || run.flight_runs || run.flightRuns || [];
+                  const conflict = run.conflict || {};
+                  const overloaded = conflict.overloaded;
+                  const tightCount = conflict.tightConnections?.length || 0;
+                  const hasConflicts = conflict.hasConflicts;
+                  const runClassName =
+                    "planner-run-card" +
+                    (selectedRunId === run.id
+                      ? " planner-run-card--selected"
+                      : "") +
+                    (isDraggingUnassignedFlight && hoverRunId === run.id
+                      ? " planner-run-card--droptarget"
+                      : "") +
+                    (hasConflicts ? " planner-run-card--has-conflict" : "") +
+                    (overloaded ? " planner-run-card--overloaded" : "");
 
                   return (
                     <div
                       key={run.id}
-                      className={
-                        "planner-run-card" +
-                        (selectedRunId === run.id
-                          ? " planner-run-card--selected"
-                          : "") +
-                        (isDraggingUnassignedFlight && hoverRunId === run.id
-                          ? " planner-run-card--droptarget"
-                          : "")
-                      }
+                      className={runClassName}
                       onClick={() => onSelectRun(run.id)}
                       onDragOver={(event) => {
                         // Allow drops from Unassigned onto the whole run card.
@@ -592,6 +599,21 @@ function RunsGridColumn({
                           {op || "RUN"}
                         </div>
                       </div>
+                      <div className="planner-run-card-inline">
+                        <span className="planner-run-card-stat">
+                          {flights.length} flights
+                        </span>
+                        {overloaded && (
+                          <span className="planner-run-chip planner-run-chip--overloaded">
+                            Overloaded
+                          </span>
+                        )}
+                        {tightCount > 0 && (
+                          <span className="planner-run-chip planner-run-chip--tight">
+                            {tightCount} tight
+                          </span>
+                        )}
+                      </div>
                       <table className="planner-table planner-table--compact">
                         <thead>
                           <tr>
@@ -624,9 +646,14 @@ function RunsGridColumn({
                               fr.sequence ??
                               index;
                             const key = fr.id || `${fn}|${time}`;
+                            const isTight = fr.isTightConnection || flt.isTightConnection;
                             return (
                               <tr
                                 key={key}
+                                className={
+                                  "planner-run-row" +
+                                  (isTight ? " planner-run-row--tight" : "")
+                                }
                                 draggable
                                 onDragStart={(event) => {
                                   // Existing run→run reordering
@@ -927,6 +954,19 @@ const PlannerPage = () => {
   const [selectedStaffKey, setSelectedStaffKey] = useState(null);
   const [isStaffPanelOpen, setIsStaffPanelOpen] = useState(false);
 
+  const decorateRunsList = useCallback((list) => decorateRuns(list), []);
+
+  const setRunsWithConflicts = useCallback(
+    (value) => {
+      if (typeof value === "function") {
+        setRuns((prev) => decorateRunsList(value(prev)));
+        return;
+      }
+      setRuns(decorateRunsList(value));
+    },
+    [decorateRunsList]
+  );
+
   // Convenience flags based on dragPayload type
   const isDraggingUnassignedFlight = dragPayload?.type === "UNASSIGNED_FLIGHT";
   const isDraggingRunFlight = dragPayload?.type === "RUN_FLIGHT";
@@ -1160,12 +1200,12 @@ const PlannerPage = () => {
     try {
       const runsResp = await fetchRuns(date, airlineCode, { signal });
       if (!signal?.aborted) {
-        setRuns(normalizeRuns(runsResp.data));
+        setRunsWithConflicts(normalizeRuns(runsResp.data));
         setUnassigned(normalizeUnassigned(runsResp.data));
       }
     } catch (err) {
       if (!signal?.aborted) {
-        setRuns([]);
+        setRunsWithConflicts([]);
         setUnassigned([]);
         setRunsError(formatRequestError("Runs", err));
       }
@@ -1253,7 +1293,7 @@ const PlannerPage = () => {
       }
       const updated = await resp.json();
 
-      setRuns((prevRuns) =>
+      setRunsWithConflicts((prevRuns) =>
         prevRuns.map((run) => {
           const flightsArr =
             run.flights || run.flight_runs || run.flightRuns || [];
@@ -1306,7 +1346,7 @@ const PlannerPage = () => {
   }
 
   function handleRunsReorder(newRuns) {
-    setRuns(newRuns);
+    setRunsWithConflicts(newRuns);
     persistLayout(newRuns);
   }
 
@@ -1339,7 +1379,7 @@ const PlannerPage = () => {
       }
 
       const newRuns = normalizeRuns(body || {});
-      setRuns(newRuns);
+      setRunsWithConflicts(newRuns);
       setUnassigned(normalizeUnassigned(body || {}));
       setRunsError("");
       setAutoAssignSuccess(true);
@@ -1445,7 +1485,7 @@ const PlannerPage = () => {
       const newFR = data.flight_run || data;
 
       // Optimistically append to the target run's flights list
-      setRuns((prevRuns) =>
+      setRunsWithConflicts((prevRuns) =>
         prevRuns.map((run) => {
           if (run.id !== targetRunId) return run;
 
@@ -1488,7 +1528,7 @@ const PlannerPage = () => {
       }
 
       // Remove this FlightRun from whichever run currently contains it.
-      setRuns((prevRuns) =>
+      setRunsWithConflicts((prevRuns) =>
         prevRuns.map((run) => {
           const flightsArr =
             run.flights || run.flight_runs || run.flightRuns || [];
@@ -1725,6 +1765,16 @@ const PlannerPage = () => {
 
       {!error && (
         <>
+          <div className="planner-legend">
+            <span className="legend-item">
+              <span className="legend-swatch legend-swatch--overloaded" />
+              Overloaded run (&gt; {MAX_FLIGHTS_PER_RUN} flights)
+            </span>
+            <span className="legend-item">
+              <span className="legend-swatch legend-swatch--tight" />
+              Tight connection (&lt; {MIN_GAP_MINUTES_TIGHT} mins between flights)
+            </span>
+          </div>
           <div className="planner-tabs">
             <button
               type="button"
