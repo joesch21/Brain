@@ -7,11 +7,14 @@ from datetime import date, datetime, time, timedelta
 from typing import Iterable
 
 from sqlalchemy import and_
+from sqlalchemy.orm import joinedload
 
 from app import (
     Employee,
     Flight,
     RosterEntry,
+    StaffRun,
+    StaffRunJob,
     SYD_TZ,
     WeeklyRosterTemplate,
     db,
@@ -197,3 +200,71 @@ def auto_assign_employees_for_date(target_date: date, airline: str = "JQ") -> di
         "assigned": assigned,
         "unassigned": unassigned,
     }
+
+
+def _format_time_for_assignment(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        try:
+            return value.strftime("%H:%M")
+        except Exception:
+            return ""
+    if isinstance(value, time):
+        return value.strftime("%H:%M")
+    try:
+        return str(value)
+    except Exception:
+        return ""
+
+
+def get_employee_assignments_for_date(target_date: date) -> list[dict]:
+    """Return employee → flight assignments for the provided date."""
+
+    flights: list[Flight] = (
+        Flight.query.filter(Flight.date == target_date)
+        .order_by(Flight.etd_local.asc(), Flight.eta_local.asc(), Flight.id.asc())
+        .all()
+    )
+
+    run_jobs: list[StaffRunJob] = (
+        StaffRunJob.query.join(StaffRun)
+        .filter(StaffRun.date == target_date)
+        .options(joinedload(StaffRunJob.staff_run).joinedload(StaffRun.staff))
+        .all()
+    )
+    job_by_flight: dict[int, StaffRunJob] = {job.flight_id: job for job in run_jobs}
+
+    assignments: list[dict] = []
+    for flight in flights:
+        job = job_by_flight.get(flight.id)
+        staff_run = job.staff_run if job else None
+        staff = staff_run.staff if staff_run else None
+        employee = flight.assigned_employee
+
+        staff_code = getattr(staff, "code", None) or getattr(employee, "code", None)
+        staff_name = (
+            getattr(staff, "name", None)
+            or flight.assigned_employee_name
+            or getattr(employee, "name", None)
+        )
+        role = getattr(staff, "role", None) or getattr(employee, "role", None)
+
+        dep_time = _format_time_for_assignment(
+            flight.etd_local or flight.time_local or flight.eta_local
+        )
+
+        assignments.append(
+            {
+                "flight_id": flight.id,
+                "flight_number": flight.flight_number,
+                "dep_time": dep_time,
+                "dest": flight.destination,
+                "staff_code": staff_code,
+                "staff_name": staff_name,
+                "role": role,
+                "run_id": staff_run.id if staff_run else None,
+            }
+        )
+
+    return assignments

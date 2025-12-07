@@ -660,6 +660,7 @@ from services.roster_engine import (
     auto_assign_employees_for_date,
     generate_roster_for_date,
     generate_roster_for_date_range,
+    get_employee_assignments_for_date,
 )
 
 
@@ -2428,6 +2429,49 @@ def api_roster_daily():
         return json_error(
             "Internal error while building roster.",
             context={"date": target_date.isoformat()},
+        )
+
+
+@app.get("/api/employee_assignments/daily")
+def api_employee_assignments_daily():
+    """Return employee → flight assignments for a given date as JSON."""
+
+    date_str = request.args.get("date")
+    if not date_str:
+        return json_error(
+            "Missing ?date=YYYY-MM-DD", status_code=400, error_type="validation_error"
+        )
+
+    try:
+        target_date = date.fromisoformat(date_str)
+    except Exception:
+        return json_error(
+            "Invalid date format; expected YYYY-MM-DD.",
+            status_code=400,
+            error_type="validation_error",
+            context={"date": date_str},
+        )
+
+    try:
+        ensure_flight_schema()
+        assignments = get_employee_assignments_for_date(target_date)
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "date": target_date.isoformat(),
+                    "assignments": assignments,
+                }
+            ),
+            200,
+        )
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Failed to load employee assignments")
+        return json_error(
+            "Failed to load employee assignments.",
+            status_code=500,
+            error_type="assignments_error",
+            context={"detail": str(exc), "date": date_str},
         )
 
 
