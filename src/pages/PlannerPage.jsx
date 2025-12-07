@@ -34,22 +34,40 @@ function getAirlineCode(flightNumber) {
   return prefix || "UNK";
 }
 
-// Parse "HH:MM" or "HH:MM:SS" into minutes since midnight.
-function parseTimeToMinutes(timeStr) {
-  if (!timeStr || typeof timeStr !== "string") return null;
-  const parts = timeStr.split(":");
-  if (parts.length < 2) return null;
-  const hours = Number(parts[0]);
-  const minutes = Number(parts[1]);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return hours * 60 + minutes;
-}
+const parseTimeToMinutes = (hhmm) => {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map((x) => parseInt(x, 10));
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+};
+
+// Match how you conceptually think about shifts
+const getBandForMinutes = (mins) => {
+  // wrap-around case
+  const inRange = (x, start, end) => {
+    if (start <= end) return x >= start && x <= end;
+    // overnight (e.g. 23:00–05:00)
+    return x >= start || x <= end;
+  };
+
+  const amStart = 5 * 60;
+  const amEnd = 12 * 60;
+  const pmStart = 12 * 60 + 1;
+  const pmEnd = 23 * 60;
+  const nightStart = 23 * 60;
+  const nightEnd = 5 * 60;
+
+  if (inRange(mins, amStart, amEnd)) return "AM";
+  if (inRange(mins, pmStart, pmEnd)) return "PM";
+  if (inRange(mins, nightStart, nightEnd)) return "NIGHT";
+  return "OTHER";
+};
 
 function classifyTimeBand(timeStr) {
   const mins = parseTimeToMinutes(timeStr);
   if (mins == null) return "UNKNOWN";
-  if (mins >= 5 * 60 && mins <= 12 * 60) return "AM"; // 05:00–12:00
-  if (mins >= 12 * 60 + 1 && mins <= 23 * 60) return "PM"; // 12:01–23:00
+  const band = getBandForMinutes(mins);
+  if (band === "AM" || band === "PM") return band;
   return "OTHER";
 }
 
@@ -1001,6 +1019,65 @@ const PlannerPage = () => {
     return assignmentsByStaff.get(selectedStaffKey) || [];
   }, [selectedStaffKey, assignmentsByStaff]);
 
+  const SERVICE_SETUP_MIN = 30; // minutes before dep
+  const SERVICE_TURNAROUND_MIN = 60; // minutes after dep
+
+  const selectedStaffAnalysis = useMemo(() => {
+    const list = selectedStaffAssignments;
+    if (!list || list.length === 0) {
+      return {
+        total: 0,
+        bandCounts: { AM: 0, PM: 0, NIGHT: 0, OTHER: 0 },
+        conflictFlightIds: new Set(),
+      };
+    }
+
+    const bandCounts = { AM: 0, PM: 0, NIGHT: 0, OTHER: 0 };
+
+    const windows = list.map((a) => {
+      const depMins = parseTimeToMinutes(a.dep_time);
+      const band = depMins != null ? getBandForMinutes(depMins) : "OTHER";
+
+      if (bandCounts[band] == null) bandCounts[band] = 0;
+      bandCounts[band] += 1;
+
+      const start = depMins != null ? depMins - SERVICE_SETUP_MIN : null;
+      const end = depMins != null ? depMins + SERVICE_TURNAROUND_MIN : null;
+
+      return {
+        flight_id: a.flight_id,
+        depMins,
+        start,
+        end,
+      };
+    });
+
+    const conflictFlightIds = new Set();
+
+    for (let i = 0; i < windows.length; i++) {
+      const wi = windows[i];
+      if (wi.start == null || wi.end == null) continue;
+
+      for (let j = i + 1; j < windows.length; j++) {
+        const wj = windows[j];
+        if (wj.start == null || wj.end == null) continue;
+
+        const overlap = wi.start < wj.end && wj.start < wi.end;
+
+        if (overlap) {
+          conflictFlightIds.add(wi.flight_id);
+          conflictFlightIds.add(wj.flight_id);
+        }
+      }
+    }
+
+    return {
+      total: list.length,
+      bandCounts,
+      conflictFlightIds,
+    };
+  }, [selectedStaffAssignments]);
+
   const staffRunsByStaffId = useMemo(() => {
     const map = new Map();
     (staffRuns.runs || []).forEach((run) => {
@@ -1436,6 +1513,8 @@ const PlannerPage = () => {
 
     const [code = "", name = ""] = selectedStaffKey.split("::");
     const list = selectedStaffAssignments;
+    const { total, bandCounts, conflictFlightIds } = selectedStaffAnalysis;
+    const hasConflicts = conflictFlightIds.size > 0;
 
     return (
       <div
@@ -1453,6 +1532,21 @@ const PlannerPage = () => {
               <div className="staff-panel__title">{name}</div>
               <div className="staff-panel__subtitle">
                 {code} · Schedule for {date}
+              </div>
+              <div className="staff-panel__load">
+                Load: {total} flight{total === 1 ? "" : "s"}
+                {total > 0 && (
+                  <>
+                    {" · "}
+                    AM {bandCounts.AM || 0}, PM {bandCounts.PM || 0}
+                    {bandCounts.NIGHT ? `, Night ${bandCounts.NIGHT}` : ""}
+                  </>
+                )}
+                {hasConflicts && (
+                  <span className="staff-panel__load-warning">
+                    {" "}· Conflicts detected
+                  </span>
+                )}
               </div>
             </div>
             <button
@@ -1475,8 +1569,14 @@ const PlannerPage = () => {
                     a.flight_id ||
                     a.flightId ||
                     `${a.flight_number || a.flightNumber || ""}-${a.dep_time}`;
+                  const isConflict = conflictFlightIds.has(a.flight_id);
                   return (
-                    <li key={key} className="staff-panel__item">
+                    <li
+                      key={key}
+                      className={`staff-panel__item${
+                        isConflict ? " staff-panel__item--conflict" : ""
+                      }`}
+                    >
                       <div className="staff-panel__time">{a.dep_time}</div>
                       <div className="staff-panel__flight">
                         <div className="staff-panel__flight-main">
@@ -1484,6 +1584,11 @@ const PlannerPage = () => {
                           {a.dest && <> → {a.dest}</>}
                         </div>
                         {a.role && <div className="staff-panel__role">Role: {a.role}</div>}
+                        {isConflict && (
+                          <div className="staff-panel__conflict">
+                            ⚠ Overlaps another assignment
+                          </div>
+                        )}
                       </div>
                     </li>
                   );
