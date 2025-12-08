@@ -3,6 +3,14 @@ import React, { useEffect, useState } from "react";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 import ImportStatusCard from "../components/ImportStatusCard";
 import { pushBackendDebugEntry } from "../lib/backendDebug";
+import {
+  autoAssignEmployees as autoAssignEmployeesApi,
+  autoAssignFlights as autoAssignFlightsApi,
+  fetchEmployeeAssignmentsForDate,
+  fetchFlightsForDate,
+  mergeFlightsWithAssignments,
+} from "../api/opsClient";
+import { FlightsAssignmentsTable } from "../components/FlightsAssignmentsTable";
 import "../styles/machineRoom.css";
 
 function todayISO() {
@@ -109,6 +117,10 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [rosterSeedStatus, setRosterSeedStatus] = useState(null);
   const [autoAssignLoading, setAutoAssignLoading] = useState(false);
   const [autoAssignStatus, setAutoAssignStatus] = useState(null);
+  const [assignedFlights, setAssignedFlights] = useState([]);
+  const [flightsAssignmentsLoading, setFlightsAssignmentsLoading] =
+    useState(false);
+  const [flightsAssignmentsError, setFlightsAssignmentsError] = useState("");
 
   async function loadStatus(targetDate) {
     try {
@@ -193,9 +205,35 @@ const SystemStatusCard = ({ selectedAirline }) => {
     }
   }
 
+  async function loadFlightsAndAssignments(targetDate) {
+    setFlightsAssignmentsLoading(true);
+    setFlightsAssignmentsError("");
+    try {
+      const [flightsForDay, assignments] = await Promise.all([
+        fetchFlightsForDate(targetDate),
+        fetchEmployeeAssignmentsForDate(targetDate),
+      ]);
+      setAssignedFlights(
+        mergeFlightsWithAssignments(flightsForDay, assignments)
+      );
+    } catch (err) {
+      console.error("Failed to load flights/assignments", err);
+      setFlightsAssignmentsError(
+        err?.message || "Failed to load flights and assignments."
+      );
+      setAssignedFlights([]);
+    } finally {
+      setFlightsAssignmentsLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadStatus(date);
   }, [date, selectedAirline]);
+
+  useEffect(() => {
+    loadFlightsAndAssignments(date);
+  }, [date]);
 
   async function testCoreApis() {
     const airlineSuffix =
@@ -475,54 +513,17 @@ const SystemStatusCard = ({ selectedAirline }) => {
 
     setAutoAssignLoading(true);
     setAutoAssignStatus(null);
-
-    const params = new URLSearchParams({ date });
-    if (selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION) {
-      params.set("airline", selectedAirline);
-    }
-
     try {
-      const resp = await fetch(
-        `/api/ops/auto_assign_flights?${params.toString()}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-      const body = await resp.json().catch(() => ({}));
-
-      if (!resp.ok || body?.ok === false) {
-        setAutoAssignStatus({
-          ok: false,
-          message:
-            body?.error ||
-            `Auto-assign failed for ${date}. Check Backend Debug.`,
-        });
-        return;
-      }
-
-      await loadStatus(date);
-
-      const assigned =
-        body?.assign?.body?.assigned ??
-        body?.assign?.body?.assigned_count ??
-        body?.assign?.body?.count;
-      const createdRuns =
-        body?.runs?.body?.runs_created ?? body?.runs?.body?.created_runs;
-
+      await autoAssignFlightsApi(date);
+      await Promise.all([loadStatus(date), loadFlightsAndAssignments(date)]);
       setAutoAssignStatus({
         ok: true,
-        message:
-          assigned != null && createdRuns != null
-            ? `Created ${createdRuns} runs and auto-assigned ${assigned} flights for ${date}.`
-            : `Auto-assign completed for ${date}.`,
+        message: `Auto-assigned flights for ${date}.`,
       });
     } catch (err) {
       setAutoAssignStatus({
         ok: false,
-        message: `Network error while auto-assigning flights: ${
-          err?.message || err
-        }`,
+        message: err?.message || "Auto-assign flights failed.",
       });
     } finally {
       setAutoAssignLoading(false);
@@ -530,31 +531,17 @@ const SystemStatusCard = ({ selectedAirline }) => {
   };
 
   async function autoAssignEmployees() {
-    const targetAirline =
-      selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
-        ? selectedAirline
-        : DEFAULT_AIRLINE;
+    if (!date) {
+      setAssignmentMessage("No date selected for auto-assign.");
+      return;
+    }
 
     try {
       setAssigning(true);
       setAssignmentMessage("");
-      const resp = await fetch("/api/employee_assignments/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, airline: targetAirline }),
-      });
-
-      const body = await resp.json();
-      if (!resp.ok || body?.ok === false) {
-        throw new Error(body?.error || "Failed to auto-assign employees.");
-      }
-
-      setAssignmentMessage(
-        `Assigned ${body.assigned ?? 0}/${body.total_flights ?? 0} flights for ${
-          body.airline || targetAirline
-        } on ${body.date || date}.`
-      );
-      await loadStatus(date);
+      await autoAssignEmployeesApi(date);
+      await Promise.all([loadStatus(date), loadFlightsAndAssignments(date)]);
+      setAssignmentMessage(`Auto-assigned employees for ${date}.`);
     } catch (err) {
       console.error(err);
       setAssignmentMessage(err?.message || "Failed to auto-assign employees.");
@@ -768,6 +755,17 @@ const SystemStatusCard = ({ selectedAirline }) => {
           )}
         </div>
       )}
+
+      <div style={{ marginTop: "1.25rem" }}>
+        <h4>Flights & staff assignments for {date}</h4>
+        {flightsAssignmentsLoading && <p>Loading…</p>}
+        {flightsAssignmentsError && (
+          <p style={{ color: "#c00" }}>Error: {flightsAssignmentsError}</p>
+        )}
+        {!flightsAssignmentsLoading && !flightsAssignmentsError && (
+          <FlightsAssignmentsTable flights={assignedFlights} />
+        )}
+      </div>
 
       {loading && <p>Checking backend…</p>}
       {error && <p style={{ color: "#ff8a80" }}>{error}</p>}
