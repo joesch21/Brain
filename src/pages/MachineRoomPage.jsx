@@ -757,6 +757,34 @@ const SystemStatusCard = ({ selectedAirline }) => {
         </div>
       )}
 
+      <div className="machine-room-status-grid">
+        <div className="machine-room-status-col" style={{ minWidth: 260 }}>
+          <h4>Runs &amp; Coverage ({status?.date || date})</h4>
+          {loading && <p className="muted">Loading runs…</p>}
+          {!loading && runsStatusError && (
+            <p style={{ color: "#b71c1c" }}>Runs status unavailable.</p>
+          )}
+          {!loading && !runsStatusError && (
+            <>
+              <p>
+                <strong>Runs today:</strong> {runs.total}
+              </p>
+              <p>
+                <strong>Unassigned flights:</strong> {runs.unassigned_flights}
+              </p>
+              <p className="muted" style={{ marginTop: "0.35rem" }}>
+                Snapshot from the scheduling backend.
+              </p>
+            </>
+          )}
+          <p style={{ marginTop: "0.35rem" }}>
+            <a href="/runs" className="link-small">
+              View Runs
+            </a>
+          </p>
+        </div>
+      </div>
+
       <div style={{ marginTop: "1.25rem" }}>
         <h4>Flights & staff assignments for {date}</h4>
         {flightsAssignmentsLoading && <p>Loading…</p>}
