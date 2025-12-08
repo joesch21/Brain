@@ -30,10 +30,21 @@
 
   let draggedItem = null;
   let draggedItemType = null; // "run-item" or "unassigned"
+  let autoAssignInProgress = false;
 
   function setStatus(message, isError = false) {
     statusDiv.textContent = message || "";
     statusDiv.classList.toggle("is-error", Boolean(isError));
+  }
+
+  function setAutoAssignLoading(isLoading) {
+    autoAssignInProgress = isLoading;
+    if (!autoAssignButton) return;
+
+    autoAssignButton.disabled = isLoading;
+    autoAssignButton.textContent = isLoading
+      ? "Assigning…"
+      : "Auto-assign runs for this day";
   }
 
   async function fetchApiStatus(url, options = {}) {
@@ -583,12 +594,13 @@
     if (!ok) return;
 
     setStatus("Auto-assigning runs…");
+    setAutoAssignLoading(true);
 
     try {
-      const url = `${apiBase}/api/assignments/generate`;
+      const url = `${apiBase}/api/runs/auto_assign`;
       const body = {
         date: dateVal,
-        respect_existing_runs: false
+        operator: (operatorSelect.value || "ALL").toUpperCase() || "ALL",
       };
 
       const res = await fetch(url, {
@@ -597,13 +609,10 @@
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (!data.ok) {
-        throw new Error(data.error || "Unknown error from assignments API");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) {
+        const message = data?.error || `HTTP ${res.status}`;
+        throw new Error(message);
       }
 
       const assigned = data.assigned ?? 0;
@@ -620,7 +629,12 @@
       await updateUnassignedFlights(dateVal);
     } catch (err) {
       console.error("Failed to auto-assign runs", err);
-      setStatus("Error during auto-assignment. Check backend logs.", true);
+      setStatus(
+        `Auto-assign failed: ${err?.message || "Unknown error"}.`,
+        true
+      );
+    } finally {
+      setAutoAssignLoading(false);
     }
   }
 
