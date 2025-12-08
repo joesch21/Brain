@@ -1,16 +1,17 @@
 import React from "react";
-import WiringTestPanel from "../components/WiringTestPanel";
 
 const WiringTestPage = () => {
   return (
-    <div style={{ padding: "1.5rem" }}>
-      <h1>Debug – Wiring</h1>
+    <main style={{ padding: "1rem" }}>
+      <h1>Wiring Test</h1>
       <p>
-        This page checks that the Brain is talking to the correct CodeCrafter2
-        backend and shows how CC2 is wired to its DB and Ops API.
+        This page is used to check that The Brain can reach the CodeCrafter2 backend
+        and that environment variables and endpoints are wired correctly.
       </p>
-      <WiringTestPanel />
-    </div>
+      <p>
+        For now this is a static placeholder so we can confirm routing works in production.
+      </p>
+    </main>
   );
 };
 
