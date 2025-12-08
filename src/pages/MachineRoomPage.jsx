@@ -11,6 +11,7 @@ import {
   mergeFlightsWithAssignments,
 } from "../api/opsClient";
 import { FlightsAssignmentsTable } from "../components/FlightsAssignmentsTable";
+import { JetstarFlightsAssignmentsCard } from "../components/JetstarFlightsAssignmentsCard";
 import "../styles/machineRoom.css";
 
 function todayISO() {
@@ -766,6 +767,9 @@ const SystemStatusCard = ({ selectedAirline }) => {
           <FlightsAssignmentsTable flights={assignedFlights} />
         )}
       </div>
+
+      {/* Jetstar-only snapshot */}
+      <JetstarFlightsAssignmentsCard dateIso={date} />
 
       {loading && <p>Checking backend…</p>}
       {error && <p style={{ color: "#ff8a80" }}>{error}</p>}
