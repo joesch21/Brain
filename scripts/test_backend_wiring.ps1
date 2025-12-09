@@ -26,7 +26,7 @@ function Test-Endpoint {
     }
 
     Write-Host "OK" -ForegroundColor Green
-    # Print a tiny summary so we know we got JSON
+    # Print a small JSON snippet so we know we got structured data
     $response | ConvertTo-Json -Depth 3 | Write-Host
   }
   catch {
@@ -52,9 +52,15 @@ Test-Endpoint -Name "Daily runs" -Url $runsDailyUrl -Method "GET"
 # 4) Auto-assign runs: used by Runs page 'Auto-assign runs for this day' button
 $autoAssignUrl = "$BaseUrl/api/runs/auto_assign"
 $autoAssignBody = @{
-  date = $today
+  date     = $today
   operator = "ALL"
 }
 Test-Endpoint -Name "Auto-assign runs" -Url $autoAssignUrl -Method "POST" -Body $autoAssignBody
 
 Write-Host "Backend wiring tests finished." -ForegroundColor Cyan
+
+# Run it from the Brain repo root with:
+#
+# pwsh scripts/test_backend_wiring.ps1
+# or against a different environment:
+# pwsh scripts/test_backend_wiring.ps1 -BaseUrl "https://your-staging-url.onrender.com"
