@@ -102,3 +102,17 @@ Use the nav/Home cards to open:
    - `/machine-room` for counts and recent activity across employees, flights, maintenance, and audit logs
 
 On Render, run the same seed command from the shell or add it to a deploy script to pre-populate the database.
+
+## Backend wiring test (Ops API)
+
+To quickly check that the Ops backend endpoints used by The Brain are alive after a deploy, run:
+
+```powershell
+pwsh scripts/test_backend_wiring.ps1
+```
+
+By default this targets `https://brain-lbaj.onrender.com`. You can override the base URL:
+
+```powershell
+pwsh scripts/test_backend_wiring.ps1 -BaseUrl "https://your-staging-url.onrender.com"
+```
