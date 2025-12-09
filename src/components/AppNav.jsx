@@ -47,6 +47,10 @@ const AppNav = () => {
           Schedule {badge}
         </NavLink>
 
+        <NavLink to="/runs" className={navLinkClass}>
+          Runs {badge}
+        </NavLink>
+
         <NavLink to="/runsheets" className={navLinkClass}>
           Run Sheets {badge}
         </NavLink>
