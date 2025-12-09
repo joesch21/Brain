@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { autoAssignRuns, fetchDailyRuns } from "../api/runsApi";
+import { fetchRosterOperators } from "../api/rosterApi";
 
 function getTodayISO() {
   const d = new Date();
@@ -19,6 +20,9 @@ const RunsOverviewPage = () => {
   const [error, setError] = useState(null);
   const [unassignedFlights, setUnassignedFlights] = useState([]);
   const [unassignedMessage, setUnassignedMessage] = useState("");
+  const [operatorOptions, setOperatorOptions] = useState(["ALL"]);
+  const [operatorLoading, setOperatorLoading] = useState(false);
+  const [operatorError, setOperatorError] = useState(null);
 
   const loadRuns = async (selectedDate = date, selectedOperator = operator) => {
     setLoadingRuns(true);
@@ -41,6 +45,31 @@ const RunsOverviewPage = () => {
     setUnassignedFlights([]);
     setUnassignedMessage("Unassigned flights stub – plug in real data.");
   };
+
+  useEffect(() => {
+    const loadOperators = async () => {
+      setOperatorLoading(true);
+      setOperatorError(null);
+
+      try {
+        const ops = await fetchRosterOperators(date);
+        const withAll = ["ALL", ...ops.filter((op) => op !== "ALL")];
+        setOperatorOptions(withAll);
+
+        if (!withAll.includes(operator)) {
+          setOperator("ALL");
+        }
+      } catch (err) {
+        setOperatorError(err.message || "Failed to load roster operators.");
+        setOperatorOptions(["ALL"]);
+        setOperator("ALL");
+      } finally {
+        setOperatorLoading(false);
+      }
+    };
+
+    loadOperators();
+  }, [date]);
 
   useEffect(() => {
     loadRuns(date, operator);
@@ -116,11 +145,22 @@ const RunsOverviewPage = () => {
               color: "#fff",
             }}
           >
-            <option value="ALL">All operators</option>
-            <option value="QF">QF</option>
-            <option value="JQ">JQ</option>
-            <option value="VA">VA</option>
+            {operatorOptions.map((op) => (
+              <option key={op} value={op}>
+                {op === "ALL" ? "All operators" : op}
+              </option>
+            ))}
           </select>
+          {operatorLoading && (
+            <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", opacity: 0.7 }}>
+              Loading roster…
+            </span>
+          )}
+          {operatorError && (
+            <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "#ff8080" }}>
+              {operatorError}
+            </span>
+          )}
         </div>
 
         <button
