@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { fetchWiringStatus } from "../lib/apiClient";
 
 // Calls /api/wiring-status and renders a debug panel listing backend checks.
 const BackendDebugConsole = () => {
@@ -6,28 +7,33 @@ const BackendDebugConsole = () => {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
 
+  const wiringOk = useMemo(() => {
+    if (!status) return false;
+    if (status.ok === false) return false;
+    if (Array.isArray(status.checks)) {
+      return status.checks.every((check) => (check.status || "").toUpperCase() === "OK");
+    }
+    return true;
+  }, [status]);
+
   const fetchStatus = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const res = await fetch("/api/wiring-status", {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-      });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+    const response = await fetchWiringStatus();
+    setLoading(false);
 
-      const data = await res.json();
-      setStatus(data);
-    } catch (err) {
-      setError(err.message || "Unknown error");
-      setStatus(null);
-    } finally {
-      setLoading(false);
+    if (response.ok) {
+      setStatus(response.data || null);
+      setError(null);
+    } else {
+      setStatus(response.data || null);
+      setError(
+        response.error ||
+          (response.type === "network_error"
+            ? "Network error when checking wiring"
+            : "Unable to load wiring status")
+      );
     }
   };
 
@@ -36,7 +42,13 @@ const BackendDebugConsole = () => {
   }, []);
 
   const renderChecks = () => {
-    if (!status || !Array.isArray(status.checks)) return null;
+    if (!status || !Array.isArray(status.checks)) {
+      return (
+        <p style={{ margin: 0, fontSize: "0.85rem", opacity: 0.75 }}>
+          No component checks reported.
+        </p>
+      );
+    }
     return (
       <ul style={{ listStyle: "none", paddingLeft: 0, margin: 0 }}>
         {status.checks.map((check) => (
@@ -56,6 +68,10 @@ const BackendDebugConsole = () => {
                 style={{
                   textTransform: "uppercase",
                   fontWeight: 600,
+                  color:
+                    (check.status || "").toUpperCase() === "OK"
+                      ? "#7ee787"
+                      : "#ffb3b3",
                 }}
               >
                 {check.status}
@@ -66,6 +82,47 @@ const BackendDebugConsole = () => {
         ))}
       </ul>
     );
+  };
+
+  const renderBanner = () => {
+    if (loading) {
+      return null;
+    }
+    if (error) {
+      return (
+        <p
+          style={{
+            backgroundColor: "#2a0f0f",
+            border: "1px solid #b71c1c",
+            color: "#ffb3b3",
+            padding: "0.6rem 0.75rem",
+            borderRadius: 4,
+            margin: "0 0 0.75rem 0",
+            fontSize: "0.9rem",
+          }}
+        >
+          Wiring check failed: {error}
+        </p>
+      );
+    }
+    if (status) {
+      return (
+        <p
+          style={{
+            backgroundColor: wiringOk ? "#0f2414" : "#2a210f",
+            border: wiringOk ? "1px solid #1b5e20" : "1px solid #8a6d1c",
+            color: wiringOk ? "#7ee787" : "#f5dd92",
+            padding: "0.6rem 0.75rem",
+            borderRadius: 4,
+            margin: "0 0 0.75rem 0",
+            fontSize: "0.9rem",
+          }}
+        >
+          {wiringOk ? "Wiring looks good" : "Wiring returned warnings – see checks below."}
+        </p>
+      );
+    }
+    return null;
   };
 
   return (
@@ -112,17 +169,7 @@ const BackendDebugConsole = () => {
       </header>
 
       <div style={{ padding: "0.75rem" }}>
-        {error && (
-          <p
-            style={{
-              color: "#ff8080",
-              margin: "0 0 0.5rem 0",
-              fontSize: "0.85rem",
-            }}
-          >
-            Error: {error}
-          </p>
-        )}
+        {renderBanner()}
 
         {!error && !status && !loading && (
           <p style={{ margin: 0, fontSize: "0.85rem" }}>No status loaded yet.</p>
