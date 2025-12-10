@@ -1,0 +1,80 @@
+{
+  "id": "CWO_BRAIN_005",
+  "title": "Hide legacy Schedule and Runs entries from Brain main menu",
+  "repo": "brain",
+  "priority": "medium",
+  "status": "todo",
+  "owner": "frontend",
+  "summary": "Remove or hide the Schedule and Runs menu items from the Brain navigation so that ops users do not enter the older, partially-migrated runs/schedule flows. Machine Room and Planner remain the primary entry points for daily planning.",
+  "context": {
+    "current_behaviour": [
+      "The Brain app sidebar/top menu shows items: Build, Fix, Know, Roster, Schedule, Planner, Maintenance, Runs, Import, Machine Room, Settings.",
+      "The 'Schedule' and 'Runs' pages are wired to older flows / legacy endpoints, and triggering them can cause errors in the shared backend.",
+      "Machine Room and Planner are the preferred new flows for planning and running operations."
+    ],
+    "desired_behaviour": [
+      "The main Brain navigation no longer displays 'Schedule' and 'Runs' to normal users.",
+      "Ops users naturally use Planner and Machine Room for planning / execution.",
+      "The underlying routes for /schedule and /runs may remain accessible for dev/debug via direct URL or feature flags, but they are not front-and-centre in the UI."
+    ]
+  },
+  "scope": {
+    "in_scope": [
+      "Updating the Brain layout/nav template or React layout component that renders the menu.",
+      "Optionally guarding the old links behind a developer-only flag or environment variable (e.g. SHOW_LEGACY_RUNS_UI)."
+    ],
+    "out_of_scope": [
+      "Deleting the /schedule and /runs routes or JS; this is just a nav change.",
+      "Any changes to Machine Room or Planner functionality."
+    ]
+  },
+  "implementation_plan": [
+    {
+      "step": "Locate the navigation template/component",
+      "details": [
+        "Find the template that renders the left-hand menu (e.g. templates/layout.html, templates/_nav.html, or a React component like src/components/Nav.tsx).",
+        "Identify the entries for 'Schedule' and 'Runs', which likely look like links to url_for('schedule') and url_for('runs') or '/schedule' and '/runs'."
+      ]
+    },
+    {
+      "step": "Remove or hide 'Schedule' and 'Runs' from the visible menu",
+      "details": [
+        "Remove the list items for Schedule and Runs from the nav markup, or wrap them in a feature flag condition.",
+        "Example for Jinja:",
+        "  <!-- Before -->",
+        "  <li><a href=\"{{ url_for('schedule') }}\">Schedule</a></li>",
+        "  <li><a href=\"{{ url_for('runs') }}\">Runs</a></li>",
+        "",
+        "  <!-- After: removed or dev-only -->",
+        "  {# Schedule and Runs temporarily hidden; use Machine Room + Planner #}",
+        "  {#",
+        "  {% if config.SHOW_LEGACY_RUNS_UI %}",
+        "    <li><a href=\"{{ url_for('schedule') }}\">Schedule</a></li>",
+        "    <li><a href=\"{{ url_for('runs') }}\">Runs</a></li>",
+        "  {% endif %}",
+        "  #}"
+      ]
+    },
+    {
+      "step": "Optional: add a config flag for dev access",
+      "details": [
+        "In Brain config, add a boolean like SHOW_LEGACY_RUNS_UI, default False.",
+        "Wire it into the template context so developers can turn the old links on locally if needed.",
+        "Prod/staging leave it False so ops never see those entries."
+      ]
+    },
+    {
+      "step": "Verify menu behaviour",
+      "details": [
+        "Redeploy Brain.",
+        "Open the app and confirm the menu shows: Build, Fix, Know, Roster, Planner, Maintenance, Import, Machine Room, Settings (no Schedule or Runs).",
+        "Confirm that direct navigation to /schedule and /runs still works for dev/debug if you know the URL (unless you later decide to lock them down)."
+      ]
+    }
+  ],
+  "definition_of_done": [
+    "'Schedule' and 'Runs' no longer appear in the Brain main menu for normal users.",
+    "Machine Room and Planner remain accessible and unaffected.",
+    "No broken links or layout glitches are introduced in the navigation."
+  ]
+}

@@ -28,10 +28,10 @@
       <a class="cc-nav-link" href="{{ url_for('know') }}">Know</a>
 
       <a class="cc-nav-link" href="{{ url_for('roster_page') }}">Roster</a>
-      <a class="cc-nav-link" href="{{ url_for('schedule_page') }}">Schedule</a>
+      {# Schedule nav temporarily hidden (CWO_BRAIN_005) #}
       <a class="cc-nav-link" href="{{ url_for('planner_page') }}">Planner</a>
       <a class="cc-nav-link" href="{{ url_for('maintenance_page') }}">Maintenance</a>
-      <a class="cc-nav-link" href="{{ url_for('bp_runs_view.runs_view') }}">Runs</a>
+      {# Runs nav temporarily hidden (CWO_BRAIN_005) #}
 
       {% if current_role in ['supervisor', 'admin'] %}
         <a class="cc-nav-link" href="{{ url_for('admin_import_index') }}">Import</a>
