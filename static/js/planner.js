@@ -529,21 +529,63 @@
 
   async function handleAutoAssign() {
     const dateVal = dateInput.value;
-    if (!dateVal) return;
+    if (!dateVal) {
+      setStatus("Please select a date before auto-assigning.", true);
+      return;
+    }
+
     autoAssignButton.disabled = true;
     autoAssignButton.textContent = "Assigning…";
+    setStatus("Auto-assigning runs…");
     try {
-      const res = await fetch(`/api/assignments/generate`, {
+      const res = await fetch(`/api/runs/auto_assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: dateVal }),
+        body: JSON.stringify({ date: dateVal, operator: "ALL" }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await res.json();
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+
+      const summary = data.summary || {};
+      const assignedRunsCount = Number.isFinite(summary.assigned_runs)
+        ? summary.assigned_runs
+        : Array.isArray(data.assigned_runs)
+          ? data.assigned_runs.length
+          : 0;
+      const assignedFlightsCount = Number.isFinite(summary.assigned_flights)
+        ? summary.assigned_flights
+        : 0;
+      const unassignedCount = Number.isFinite(summary.unassigned)
+        ? summary.unassigned
+        : Array.isArray(data.unassigned_runs)
+          ? data.unassigned_runs.length
+          : (data.unassigned_flight_ids || []).length;
+      const modeSuffix = data.auto_assign_mode
+        ? ` Mode: ${data.auto_assign_mode}.`
+        : "";
+
+      if (
+        Number.isFinite(assignedRunsCount) ||
+        Number.isFinite(assignedFlightsCount) ||
+        Number.isFinite(unassignedCount)
+      ) {
+        setStatus(
+          `Auto-assign complete – runs: ${assignedRunsCount}, flights: ${assignedFlightsCount}, unassigned: ${unassignedCount}.${modeSuffix} Reloading planner…`
+        );
+      } else {
+        setStatus("Auto-assign completed. Reloading planner…");
+      }
+
       await refreshData();
     } catch (err) {
       console.error("Auto-assign failed", err);
-      setStatus("Auto-assign failed. Check console for details.", true);
+      setStatus(
+        `Auto-assign failed: ${err?.message || "Unknown error"}.`,
+        true
+      );
     } finally {
       autoAssignButton.disabled = false;
       autoAssignButton.textContent = "Auto-assign runs";

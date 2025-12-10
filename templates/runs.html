@@ -7,7 +7,7 @@
   <h1>Runs Overview</h1>
 
   <div id="runs-root"
-       data-api-base="{{ api_base_url | safe }}">
+       data-api-base="{{ api_base_url | default('', true) | safe }}">
 
     <!-- Filters -->
     <div class="runs-filters">

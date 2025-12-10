@@ -4,7 +4,7 @@
 <div class="container">
   <h1>Daily Flight Schedule</h1>
 
-  <div id="schedule-root" data-api-base="{{ api_base_url | safe }}">
+  <div id="schedule-root" data-api-base="{{ api_base_url | default('', true) | safe }}">
     <div class="schedule-filters">
       <label for="schedule-date">
         Date:

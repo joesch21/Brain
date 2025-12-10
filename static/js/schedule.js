@@ -5,7 +5,8 @@
   const root = document.getElementById("schedule-root");
   if (!root) return;
 
-  const apiBase = root.getAttribute("data-api-base") || "";
+  const apiBaseRaw = root.getAttribute("data-api-base") || "";
+  const apiBase = apiBaseRaw.replace(/\/$/, "");
   const dateInput = document.getElementById("schedule-date");
   const operatorSelect = document.getElementById("operator-filter");
   const refreshButton = document.getElementById("refresh-schedule");
