@@ -615,11 +615,35 @@
         throw new Error(message);
       }
 
-      const assigned = data.assigned ?? 0;
-      const unassignedCount = (data.unassigned_flight_ids || []).length;
-      setStatus(
-        `Auto-assigned ${assigned} flights. Unassigned: ${unassignedCount}. Reloading runs…`
-      );
+      const summary = data.summary || {};
+      const assignedRunsCount = Number.isFinite(summary.assigned_runs)
+        ? summary.assigned_runs
+        : Array.isArray(data.assigned_runs)
+          ? data.assigned_runs.length
+          : data.assigned ?? 0;
+      const assignedFlightsCount = Number.isFinite(summary.assigned_flights)
+        ? summary.assigned_flights
+        : 0;
+      const unassignedCount = Number.isFinite(summary.unassigned)
+        ? summary.unassigned
+        : Array.isArray(data.unassigned_runs)
+          ? data.unassigned_runs.length
+          : (data.unassigned_flight_ids || []).length;
+
+      if (
+        Number.isFinite(assignedRunsCount) ||
+        Number.isFinite(assignedFlightsCount) ||
+        Number.isFinite(unassignedCount)
+      ) {
+        const modeSuffix = data.auto_assign_mode
+          ? ` Mode: ${data.auto_assign_mode}.`
+          : "";
+        setStatus(
+          `Auto-assign complete – runs: ${assignedRunsCount}, flights: ${assignedFlightsCount}, unassigned: ${unassignedCount}.${modeSuffix} Reloading runs…`
+        );
+      } else {
+        setStatus("Auto-assign completed. Reloading runs…");
+      }
 
       await loadRuns();
       renderRunCards();
