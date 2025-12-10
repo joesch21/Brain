@@ -70,8 +70,10 @@ SUPPORTED_AIRLINES = {"JQ", "QF", "VA", "ZL"}
 DEFAULT_AIRLINE = "JQ"
 ALLOWED_DAY_OFFSETS = {0, 1, 2}
 CODECRAFTER_BASE = os.environ.get("CODECRAFTER_BASE", "https://codecrafter2.onrender.com")
-CC2_BASE_URL = os.environ.get(
-    "CODE_CRAFTER2_BASE_URL", "https://code-crafter2.onrender.com"
+CC2_BASE_URL = (
+    os.environ.get("CC2_BASE_URL")
+    or os.environ.get("CODE_CRAFTER2_BASE_URL")
+    or "https://codecrafter2.onrender.com"
 )
 
 # Preserve a predictable airline order for observability endpoints
@@ -2810,6 +2812,143 @@ def api_ops_auto_assign_flights():
 
     summary["ok"] = True
     return jsonify(summary), 200
+
+
+@app.get("/api/wiring-status")
+def api_wiring_status():
+    """Proxy wiring-status to CodeCrafter2 for the Wiring page."""
+
+    if not CC2_BASE_URL:
+        return json_error(
+            "CC2_BASE_URL is not configured on this service.",
+            status_code=500,
+            error_type="config_error",
+        )
+
+    try:
+        resp = requests.get(f"{CC2_BASE_URL}/api/wiring-status", timeout=10)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Wiring-status proxy failed", exc_info=exc)
+        return json_error(
+            "Upstream wiring-status failed",
+            status_code=502,
+            error_type="upstream_error",
+            context={"detail": str(exc)},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        payload = {
+            "ok": False,
+            "error": "Invalid JSON from upstream wiring-status.",
+            "type": "upstream_error",
+        }
+
+    return jsonify(payload), resp.status_code
+
+
+@app.get("/api/runs/daily")
+def api_runs_daily():
+    """Proxy GET /api/runs/daily to CodeCrafter2."""
+
+    if not CC2_BASE_URL:
+        return json_error(
+            "CC2_BASE_URL is not configured on this service.",
+            status_code=500,
+            error_type="config_error",
+        )
+
+    date_str = request.args.get("date")
+    operator = request.args.get("operator", "ALL")
+
+    if not date_str:
+        return json_error(
+            "Missing ?date=YYYY-MM-DD",
+            status_code=400,
+            error_type="validation_error",
+        )
+
+    params = {"date": date_str, "operator": operator}
+
+    try:
+        resp = requests.get(
+            f"{CC2_BASE_URL}/api/runs/daily",
+            params=params,
+            timeout=20,
+        )
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Runs daily proxy failed", exc_info=exc)
+        return json_error(
+            "Upstream runs endpoint failed",
+            status_code=502,
+            error_type="upstream_error",
+            context={"detail": str(exc)},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        payload = {
+            "ok": False,
+            "error": "Invalid JSON from upstream /api/runs/daily.",
+            "type": "upstream_error",
+        }
+
+    return jsonify(payload), resp.status_code
+
+
+@app.post("/api/runs/auto_assign")
+def api_runs_auto_assign():
+    """Proxy POST /api/runs/auto_assign to CodeCrafter2."""
+
+    if not CC2_BASE_URL:
+        return json_error(
+            "CC2_BASE_URL is not configured on this service.",
+            status_code=500,
+            error_type="config_error",
+        )
+
+    body = request.get_json(silent=True) or {}
+
+    date_str = body.get("date") or request.args.get("date")
+    operator = body.get("operator") or request.args.get("operator") or "ALL"
+
+    if not date_str:
+        return json_error(
+            "Missing date",
+            status_code=400,
+            error_type="validation_error",
+            context={"body": body},
+        )
+
+    upstream_body = {"date": date_str, "operator": operator}
+
+    try:
+        resp = requests.post(
+            f"{CC2_BASE_URL}/api/runs/auto_assign",
+            json=upstream_body,
+            timeout=30,
+        )
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Auto-assign proxy failed", exc_info=exc)
+        return json_error(
+            "Upstream auto-assign failed",
+            status_code=502,
+            error_type="upstream_error",
+            context={"detail": str(exc)},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        payload = {
+            "ok": False,
+            "error": "Invalid JSON from upstream /api/runs/auto_assign.",
+            "type": "upstream_error",
+        }
+
+    return jsonify(payload), resp.status_code
 
 
 @app.post("/api/runs/generate")
