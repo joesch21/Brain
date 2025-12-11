@@ -1,80 +1,172 @@
 {
   "id": "CWO_BRAIN_005",
-  "title": "Hide legacy Schedule and Runs entries from Brain main menu",
-  "repo": "brain",
-  "priority": "medium",
+  "title": "Stabilise Brain frontend TypeScript/Vite config and Ops API client",
+  "repo": "Brain",
+  "priority": "high",
   "status": "todo",
   "owner": "frontend",
-  "summary": "Remove or hide the Schedule and Runs menu items from the Brain navigation so that ops users do not enter the older, partially-migrated runs/schedule flows. Machine Room and Planner remain the primary entry points for daily planning.",
+  "summary": "Set up correct TypeScript/Vite environment typing, ensure tsconfig is present and named correctly, and refactor src/api/opsClient.ts so it uses the right backend endpoints and a robust API base URL. This captures the work previously done manually (vite-env.d.ts, tsconfig, opsClient refactor) in a clean, repeatable way.",
   "context": {
     "current_behaviour": [
-      "The Brain app sidebar/top menu shows items: Build, Fix, Know, Roster, Schedule, Planner, Maintenance, Runs, Import, Machine Room, Settings.",
-      "The 'Schedule' and 'Runs' pages are wired to older flows / legacy endpoints, and triggering them can cause errors in the shared backend.",
-      "Machine Room and Planner are the preferred new flows for planning and running operations."
+      "The frontend uses Vite-style env access (import.meta.env.VITE_API_BASE_URL), but TypeScript often complains that 'env' does not exist on type 'ImportMeta' when vite-env.d.ts is missing or incorrectly configured.",
+      "The project currently has or had a misnamed TS config file (ts.config.json) instead of the conventional tsconfig.json, causing tools to ignore it.",
+      "The Ops API client (src/api/opsClient.ts) initially called non-existent endpoints (/api/auto_assign/flights and /api/auto_assign/employees), producing 404s when the UI attempted auto-assign actions.",
+      "API_BASE did not normalise trailing slashes, sometimes resulting in URLs like '//api/flights' depending on VITE_API_BASE_URL."
     ],
     "desired_behaviour": [
-      "The main Brain navigation no longer displays 'Schedule' and 'Runs' to normal users.",
-      "Ops users naturally use Planner and Machine Room for planning / execution.",
-      "The underlying routes for /schedule and /runs may remain accessible for dev/debug via direct URL or feature flags, but they are not front-and-centre in the UI."
+      "TypeScript recognises Vite's import.meta.env without errors through a proper vite-env.d.ts file.",
+      "The TypeScript configuration file is correctly named tsconfig.json and included by the toolchain.",
+      "src/api/opsClient.ts uses a normalised API_BASE and calls the correct backend endpoints for flights, employee assignments, and auto-assign actions.",
+      "The frontend can be freshly cloned and built without TypeScript errors, and auto-assign actions no longer produce 404 errors."
     ]
   },
   "scope": {
     "in_scope": [
-      "Updating the Brain layout/nav template or React layout component that renders the menu.",
-      "Optionally guarding the old links behind a developer-only flag or environment variable (e.g. SHOW_LEGACY_RUNS_UI)."
+      "Adding or correcting Vite env typing (vite-env.d.ts).",
+      "Ensuring a valid tsconfig.json exists and is used.",
+      "Refactoring src/api/opsClient.ts to use correct endpoints and URL building.",
+      "Making minimal changes to environment usage (VITE_API_BASE_URL) as needed."
     ],
     "out_of_scope": [
-      "Deleting the /schedule and /runs routes or JS; this is just a nav change.",
-      "Any changes to Machine Room or Planner functionality."
+      "Major refactors of other frontend pages (Planner, Runs, Schedule), unless they directly depend on opsClient.ts.",
+      "Backend changes in Brain or CodeCrafter2 (covered by CC2 CWOs).",
+      "Git history cleanup or branch management (developer responsibility)."
     ]
+  },
+  "technical_requirements": {
+    "typescript_and_vite": [
+      "Vite-style env access via import.meta.env.VITE_API_BASE_URL must be supported by TypeScript.",
+      "The Vite env types should be globally available in the src tree."
+    ],
+    "config_files": [
+      "tsconfig.json must be present at the project root (not ts.config.json).",
+      "tsconfig.json should include the src directory and any env typings file (e.g. src/vite-env.d.ts)."
+    ],
+    "ops_client_contract": {
+      "file": "src/api/opsClient.ts",
+      "functions": [
+        "fetchFlightsForDate(dateIso: string): Promise<Flight[]>",
+        "fetchEmployeeAssignmentsForDate(dateIso: string): Promise<EmployeeAssignment[]>",
+        "autoAssignFlights(dateIso: string): Promise<void>",
+        "autoAssignEmployees(dateIso: string): Promise<void>",
+        "mergeFlightsWithAssignments(flights, assignments): AssignedFlight[]"
+      ],
+      "endpoint_usage": {
+        "GET /api/flights?date=YYYY-MM-DD&operator=ALL": "Fetch flights for a given day.",
+        "GET /api/employee_assignments/daily?date=YYYY-MM-DD": "Fetch employee assignments for a given day.",
+        "POST /api/assignments/generate?date=YYYY-MM-DD": "Trigger auto-assign for the day (used instead of legacy /api/auto_assign/flights and /api/auto_assign/employees)."
+      }
+    }
   },
   "implementation_plan": [
     {
-      "step": "Locate the navigation template/component",
+      "step": "Add or fix Vite env typing",
       "details": [
-        "Find the template that renders the left-hand menu (e.g. templates/layout.html, templates/_nav.html, or a React component like src/components/Nav.tsx).",
-        "Identify the entries for 'Schedule' and 'Runs', which likely look like links to url_for('schedule') and url_for('runs') or '/schedule' and '/runs'."
+        "Create the file src/vite-env.d.ts if it does not exist.",
+        "Add the standard Vite type reference:",
+        "  /// <reference types=\"vite/client\" />",
+        "Alternatively, if more explicit typing is preferred, declare:",
+        "  interface ImportMetaEnv { readonly VITE_API_BASE_URL?: string; }",
+        "  interface ImportMeta { readonly env: ImportMetaEnv; }",
+        "Ensure tsconfig.json includes src and src/vite-env.d.ts in its 'include' array so TS sees these definitions."
       ]
     },
     {
-      "step": "Remove or hide 'Schedule' and 'Runs' from the visible menu",
+      "step": "Ensure proper TypeScript config file",
       "details": [
-        "Remove the list items for Schedule and Runs from the nav markup, or wrap them in a feature flag condition.",
-        "Example for Jinja:",
-        "  <!-- Before -->",
-        "  <li><a href=\"{{ url_for('schedule') }}\">Schedule</a></li>",
-        "  <li><a href=\"{{ url_for('runs') }}\">Runs</a></li>",
-        "",
-        "  <!-- After: removed or dev-only -->",
-        "  {# Schedule and Runs temporarily hidden; use Machine Room + Planner #}",
-        "  {#",
-        "  {% if config.SHOW_LEGACY_RUNS_UI %}",
-        "    <li><a href=\"{{ url_for('schedule') }}\">Schedule</a></li>",
-        "    <li><a href=\"{{ url_for('runs') }}\">Runs</a></li>",
-        "  {% endif %}",
-        "  #}"
+        "If a file named ts.config.json exists, rename it to tsconfig.json:",
+        "  git mv ts.config.json tsconfig.json",
+        "Create or update tsconfig.json with a sensible baseline, for example:",
+        "  {",
+        "    \"compilerOptions\": {",
+        "      \"target\": \"ESNext\",",
+        "      \"module\": \"ESNext\",",
+        "      \"moduleResolution\": \"Node\",",
+        "      \"jsx\": \"react-jsx\",",
+        "      \"strict\": true,",
+        "      \"esModuleInterop\": true,",
+        "      \"skipLibCheck\": true,",
+        "      \"forceConsistentCasingInFileNames\": true",
+        "    },",
+        "    \"include\": [\"src\", \"src/vite-env.d.ts\"]",
+        "  }",
+        "Verify that the build and type-check run without config-not-found errors."
       ]
     },
     {
-      "step": "Optional: add a config flag for dev access",
+      "step": "Normalise API_BASE in opsClient",
       "details": [
-        "In Brain config, add a boolean like SHOW_LEGACY_RUNS_UI, default False.",
-        "Wire it into the template context so developers can turn the old links on locally if needed.",
-        "Prod/staging leave it False so ops never see those entries."
+        "In src/api/opsClient.ts, compute the base URL using VITE_API_BASE_URL with a trailing-slash strip:",
+        "  const rawBase = import.meta.env.VITE_API_BASE_URL || \"https://codecrafter2.onrender.com\";",
+        "  const API_BASE = rawBase.replace(/\\/+$/, \"\");",
+        "This prevents double slashes when building URLs (e.g. '//api/flights')."
       ]
     },
     {
-      "step": "Verify menu behaviour",
+      "step": "Introduce a helper to construct API URLs",
       "details": [
-        "Redeploy Brain.",
-        "Open the app and confirm the menu shows: Build, Fix, Know, Roster, Planner, Maintenance, Import, Machine Room, Settings (no Schedule or Runs).",
-        "Confirm that direct navigation to /schedule and /runs still works for dev/debug if you know the URL (unless you later decide to lock them down)."
+        "In src/api/opsClient.ts, add a small helper:",
+        "  function apiUrl(path: string, params?: Record<string, string | number | null | undefined>): string {",
+        "    const url = new URL(path, API_BASE);",
+        "    if (params) {",
+        "      for (const [key, value] of Object.entries(params)) {",
+        "        if (value !== undefined && value !== null) {",
+        "          url.searchParams.set(key, String(value));",
+        "        }",
+        "      }",
+        "    }",
+        "    return url.toString();",
+        "  }",
+        "Refactor the existing fetch calls to use apiUrl instead of manual string concatenation."
+      ]
+    },
+    {
+      "step": "Refactor Ops API endpoints in opsClient",
+      "details": [
+        "Update fetchFlightsForDate to use the flights endpoint with 'operator=ALL':",
+        "  const url = apiUrl(\"/api/flights\", { date: dateIso, operator: \"ALL\" });",
+        "Update fetchEmployeeAssignmentsForDate to use:",
+        "  const url = apiUrl(\"/api/employee_assignments/daily\", { date: dateIso });",
+        "Change autoAssignFlights from POST /api/auto_assign/flights to:",
+        "  const url = apiUrl(\"/api/assignments/generate\", { date: dateIso });",
+        "  await handleJson(await fetch(url, { method: \"POST\" }));",
+        "Change autoAssignEmployees from POST /api/auto_assign/employees to the same endpoint (or a staff-specific one if available); for now:",
+        "  const url = apiUrl(\"/api/assignments/generate\", { date: dateIso });",
+        "  await handleJson(await fetch(url, { method: \"POST\" }));",
+        "This reflects the backend reality that the unified /api/assignments/generate endpoint exists, whereas /api/auto_assign/flights and /api/auto_assign/employees do not."
+      ]
+    },
+    {
+      "step": "Ensure handleJson and types remain consistent",
+      "details": [
+        "Keep or re-add the generic handleJson<T> helper that:",
+        "  - Throws a helpful error when res.ok is false, including status and text body.",
+        "  - Returns the parsed JSON typed as T when res.ok is true.",
+        "Confirm that Flight, EmployeeAssignment, and AssignedFlight interfaces remain unchanged and accurately reflect the backend payloads."
       ]
     }
   ],
+  "test_plan": {
+    "manual_tests": [
+      "1. Run TypeScript type checking (e.g., npm run build or npm run lint) and confirm there are no errors related to import.meta.env or missing tsconfig.json.",
+      "2. With a valid VITE_API_BASE_URL (or relying on the default codecrafter2.onrender.com), open the Brain UI and:",
+      "   - Use any page that calls fetchFlightsForDate() and verify /api/flights?date=...&operator=ALL returns a 200 and data.flights is used correctly.",
+      "   - Use any page that calls fetchEmployeeAssignmentsForDate() and verify /api/employee_assignments/daily?date=... returns assignments as expected.",
+      "3. Trigger autoAssignFlights and autoAssignEmployees from the UI, confirm that the Network tab shows POST /api/assignments/generate?date=..., not /api/auto_assign/flights or /api/auto_assign/employees, and that responses are 200 rather than 404.",
+      "4. Confirm there are no more frontend console errors about 'Property env does not exist on type ImportMeta' or similar TS complaints.",
+      "5. Optionally, verify that changing VITE_API_BASE_URL in .env switches the backend target cleanly without breaking URL construction."
+    ]
+  },
   "definition_of_done": [
-    "'Schedule' and 'Runs' no longer appear in the Brain main menu for normal users.",
-    "Machine Room and Planner remain accessible and unaffected.",
-    "No broken links or layout glitches are introduced in the navigation."
+    "vite-env.d.ts exists and TypeScript recognises import.meta.env without errors.",
+    "A correctly named tsconfig.json is present, used by the toolchain, and includes src and src/vite-env.d.ts.",
+    "src/api/opsClient.ts uses a normalised API_BASE and the apiUrl helper to build URLs.",
+    "opsClient no longer references /api/auto_assign/flights or /api/auto_assign/employees; it targets existing endpoints such as /api/flights, /api/employee_assignments/daily, and /api/assignments/generate.",
+    "The Brain frontend builds cleanly on a fresh clone, and auto-assign features no longer produce 404s or TypeScript env errors."
+  ],
+  "risks": [
+    "If other parts of the codebase still call the removed /api/auto_assign/* endpoints directly, they will need to be updated to use opsClient or the new endpoints.",
+    "Incorrectly configured VITE_API_BASE_URL values could still cause networking issues; environment configuration should be verified per environment.",
+    "Renaming ts.config.json to tsconfig.json might change behaviour for existing tooling that referenced the old filename; ensure CI/CD and local scripts are updated if necessary."
   ]
 }
