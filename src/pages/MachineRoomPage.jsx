@@ -4,7 +4,7 @@ import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 import ImportStatusCard from "../components/ImportStatusCard";
 import { pushBackendDebugEntry } from "../lib/backendDebug";
 import {
-  autoAssignEmployees as autoAssignEmployeesApi,
+  autoAssignStaff as autoAssignStaffApi,
   autoAssignFlights as autoAssignFlightsApi,
   fetchEmployeeAssignmentsForDate,
   fetchFlightsForDate,
@@ -25,6 +25,26 @@ function todayISO() {
 const AIRLINE_OPTIONS = ["JQ", "QF", "VA", "ZL"];
 const ALL_AIRLINE_OPTION = "ALL";
 const DEFAULT_AIRLINE = "JQ";
+
+function formatAutoAssignStaffMessage(result) {
+  if (!result) return "Auto-assigned staff.";
+  const summary = result.summary;
+  if (summary) {
+    const base = `Assigned ${summary.assigned_flights} of ${summary.total_flights} flights.`;
+    const staffCounts = `FT: ${summary.full_time_staff}, PT: ${summary.part_time_staff}`;
+    const unassigned = summary.unassigned_flights ?? 0;
+    const reason = summary.reason ? ` Reason: ${summary.reason}.` : "";
+    return `${base} (${staffCounts}) Unassigned: ${unassigned}.${reason}`;
+  }
+
+  const assignedCount = Array.isArray(result.assigned)
+    ? result.assigned.length
+    : 0;
+  const unassignedCount = Array.isArray(result.unassigned)
+    ? result.unassigned.length
+    : 0;
+  return `Auto-assigned staff for ${result.date || "selected date"}. Assigned: ${assignedCount}, unassigned: ${unassignedCount}.`;
+}
 
 const WIRING_TESTS = [
   {
@@ -540,9 +560,12 @@ const SystemStatusCard = ({ selectedAirline }) => {
     try {
       setAssigning(true);
       setAssignmentMessage("");
-      await autoAssignEmployeesApi(date);
+      const result = await autoAssignStaffApi(date);
+      if (result && result.ok === false) {
+        throw new Error(result.message || "Auto-assign staff failed.");
+      }
       await Promise.all([loadStatus(date), loadFlightsAndAssignments(date)]);
-      setAssignmentMessage(`Auto-assigned employees for ${date}.`);
+      setAssignmentMessage(formatAutoAssignStaffMessage(result));
     } catch (err) {
       console.error(err);
       setAssignmentMessage(err?.message || "Failed to auto-assign employees.");

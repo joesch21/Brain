@@ -102,6 +102,12 @@
   background: #302000;
 }
 
+.schedule-status--success {
+  border: 1px solid #34d399;
+  color: #c8f7e1;
+  background: #0f2a1f;
+}
+
 .schedule-table-wrapper {
   margin-top: 0.5rem;
   background: #0f1a2f;
@@ -141,4 +147,18 @@
 
 .schedule-table td {
   font-size: 0.95rem;
+}
+
+.schedule-staff {
+  font-weight: 600;
+  color: #cbe4ff;
+}
+
+.schedule-staff--unassigned {
+  color: #ff9b9b;
+}
+
+.schedule-staff--loading {
+  color: #9cb3d8;
+  font-weight: 500;
 }

@@ -3,6 +3,10 @@ import "../styles/schedule.css";
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 import { fetchFlights, fetchStatus } from "../lib/apiClient";
+import {
+  autoAssignStaff,
+  fetchEmployeeAssignmentsForDate,
+} from "../api/opsClient";
 
 function todayISO() {
   const d = new Date();
@@ -26,12 +30,51 @@ function formatRequestError(label, err) {
   return `${label} ${statusLabel} – ${message}`;
 }
 
+function initialsFromName(name) {
+  if (!name) return "";
+  const parts = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0]?.toUpperCase() || "");
+  if (parts.length === 0) return name.slice(0, 2).toUpperCase();
+  return parts.join("");
+}
+
+function formatAutoAssignSummary(result) {
+  if (!result) return "Auto-assigned staff.";
+  if (result.ok === false) {
+    return result.message || "Auto-assign staff failed.";
+  }
+
+  const summary = result.summary;
+  if (summary) {
+    const base = `Assigned ${summary.assigned_flights} of ${summary.total_flights} flights.`;
+    const staffCounts = `FT: ${summary.full_time_staff}, PT: ${summary.part_time_staff}`;
+    const unassigned = summary.unassigned_flights ?? 0;
+    const reason = summary.reason ? ` Reason: ${summary.reason}.` : "";
+    return `${base} (${staffCounts}) Unassigned: ${unassigned}.${reason}`;
+  }
+
+  const assignedCount = Array.isArray(result.assigned)
+    ? result.assigned.length
+    : 0;
+  const unassignedCount = Array.isArray(result.unassigned)
+    ? result.unassigned.length
+    : 0;
+  return `Auto-assigned staff for ${result.date || "selected date"}. Assigned: ${assignedCount}, unassigned: ${unassignedCount}.`;
+}
+
 const SchedulePage = () => {
   const [date, setDate] = useState(todayISO());
   const [operator, setOperator] = useState("");
   const [flights, setFlights] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [assignments, setAssignments] = useState([]);
+  const [assignmentsError, setAssignmentsError] = useState("");
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [autoAssignLoading, setAutoAssignLoading] = useState(false);
+  const [autoAssignStatus, setAutoAssignStatus] = useState(null);
   const [statusData, setStatusData] = useState(null);
   const [statusError, setStatusError] = useState("");
 
@@ -39,6 +82,8 @@ const SchedulePage = () => {
     setLoading(true);
     setError("");
     setStatusError("");
+    setAssignmentsError("");
+    setAssignmentsLoading(true);
 
     try {
       const statusResp = await fetchStatus(date, { signal });
@@ -69,8 +114,23 @@ const SchedulePage = () => {
       }
     }
 
+    try {
+      const assignmentsResp = await fetchEmployeeAssignmentsForDate(date);
+      if (!signal?.aborted) {
+        setAssignments(assignmentsResp);
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        const message = formatRequestError("Assignments", err);
+        setAssignments([]);
+        setAssignmentsError(message);
+        setError((prev) => prev || message);
+      }
+    }
+
     if (!signal?.aborted) {
       setLoading(false);
+      setAssignmentsLoading(false);
     }
   }
 
@@ -79,6 +139,10 @@ const SchedulePage = () => {
     loadSchedule(controller.signal);
     return () => controller.abort();
   }, [date, operator]);
+
+  useEffect(() => {
+    setAutoAssignStatus(null);
+  }, [date]);
 
   const operatorOptions = useMemo(() => {
     const values = new Set();
@@ -102,6 +166,43 @@ const SchedulePage = () => {
       return op === operator;
     });
   }, [flights, operator]);
+
+  const assignmentsByFlightId = useMemo(() => {
+    const map = new Map();
+    for (const a of assignments) {
+      if (a) {
+        const key =
+          a.flight_id != null
+            ? String(a.flight_id)
+            : a.flight_number || a.flight_no;
+        if (key != null) {
+          map.set(String(key), a);
+        }
+      }
+    }
+    return map;
+  }, [assignments]);
+
+  async function handleAutoAssignStaff() {
+    if (!date) return;
+    setAutoAssignLoading(true);
+    setAutoAssignStatus(null);
+    try {
+      const result = await autoAssignStaff(date);
+      if (result && result.ok === false) {
+        throw new Error(result.message || "Auto-assign staff failed.");
+      }
+      setAutoAssignStatus({ ok: true, message: formatAutoAssignSummary(result) });
+      await loadSchedule();
+    } catch (err) {
+      setAutoAssignStatus({
+        ok: false,
+        message: err?.message || "Auto-assign staff failed.",
+      });
+    } finally {
+      setAutoAssignLoading(false);
+    }
+  }
 
   return (
     <div className="schedule-page">
@@ -143,11 +244,31 @@ const SchedulePage = () => {
         >
           {loading ? "Refreshing…" : "Refresh"}
         </button>
+        <button
+          type="button"
+          onClick={handleAutoAssignStaff}
+          disabled={autoAssignLoading || loading}
+        >
+          {autoAssignLoading ? "Assigning staff…" : "Auto-assign staff"}
+        </button>
         <ApiTestButton
           date={date}
           onAfterSeed={() => loadSchedule()}
         />
       </div>
+
+      {autoAssignStatus && (
+        <div
+          className={
+            "schedule-status " +
+            (autoAssignStatus.ok
+              ? "schedule-status--success"
+              : "schedule-status--error")
+          }
+        >
+          {autoAssignStatus.message}
+        </div>
+      )}
 
       {/* System status + diagnostics row (CWO-13B) */}
       <div className="schedule-system-row">
@@ -161,6 +282,11 @@ const SchedulePage = () => {
 
       {loading && <div className="schedule-status">Loading schedule…</div>}
       {error && <div className="schedule-status schedule-status--error">{error}</div>}
+      {assignmentsError && (
+        <div className="schedule-status schedule-status--warn">
+          {assignmentsError}
+        </div>
+      )}
 
       {!loading && !error && visibleFlights.length === 0 && (
         <div className="schedule-status schedule-status--warn">
@@ -176,6 +302,7 @@ const SchedulePage = () => {
               <th>Flight</th>
               <th>Dest</th>
               <th>Operator</th>
+              <th>Staff</th>
               <th>Notes</th>
             </tr>
           </thead>
@@ -192,13 +319,37 @@ const SchedulePage = () => {
                 flight.flightOperator ||
                 "";
               const notes = flight.notes || "";
+              const assignmentKey = String(flight.id ?? flightNumber ?? idx);
+              const assignment = assignmentsByFlightId.get(assignmentKey);
+              const staffInitials =
+                assignment?.staff_initials ||
+                initialsFromName(assignment?.staff_name || assignment?.staff_code);
+              const staffLabel = assignment?.staff_label;
+              const staffDisplay = assignment
+                ? `${staffInitials || assignment.staff_name || assignment.staff_code || ""}${
+                    staffLabel ? ` (${staffLabel})` : ""
+                  }`
+                : null;
 
               return (
-                <tr key={`${flightNumber || idx}-${time}`}> 
+                <tr key={`${flightNumber || idx}-${time}`}>
                   <td>{time}</td>
                   <td>{flightNumber || "—"}</td>
                   <td>{dest || "—"}</td>
                   <td>{op || "—"}</td>
+                  <td>
+                    {assignmentsLoading ? (
+                      <span className="schedule-staff schedule-staff--loading">
+                        Loading…
+                      </span>
+                    ) : staffDisplay ? (
+                      <span className="schedule-staff">{staffDisplay}</span>
+                    ) : (
+                      <span className="schedule-staff schedule-staff--unassigned">
+                        Unassigned
+                      </span>
+                    )}
+                  </td>
                   <td>{notes || ""}</td>
                 </tr>
               );

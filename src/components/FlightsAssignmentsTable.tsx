@@ -35,6 +35,17 @@ export const FlightsAssignmentsTable: React.FC<Props> = ({ flights }) => {
           <tbody>
             {flights.map((f) => {
               const unassigned = !f.assigned_staff_name;
+              const staffLabel = f.assigned_staff_label;
+              const staffInitials = f.assigned_staff_initials;
+              const staffDisplay = unassigned
+                ? ""
+                : `${
+                    staffInitials ||
+                    f.assigned_staff_name ||
+                    f.assigned_staff_code ||
+                    staffLabel ||
+                    ""
+                  }${staffLabel ? ` (${staffLabel})` : f.assigned_staff_code ? ` (${f.assigned_staff_code})` : ""}`;
               return (
                 <tr
                   key={f.id}
@@ -52,7 +63,7 @@ export const FlightsAssignmentsTable: React.FC<Props> = ({ flights }) => {
                     {unassigned ? (
                       <span style={{ color: "#c00" }}>Unassigned</span>
                     ) : (
-                      `${f.assigned_staff_name} (${f.assigned_staff_code})`
+                      staffDisplay
                     )}
                   </td>
                 </tr>
