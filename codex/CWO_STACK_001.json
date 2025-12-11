@@ -1,0 +1,168 @@
+{
+  "id": "CWO_STACK_001",
+  "title": "Standardise version + schema alignment across Brain, CodeCrafter2, and SQL DB",
+  "repos": ["Brain", "Code_Crafter2"],
+  "priority": "high",
+  "status": "todo",
+  "owner": "platform",
+  "summary": "Define and implement a simple, universal pattern so that the Brain frontend, the CodeCrafter2 backend, and the SQL database schema stay in sync for each environment. Codify: (1) how DB schema is kept aligned with CC2 migrations, (2) how Brain knows which CC2 version and API contract it targets, and (3) how wiring/health checks catch mismatches early.",
+  "context": {
+    "problems_seen": [
+      "CC2 code expects columns (e.g. roster_templates.effective_from) that do not exist in the live DB, causing psycopg2.errors.UndefinedColumn.",
+      "Brain JS calls endpoints (/api/auto_assign/flights, /api/auto_assign/employees) that do not exist on the CC2 version actually deployed, causing 404s.",
+      "Multiple environments (local, Render) with different combinations of Brain, CC2, and DB versions; environment variables not consistently documenting these mappings.",
+      "Drift accumulates until the user hits a runtime failure in the UI instead of being flagged by wiring/health checks."
+    ],
+    "goal": [
+      "For any environment (local, staging, prod), we can answer quickly and reliably:",
+      "  - Which Brain build is running (branch/commit)?",
+      "  - Which CC2 build is it calling?",
+      "  - Which DB schema version / migrations have been applied?",
+      "And we enforce a small set of rules so these three never silently drift apart."
+    ]
+  },
+  "scope": {
+    "in_scope": [
+      "Defining a simple 'environment manifest' format that records the Brain URL, CC2 URL, DB URL, and versions for each environment.",
+      "Standardising how CC2 migrations are run for each environment (or how equivalent SQL patches are applied).",
+      "Standardising how Brain discovers and uses CC2 API endpoints (via a single ops client module) instead of scattered hard-coded URLs.",
+      "Adding wiring/health checks that fail fast when schema or API contracts are clearly mismatched."
+    ],
+    "out_of_scope": [
+      "Major architectural changes (e.g. introducing a service mesh or full-blown config server).",
+      "Deep refactors of domain logic; this CWO focuses on version/schema alignment and detection.",
+      "CI/CD pipeline implementation details beyond what is needed to express 'run migrations before deploying CC2'."
+    ]
+  },
+  "technical_requirements": {
+    "environment_manifest": {
+      "location": "e.g. /ops/environments.md or /ops/environments.json in a shared ops folder",
+      "fields_per_env": [
+        "name (local, staging, prod)",
+        "brain_url",
+        "cc2_url",
+        "db_url (masked if needed)",
+        "brain_ref (branch/tag/commit)",
+        "cc2_ref (branch/tag/commit)",
+        "schema_version (e.g. latest Alembic revision or 'patched-manually-YYYYMMDD')"
+      ]
+    },
+    "db_schema_alignment": {
+      "source_of_truth": "CC2 migrations and models",
+      "requirement": [
+        "For each environment, when deploying a new CC2 version that changes models, we must either:",
+        "  - Run Alembic migrations (e.g. alembic upgrade head) against that environment's DATABASE_URL, or",
+        "  - Apply an equivalent SQL patch and record it in the environment manifest (schema_version)."
+      ]
+    },
+    "api_contract_alignment": {
+      "source_of_truth": "CC2 route definitions",
+      "brain_contract": [
+        "Brain must not hard-code CC2 routes in random files.",
+        "All CC2 API calls from Brain go through a single client module (e.g. src/api/opsClient.ts).",
+        "When CC2 routes change (e.g. introducing /api/runs/auto_assign, /api/staff_runs/auto_assign), opsClient is the only place to update.",
+        "Legacy paths (e.g. /api/auto_assign/flights) should either be removed from Brain or explicitly shimmed on CC2 with thin compatibility handlers."
+      ]
+    },
+    "wiring_checks": {
+      "cc2_wiring": [
+        "CC2's /api/wiring-status should include checks that exercise:",
+        "  - DB connectivity and basic SELECT 1;",
+        "  - critical schema expectations (e.g. roster_templates.effective_from exists);",
+        "  - presence of key endpoints (e.g. /api/runs/auto_assign, /api/staff_runs/auto_assign if applicable)."
+      ],
+      "brain_wiring": [
+        "Brain's wiring panel should proxy and visualise those checks, plus:",
+        "  - 'Can Brain reach CC2 at CC2_BASE_URL?'",
+        "  - 'Is staff auto-assign endpoint responding correctly?'",
+        "so ops can see at a glance when Brain–CC2–DB are not in agreement."
+      ]
+    }
+  },
+  "implementation_plan": [
+    {
+      "step": "Introduce environment manifest for Brain+CC2+DB",
+      "details": [
+        "Create /ops/environments.md (or .json) in a shared repo or ops folder.",
+        "Document for each environment (local, staging, prod):",
+        "  - Brain URL + branch/tag/commit.",
+        "  - CC2 URL + branch/tag/commit.",
+        "  - DB connection identifier (not necessarily full URL, but enough to distinguish instances).",
+        "  - Which migrations or schema patches have been applied (e.g. Alembic revision, or note like 'roster_templates effective_from fixed on 2025-12-11')."
+      ]
+    },
+    {
+      "step": "Standardise DB migration/patch flow for CC2",
+      "details": [
+        "Define a simple rule: 'Deploy CC2 → Run migrations (or documented SQL patch) → Mark schema_version in environment manifest'.",
+        "Ensure the CC2 repo documents how to run migrations:",
+        "  - For example, in README or /ops/cc2-migrations.md:",
+        "    * local: alembic upgrade head",
+        "    * Render: one-off deploy hook or manual 'migrations' job.",
+        "For environments where Alembic state is already messy, document one-time SQL patches (like roster_templates effective_from/effective_to) in the manifest."
+      ]
+    },
+    {
+      "step": "Consolidate Brain → CC2 API usage into opsClient",
+      "details": [
+        "Audit the Brain repo for direct references to CC2 routes (e.g. '/api/auto_assign/flights', '/api/auto_assign/employees', '/api/runs/auto_assign').",
+        "Move all such calls into src/api/opsClient.ts (or equivalent) behind named functions (e.g. autoAssignRuns, autoAssignStaff, fetchFlightsForDate).",
+        "Remove or deprecate any routes in Brain that refer to endpoints no longer exposed by CC2.",
+        "Ensure opsClient.ts uses VITE_API_BASE_URL / API_BASE consistently and is the only layer that knows the actual path strings."
+      ]
+    },
+    {
+      "step": "Harden CC2 wiring-status with schema checks",
+      "details": [
+        "Add small, safe checks to CC2's wiring-status implementation (e.g. app/routes/wiring_status.py):",
+        "  - Attempt SELECT effective_from, effective_to FROM roster_templates LIMIT 1; inside a try/except.",
+        "  - If it fails with UndefinedColumn, report a component 'roster_templates_schema' with ok=false and a clear detail message.",
+        "Repeat for any other 'critical' schema elements that have previously caused runtime failures.",
+        "Ensure that wiring-status returns an 'ok' flag that is false if any of these critical components fail."
+      ]
+    },
+    {
+      "step": "Extend Brain wiring panel to surface sync problems clearly",
+      "details": [
+        "Update Brain's WiringTestPanel to display the new 'roster_templates_schema' and any staff auto-assign health components.",
+        "Add a top-level summary banner in the wiring UI such as:",
+        "  - 'Brain ↔ CC2 ↔ DB in sync' or",
+        "  - 'Schema mismatch detected: roster_templates missing effective_from/effective_to'.",
+        "This gives operators a single place to check stack health."
+      ]
+    },
+    {
+      "step": "Write a short 'How to keep them in sync' note",
+      "details": [
+        "Create a short doc, e.g. /ops/stack-sync.md, that describes in plain language:",
+        "  - When you bump CC2 models, you must run migrations on each environment and update the manifest.",
+        "  - When you change CC2 APIs, you must update opsClient.ts in Brain and optionally add wiring checks.",
+        "  - Before chasing weird UI errors, check the wiring panel; if it’s red, fix wiring/schema first.",
+        "This becomes the 'how we do it here' guide for future you and anyone else touching the stack."
+      ]
+    }
+  ],
+  "test_plan": {
+    "manual_tests": [
+      "1. Pick one environment (e.g. staging) and fully document it in the environment manifest.",
+      "2. Break the roster_templates schema intentionally in staging (e.g. temporarily rename effective_from back to active_from), then:",
+      "   - Confirm CC2 wiring-status reports roster_templates_schema as failing, and that Brain's wiring panel reflects this.",
+      "   - Confirm auto-assign runs fails in the UI in a way that matches the wiring error (not a mysterious JSON blob).",
+      "3. Fix the schema (rename back to effective_from), re-run wiring, and ensure both wiring and auto-assign return to OK.",
+      "4. Change an API path in CC2 (in a feature branch) and update opsClient.ts in Brain to match; deploy both together to a test env and confirm no 404s or drift.",
+      "5. Verify that a fresh clone of Brain and CC2, when configured as per the manifest and with migrations run, can reproduce a healthy wiring and working auto-assign flows."
+    ]
+  },
+  "definition_of_done": [
+    "An environment manifest exists and is updated for each active environment (local/staging/prod).",
+    "There is a clearly documented way to run CC2 migrations / schema patches per environment, and roster_templates schema is confirmed fixed.",
+    "Brain uses a single ops client module for all CC2 API calls, and does not reference obsolete endpoints.",
+    "CC2 wiring-status and Brain's wiring panel can detect and clearly display schema/API mismatches (e.g. missing columns, missing endpoints).",
+    "Future schema or API changes can follow a simple, repeatable process to keep Brain, CC2, and the DB in sync."
+  ],
+  "risks": [
+    "If migrations and manual patches have diverged heavily across environments, normalising them may uncover more inconsistencies that need careful handling.",
+    "This CWO introduces a small process overhead (keeping the manifest and running migrations), but skipping it will likely recreate the same drift problems.",
+    "Some legacy scripts or tools may rely on old API paths or schema; they may need updates or deprecation."
+  ]
+}
