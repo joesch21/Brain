@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 from functools import wraps
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
+from uuid import uuid4
+from time import perf_counter
 
 from typing import Iterable
 
@@ -116,7 +118,16 @@ def json_error(message: str, *, status_code: int = 500, error_type: str = "inter
     return jsonify(payload), status_code
 
 
-def proxy_cc2_json(
+def _build_proxy_headers(request_id: str, target_url: str) -> dict[str, str]:
+    return {
+        "X-Brain-Proxy": "true",
+        "X-CC2-Base-Url": CC2_BASE_URL,
+        "X-CC2-Target": target_url,
+        "X-Request-Id": request_id,
+    }
+
+
+def proxy_to_cc2(
     method: str,
     path: str,
     *,
@@ -124,38 +135,87 @@ def proxy_cc2_json(
     json_body: dict | None = None,
     timeout: int = 20,
     error_label: str = "Upstream request failed",
+    include_debug: bool | None = None,
 ):
+    """Proxy a JSON request to CodeCrafter2 with tracing headers/metadata."""
+
+    request_id = str(uuid4())
+    target_path = path if path.startswith("/") else f"/{path}"
+    target_url = f"{CC2_BASE_URL}{target_path}"
+    debug_mode = (
+        include_debug
+        if include_debug is not None
+        else app.config.get("DEBUG")
+        or os.getenv("BRAIN_PROXY_DEBUG")
+    )
+
     if not CC2_BASE_URL:
-        return json_error(
-            "CC2_BASE_URL is not configured on this service.",
-            status_code=500,
-            error_type="config_error",
+        resp = jsonify(
+            {
+                "ok": False,
+                "error": "CC2_BASE_URL is not configured on this service.",
+                "type": "config_error",
+                "cc2_target_url": target_url,
+                "request_id": request_id,
+            }
         )
+        response = app.make_response(resp)
+        response.headers.update(_build_proxy_headers(request_id, target_url))
+        response.status_code = 500
+        return response
 
-    url = f"{CC2_BASE_URL}{path}"
     try:
-        resp = requests.request(
-            method, url, params=params, json=json_body, timeout=timeout
+        upstream_resp = requests.request(
+            method, target_url, params=params, json=json_body, timeout=timeout
         )
+        upstream_status = upstream_resp.status_code
     except requests.RequestException as exc:  # noqa: BLE001
-        app.logger.exception("%s proxy failed", path, exc_info=exc)
-        return json_error(
-            error_label,
-            status_code=502,
-            error_type="upstream_error",
-            context={"detail": str(exc), "url": url, "method": method},
-        )
+        app.logger.exception("%s proxy failed", target_path, exc_info=exc)
+        payload = {
+            "ok": False,
+            "error": error_label,
+            "type": "upstream_error",
+            "cc2_target_url": target_url,
+            "request_id": request_id,
+            "detail": str(exc),
+        }
+        response = jsonify(payload)
+        flask_resp = app.make_response(response)
+        flask_resp.status_code = 502
+        flask_resp.headers.update(_build_proxy_headers(request_id, target_url))
+        return flask_resp
 
     try:
-        payload = resp.json()
+        payload = upstream_resp.json()
     except Exception:  # noqa: BLE001
         payload = {
             "ok": False,
-            "error": f"Invalid JSON from upstream {path}.",
+            "error": f"Invalid JSON from upstream {target_path}.",
             "type": "upstream_error",
+            "cc2_target_url": target_url,
+            "request_id": request_id,
         }
 
-    return jsonify(payload), resp.status_code
+    # Treat upstream ok flag as authoritative for error handling
+    if upstream_resp.ok and isinstance(payload, dict) and payload.get("ok", True) is False:
+        upstream_status = upstream_status if upstream_status >= 400 else 502
+
+    wrapped_payload = payload
+    if debug_mode:
+        wrapped_payload = {
+            "_proxy": {"requestId": request_id, "targetUrl": target_url},
+            "data": payload,
+        }
+
+    response = jsonify(wrapped_payload)
+    flask_resp = app.make_response(response)
+    flask_resp.status_code = upstream_status
+    flask_resp.headers.update(_build_proxy_headers(request_id, target_url))
+    return flask_resp
+
+
+# Backwards compatibility alias for existing call sites
+proxy_cc2_json = proxy_to_cc2
 
 
 @app.errorhandler(Exception)
@@ -2829,6 +2889,69 @@ def api_wiring_status():
     )
 
 
+@app.get("/api/wiring")
+def api_wiring_report():
+    """Server-side super-check for CC2 connectivity and health."""
+
+    checks = []
+    overall_ok = True
+    for name, path in [
+        ("healthz", "/api/healthz"),
+        ("wiring_status", "/api/wiring-status"),
+        ("staff", "/api/staff"),
+    ]:
+        target_url = f"{CC2_BASE_URL}{path}"
+        started = perf_counter()
+        try:
+            resp = requests.get(target_url, timeout=10)
+            elapsed_ms = int((perf_counter() - started) * 1000)
+            try:
+                body = resp.json()
+            except Exception:  # noqa: BLE001
+                body = resp.text
+            ok = resp.ok and (not isinstance(body, dict) or body.get("ok", True))
+            if not ok:
+                overall_ok = False
+            checks.append(
+                {
+                    "name": name,
+                    "status_code": resp.status_code,
+                    "ok": ok,
+                    "url": target_url,
+                    "elapsed_ms": elapsed_ms,
+                    "body": body,
+                }
+            )
+        except requests.RequestException as exc:  # noqa: BLE001
+            overall_ok = False
+            elapsed_ms = int((perf_counter() - started) * 1000)
+            checks.append(
+                {
+                    "name": name,
+                    "status_code": None,
+                    "ok": False,
+                    "url": target_url,
+                    "elapsed_ms": elapsed_ms,
+                    "error": str(exc),
+                }
+            )
+
+    last_error = None
+    for check in checks:
+        if not check.get("ok"):
+            last_error = check.get("error") or check.get("body") or check
+            break
+
+    return jsonify(
+        {
+            "ok": overall_ok,
+            "cc2_base_url": CC2_BASE_URL,
+            "checks": checks,
+            "last_error": last_error,
+        }
+    )
+
+
 @app.get("/api/runs/daily")
 def api_runs_daily():
     """Proxy GET /api/runs/daily to CodeCrafter2."""
@@ -2914,27 +3037,13 @@ def proxy_runs_generate():
     if airline:
         params["airline"] = airline
 
-    try:
-        resp = requests.post(
-            f"{CC2_BASE_URL}/api/runs/generate", params=params, timeout=20
-        )
-    except requests.RequestException as exc:
-        app.logger.exception("Failed to reach Code_Crafter2 /api/runs/generate")
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Upstream scheduling backend unavailable",
-                "type": "upstream_error",
-                "context": {"detail": str(exc)},
-            }
-        ), 502
-
-    try:
-        payload = resp.json()
-    except ValueError:
-        payload = {"ok": False, "error": "Invalid JSON from scheduling backend."}
-
-    return jsonify(payload), resp.status_code
+    return proxy_cc2_json(
+        "POST",
+        "/api/runs/generate",
+        params=params,
+        timeout=20,
+        error_label="Upstream scheduling backend unavailable",
+    )
 
 
 @app.post("/api/flight_runs/auto_assign")
@@ -2957,27 +3066,13 @@ def proxy_flight_runs_auto_assign():
     if airline:
         params["airline"] = airline
 
-    try:
-        resp = requests.post(
-            f"{CC2_BASE_URL}/api/flight_runs/auto_assign", params=params, timeout=30
-        )
-    except requests.RequestException as exc:
-        app.logger.exception("Failed to reach Code_Crafter2 /api/flight_runs/auto_assign")
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Upstream scheduling backend unavailable",
-                "type": "upstream_error",
-                "context": {"detail": str(exc)},
-            }
-        ), 502
-
-    try:
-        payload = resp.json()
-    except ValueError:
-        payload = {"ok": False, "error": "Invalid JSON from scheduling backend."}
-
-    return jsonify(payload), resp.status_code
+    return proxy_cc2_json(
+        "POST",
+        "/api/flight_runs/auto_assign",
+        params=params,
+        timeout=30,
+        error_label="Upstream scheduling backend unavailable",
+    )
 
 
 @app.post("/api/staff_runs/generate")

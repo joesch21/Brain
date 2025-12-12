@@ -59,8 +59,8 @@ const AppNav = () => {
           Machine Room {badge}
         </NavLink>
 
-        <NavLink to="/debug/wiring" className={navLinkClass}>
-          Wiring {badge}
+        <NavLink to="/wiring" className={navLinkClass}>
+          Wiring Debug {badge}
         </NavLink>
       </div>
     </nav>

@@ -135,7 +135,9 @@ async function request(path, options = {}) {
       body = undefined;
     }
 
-    if (!response.ok) {
+    const ok = response.ok && (body?.ok !== false);
+
+    if (!ok) {
       const errorMessage =
         (body && body.error) ||
         (typeof body === "string" && body) ||
@@ -156,6 +158,7 @@ async function request(path, options = {}) {
       err.status = status;
       err.data = body;
       err.url = url;
+      err.type = body?.type || null;
       throw err;
     }
 

@@ -169,7 +169,8 @@ function formatRequestError(label, err) {
 
   const statusLabel = err.status ?? "network";
   const message = (err.data && err.data.error) || err.message || "Request failed";
-  return `${label} ${statusLabel} – ${message}`;
+  const endpoint = err.url || "unknown endpoint";
+  return `${label} ${statusLabel} @ ${endpoint} – ${message}`;
 }
 
 function normalizeRoster(data) {
