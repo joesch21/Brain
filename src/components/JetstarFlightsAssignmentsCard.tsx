@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
+import { API_BASE } from "../api/apiBase";
 
 type Flight = {
   id: number;
@@ -49,7 +49,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
   }
 
   async function fetchFlightsForDate(date: string): Promise<Flight[]> {
-    const url = `${API_BASE}/api/flights?date=${encodeURIComponent(date)}`;
+    const url = `${API_BASE}/flights?date=${encodeURIComponent(date)}`;
     const json = await fetchJson<{ flights: Flight[] }>(url);
     return json.flights ?? [];
   }
@@ -57,7 +57,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
   async function fetchEmployeeAssignmentsForDate(
     date: string,
   ): Promise<Assignment[]> {
-    const url = `${API_BASE}/api/employee_assignments/daily?date=${encodeURIComponent(
+    const url = `${API_BASE}/employee_assignments/daily?date=${encodeURIComponent(
       date,
     )}`;
     const json = await fetchJson<{ assignments: Assignment[] }>(url);

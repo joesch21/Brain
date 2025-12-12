@@ -11,6 +11,7 @@ import RunsOverviewPage from "./pages/RunsOverviewPage";
 import BackendDebugConsole from "./components/BackendDebugConsole";
 import WiringTestPage from "./pages/WiringTestPage";
 import WiringDebugPage from "./pages/WiringDebugPage";
+import ApiBadge from "./components/ApiBadge";
 
 const App = () => {
   return (
@@ -34,6 +35,9 @@ const App = () => {
 
       {/* 🔥 Backend Debug Console — ALWAYS VISIBLE */}
       <BackendDebugConsole />
+
+      {/* Small footer badge showing which API host the UI is wired to */}
+      <ApiBadge />
     </BrowserRouter>
   );
 };
