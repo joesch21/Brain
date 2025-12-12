@@ -56,8 +56,7 @@ export interface AutoAssignStaffResult {
   message?: string;
 }
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "https://codecrafter2.onrender.com";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 async function handleJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -70,7 +69,7 @@ async function handleJson<T>(res: Response): Promise<T> {
 export async function fetchFlightsForDate(dateIso: string): Promise<Flight[]> {
   const url = `${API_BASE}/api/flights?date=${encodeURIComponent(
     dateIso
-  )}&operator=all`;
+  )}&operator=ALL`;
   const data = await handleJson<{ flights: Flight[] }>(await fetch(url));
   return data.flights || [];
 }
