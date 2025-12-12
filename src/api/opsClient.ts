@@ -1,9 +1,30 @@
 // src/api/opsClient.ts
-// EWOT (one sentence): small helper client that makes all the Brain UI's
-// /api/ calls go to the Ops backend (CodeCrafter2) using VITE_API_BASE_URL.
+// EWOT: Small client for talking to the Ops API (CodeCrafter2) from the Brain UI.
+
+export interface Flight {
+  id: number;
+  flight_number: string;
+  destination: string;
+  origin: string;
+  time_local: string | null;
+  operator_code: string | null;
+}
+
+export interface EmployeeAssignment {
+  flight_id: number;
+  flight_number: string;
+  staff_id: number | null;
+  staff_name: string | null;
+  staff_code: string | null;
+}
+
+export interface MergedFlightAssignment extends Flight {
+  assigned_staff_name: string | null;
+  assigned_staff_code: string | null;
+}
 
 // Read base URL from Vite env, with a safe default for local/dev.
-// Must include the `/api` suffix and no trailing slash.
+// IMPORTANT: VITE_API_BASE_URL must include the `/api` suffix and no trailing slash.
 const RAW_API_BASE =
   (import.meta as any).env?.VITE_API_BASE_URL ??
   "https://codecrafter2.onrender.com/api";
@@ -12,17 +33,29 @@ const RAW_API_BASE =
 const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
 async function handleJson<T>(res: Response): Promise<T> {
+  let text: string | null = null;
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(
-      `HTTP ${res.status} – ${res.statusText || "Ops API error"}\n${text}`,
-    );
+    try {
+      text = await res.text();
+    } catch {
+      text = null;
+    }
+
+    const baseMessage = `HTTP ${res.status} – ${
+      res.statusText || "Ops API error"
+    }`;
+    const message =
+      text && text.length > 0 ? `${baseMessage}\n${text}` : baseMessage;
+
+    throw new Error(message);
   }
+
   return (await res.json()) as T;
 }
 
 // ---------------------------------------------------------------------------
-// Backend wiring / status
+// Wiring / backend health
 // ---------------------------------------------------------------------------
 
 export async function fetchBackendStatus(date?: string) {
@@ -45,60 +78,83 @@ export async function fetchOpsDebugWiring() {
 }
 
 // ---------------------------------------------------------------------------
-// Flights + imports
+// Flights + assignments + auto-assign flows
 // ---------------------------------------------------------------------------
 
+export interface FlightsResponse {
+  ok: boolean;
+  date: string;
+  flights: Flight[];
+  [key: string]: any;
+}
+
+export interface EmployeeAssignmentsResponse {
+  ok: boolean;
+  date: string;
+  assignments: EmployeeAssignment[];
+  [key: string]: any;
+}
+
+/**
+ * EWOT: fetch flights for a given date and operator from the Ops API.
+ */
+export async function fetchFlightsForDate(
+  date: string,
+  operator: string,
+): Promise<Flight[]> {
+  const url = new URL(`${API_BASE}/flights`);
+  url.searchParams.set("date", date);
+  url.searchParams.set("operator", operator);
+
+  const res = await fetch(url.toString());
+  const payload = await handleJson<FlightsResponse>(res);
+
+  // Be defensive: if backend says ok:false, throw a readable error.
+  if (!payload.ok) {
+    throw new Error(payload.error || "Failed to load flights from Ops API");
+  }
+
+  return payload.flights ?? [];
+}
+
+/**
+ * EWOT: fetch employee assignments for a given date (and airline/operator).
+ */
+export async function fetchEmployeeAssignmentsForDate(
+  date: string,
+  airline: string,
+): Promise<EmployeeAssignment[]> {
+  const url = new URL(`${API_BASE}/employee_assignments/daily`);
+  url.searchParams.set("date", date);
+  url.searchParams.set("airline", airline);
+
+  const res = await fetch(url.toString());
+  const payload = await handleJson<EmployeeAssignmentsResponse>(res);
+
+  if (!payload.ok) {
+    throw new Error(
+      payload.error || "Failed to load employee assignments from Ops API",
+    );
+  }
+
+  return payload.assignments ?? [];
+}
+
+/**
+ * EWOT: seed demo flights for a given date + airline in the Ops backend.
+ */
 export async function seedDemoFlights(date: string, airline: string) {
   const url = new URL(`${API_BASE}/imports/seed_demo_flights`);
   url.searchParams.set("date", date);
   url.searchParams.set("airline", airline);
+
   const res = await fetch(url.toString(), { method: "POST" });
   return handleJson<any>(res);
 }
 
-// This is the one MachineRoomPage.jsx is asking for.
-export async function fetchFlightsForDate(
-  date: string,
-  operator: string,
-): Promise<any> {
-  const url = new URL(`${API_BASE}/flights`);
-  url.searchParams.set("date", date);
-  url.searchParams.set("operator", operator);
-  const res = await fetch(url.toString());
-  return handleJson<any>(res);
-}
-
-// ---------------------------------------------------------------------------
-// Employee assignments / roster
-// ---------------------------------------------------------------------------
-
-export async function fetchEmployeeAssignmentsForDate(
-  date: string,
-  operator: string,
-): Promise<any> {
-  const url = new URL(`${API_BASE}/employee_assignments/daily`);
-  url.searchParams.set("date", date);
-  url.searchParams.set("operator", operator);
-  const res = await fetch(url.toString());
-  return handleJson<any>(res);
-}
-
-// Simple helper so the card code can combine results without exploding
-// if either side is missing.
-export function mergeFlightsWithAssignments(
-  flights: any[] | undefined,
-  assignments: any[] | undefined,
-): { flights: any[]; assignments: any[] } {
-  return {
-    flights: flights ?? [],
-    assignments: assignments ?? [],
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Runs / auto-assign helpers (if used by other pages)
-// ---------------------------------------------------------------------------
-
+/**
+ * EWOT: ask the Ops backend to auto-assign refueller runs to flights.
+ */
 export async function autoAssignFlights(date: string, airline: string) {
   const res = await fetch(`${API_BASE}/runs/auto_assign_flights`, {
     method: "POST",
@@ -108,7 +164,11 @@ export async function autoAssignFlights(date: string, airline: string) {
   return handleJson<any>(res);
 }
 
-export async function autoAssignEmployees(date: string, airline: string) {
+/**
+ * EWOT: ask the Ops backend to auto-assign staff (employees) to flights.
+ * This is what MachineRoomPage imports as `autoAssignStaff`.
+ */
+export async function autoAssignStaff(date: string, airline: string) {
   const res = await fetch(`${API_BASE}/runs/auto_assign_employees`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -117,6 +177,9 @@ export async function autoAssignEmployees(date: string, airline: string) {
   return handleJson<any>(res);
 }
 
+/**
+ * EWOT: end-to-end prep for the ops day (flights + runs + staff) in one call.
+ */
 export async function prepareOpsDay(date: string, airline: string) {
   const res = await fetch(`${API_BASE}/runs/prepare_ops_day`, {
     method: "POST",
@@ -124,4 +187,30 @@ export async function prepareOpsDay(date: string, airline: string) {
     body: JSON.stringify({ date, airline }),
   });
   return handleJson<any>(res);
+}
+
+/**
+ * EWOT: merge flights with employee assignments so the UI can show each flight
+ * together with its assigned staff code/name.
+ */
+export function mergeFlightsWithAssignments(
+  flights: Flight[],
+  assignments: EmployeeAssignment[],
+): MergedFlightAssignment[] {
+  const byFlightId = new Map<number, EmployeeAssignment>();
+
+  for (const a of assignments) {
+    if (a.flight_id != null) {
+      byFlightId.set(a.flight_id, a);
+    }
+  }
+
+  return flights.map((f) => {
+    const a = byFlightId.get(f.id);
+    return {
+      ...f,
+      assigned_staff_name: a?.staff_name ?? null,
+      assigned_staff_code: a?.staff_code ?? null,
+    };
+  });
 }
