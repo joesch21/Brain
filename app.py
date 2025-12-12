@@ -7,6 +7,8 @@ import requests
 from flask import Flask, g, jsonify, request
 from dotenv import load_dotenv
 
+from services import api_contract
+
 # EWOT: This app is a thin proxy between The Brain frontend and the
 # CodeCrafter2 Ops API. It exposes /api/* endpoints that forward to CC2
 # and returns JSON, so the React frontend never sees HTML 404s.
@@ -276,65 +278,22 @@ def api_wiring_snapshot():
 
 
 @app.get("/api/contract")
-def api_contract():
-    """Expose a machine-readable API contract map for the Brain frontend."""
+def api_contract_route():
+    """Expose a stable, machine-readable API contract for the Brain frontend."""
 
-    now = datetime.now(timezone.utc).isoformat()
-    version = os.getenv("BRAIN_VERSION", "dev")
+    contract = api_contract.build_contract()
+    is_valid, detail = api_contract.validate_contract(contract)
 
-    endpoints = {
-        "flights": {
-            "method": "GET",
-            "path": "/api/flights",
-            "query": {
-                "date": "YYYY-MM-DD (required)",
-                "operator": "ALL or airline code (default: ALL)",
-            },
-            "example": "/api/flights?date=2025-12-12&operator=ALL",
-        },
-        "staff": {
-            "method": "GET",
-            "path": "/api/staff",
-            "example": "/api/staff",
-        },
-        "runsDaily": {
-            "method": "GET",
-            "path": "/api/runs/daily",
-            "query": {
-                "date": "YYYY-MM-DD (required)",
-                "operator": "ALL or airline code (default: ALL)",
-            },
-            "example": "/api/runs/daily?date=2025-12-12&operator=ALL",
-        },
-        "autoAssign": {
-            "method": "POST",
-            "path": "/api/runs/auto_assign",
-            "body": {"date": "YYYY-MM-DD", "operator": "ALL or airline code"},
-            "example": {
-                "date": "2025-12-12",
-                "operator": "ALL",
-            },
-        },
-        "wiring": {
-            "method": "GET",
-            "path": "/api/wiring",
-            "example": "/api/wiring",
-        },
-    }
+    if not is_valid:
+        app.logger.error("Invalid API contract payload: %s", detail)
+        return json_error(
+            "Invalid API contract payload.",
+            status_code=500,
+            code="invalid_contract",
+            detail=detail,
+        )
 
-    payload = {
-        "ok": True,
-        "version": version,
-        "build_timestamp": now,
-        "environment": {
-            "demo_schedule": _env_flag("DEMO_SCHEDULE"),
-            "db_backed": bool(os.getenv("DATABASE_URL")),
-            "codecrafter2_base_url": CODECRAFTER2_BASE_URL,
-        },
-        "endpoints": endpoints,
-    }
-
-    return jsonify(payload)
+    return jsonify(contract)
 
 
 @app.get("/api/ops/debug/wiring")
