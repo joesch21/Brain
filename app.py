@@ -248,6 +248,9 @@ def handle_api_errors(err):
     """Ensure all /api/* routes return JSON, even on unexpected errors."""
 
     if not request.path.startswith("/api/"):
+        if isinstance(err, HTTPException):
+            return err
+
         raise err
 
     if isinstance(err, HTTPException):
@@ -510,6 +513,13 @@ def serve_frontend_spa():
         )
 
     return send_from_directory(str(FRONTEND_BUILD_DIR), "index.html")
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Return an empty favicon to avoid noisy 404 logs."""
+
+    return "", 204
 
 
 @app.route("/assets/<path:filename>")
