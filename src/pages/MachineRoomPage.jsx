@@ -284,8 +284,11 @@ const SystemStatusCard = ({ selectedAirline }) => {
         url: `/api/runs_status?date=${encodeURIComponent(date)}`,
       },
       {
-        name: "Service profiles",
+        name: "Service profiles (optional)",
         url: `/api/service_profiles`,
+        optional: true,
+        optionalMessage:
+          "Optional: CC2 may not expose service profiles yet, so skip this wiring check if missing.",
       },
     ];
 
@@ -300,13 +303,23 @@ const SystemStatusCard = ({ selectedAirline }) => {
         const resp = await fetchApiStatus(t.url);
         const millis = Math.round(performance.now() - started);
 
+        let ok = resp.ok;
+        let status = resp.ok ? resp.status : resp.status || "NETWORK";
+        let message = resp.ok ? "OK" : resp.error || "Request failed";
+
+        if (t.optional && resp.status === 404) {
+          ok = true;
+          status = "optional";
+          message = t.optionalMessage || "Optional check not implemented";
+        }
+
         results.push({
           name: t.name,
           url: t.url,
-          ok: resp.ok,
-          status: resp.ok ? resp.status : resp.status || "NETWORK",
+          ok,
+          status,
           millis,
-          message: resp.ok ? "OK" : resp.error || "Request failed",
+          message,
         });
       }
 
