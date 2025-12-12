@@ -1,9 +1,10 @@
 import os
+import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 from dotenv import load_dotenv
 
 # EWOT: This app is a thin proxy between The Brain frontend and the
@@ -15,6 +16,10 @@ load_dotenv()
 
 app = Flask(__name__)
 
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).lower() in {"1", "true", "yes", "on"}
+
+
 # Base URL for the CodeCrafter2 Ops API (backend)
 CODECRAFTER2_BASE_URL = (
     os.getenv("CODECRAFTER2_BASE_URL", "https://codecrafter2.onrender.com").rstrip("/")
@@ -24,22 +29,25 @@ CODECRAFTER2_BASE_URL = (
 def json_error(
     message: str,
     status_code: int = 500,
-    error_type: str = "error",
-    context: Optional[Dict[str, Any]] = None,
+    code: str = "error",
+    detail: Optional[Dict[str, Any]] = None,
 ):
-    """
-    EWOT: helper to return a consistent JSON error payload.
+    """Return normalized JSON error payloads for all /api/* routes."""
 
-    The Brain frontend can rely on { ok, error, type, context? } instead of
-    HTML error pages or stack traces.
-    """
     payload: Dict[str, Any] = {
         "ok": False,
-        "error": message,
-        "type": error_type,
+        "error": {
+            "code": code,
+            "message": message,
+        },
     }
-    if context:
-        payload["context"] = context
+    if detail:
+        payload["error"]["detail"] = detail
+    return jsonify(payload), status_code
+
+
+def _build_ok(payload: Dict[str, Any], status_code: int = 200):
+    payload.setdefault("ok", True)
     return jsonify(payload), status_code
 
 
@@ -51,18 +59,101 @@ def _upstream_url(path: str) -> str:
     return f"{CODECRAFTER2_BASE_URL}{path}"
 
 
+def _call_upstream(
+    paths: Iterable[str], method: str = "get", **kwargs: Dict[str, Any]
+) -> Tuple[Optional[requests.Response], Optional[str]]:
+    """
+    Attempt one or more upstream paths, returning the first non-404 response.
+
+    If every attempt returns 404 we give the final response back to the caller so it
+    can decide on a compatibility fallback. Network failures raise a
+    RequestException to allow the caller to surface an upstream_error.
+    """
+
+    last_resp: Optional[requests.Response] = None
+    last_path: Optional[str] = None
+    for candidate in paths:
+        last_path = candidate
+        try:
+            resp = getattr(requests, method)(_upstream_url(candidate), **kwargs)
+        except requests.RequestException:
+            # Try the next candidate; bubble up if none succeed.
+            last_resp = None
+            continue
+
+        if resp.status_code == 404:
+            last_resp = resp
+            continue
+        return resp, candidate
+
+    return last_resp, last_path
+
+
+def _probe_route(
+    paths: Iterable[str], method: str = "get", **kwargs: Dict[str, Any]
+) -> bool:
+    """Check whether any of the given upstream paths respond without 404/500."""
+
+    try:
+        resp, _ = _call_upstream(paths, method=method, **kwargs)
+    except requests.RequestException:
+        return False
+
+    if resp is None:
+        return False
+
+    return resp.status_code < 500 and resp.status_code != 404
+
+
+def _require_date_param() -> Optional[Tuple[Any, int]]:
+    date_str = request.args.get("date")
+    if not date_str:
+        return json_error(
+            "Missing required 'date' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Basic health + status
 # ---------------------------------------------------------------------------
+
+
+@app.before_request
+def _track_start_time():
+    # Track per-request start time for logging.
+    g.start_time = time.monotonic()
+
+
+@app.after_request
+def _log_request(response):  # noqa: D401 - simple logger
+    """Log method, path, status, and duration for API endpoints."""
+
+    try:
+        should_log = request.path.startswith("/api/")
+    except RuntimeError:
+        should_log = False
+
+    if should_log:
+        duration_ms = int((time.monotonic() - getattr(g, "start_time", time.monotonic())) * 1000)
+        app.logger.info(
+            "%s %s -> %s (%sms)",
+            request.method,
+            request.path,
+            response.status_code,
+            duration_ms,
+        )
+    return response
 
 
 @app.get("/api/healthz")
 def api_healthz():
     """EWOT: simple health endpoint so we can see if the Brain proxy is up."""
     now = datetime.now(timezone.utc).isoformat()
-    return jsonify(
+    return _build_ok(
         {
-            "ok": True,
             "service": "BrainOpsProxy",
             "time": now,
             "upstream": {"base_url": CODECRAFTER2_BASE_URL},
@@ -86,13 +177,15 @@ def api_status():
     except Exception as exc:  # noqa: BLE001
         upstream = {
             "ok": False,
-            "error": "Failed to reach upstream wiring-status.",
-            "detail": str(exc),
+            "error": {
+                "code": "upstream_unavailable",
+                "message": "Failed to reach upstream wiring-status.",
+                "detail": str(exc),
+            },
         }
 
-    return jsonify(
+    return _build_ok(
         {
-            "ok": True,
             "date": date_str,
             "service": "BrainOpsProxy",
             "upstream": upstream,
@@ -115,8 +208,8 @@ def api_wiring_status():
         return json_error(
             "Upstream wiring-status endpoint unavailable",
             status_code=502,
-            error_type="upstream_error",
-            context={"detail": str(exc)},
+            code="upstream_error",
+            detail={"detail": str(exc)},
         )
 
     try:
@@ -124,11 +217,124 @@ def api_wiring_status():
     except Exception:  # noqa: BLE001
         payload = {
             "ok": False,
-            "error": "Invalid JSON from upstream wiring-status endpoint.",
-            "raw": resp.text[:500],
+            "error": {
+                "code": "invalid_json",
+                "message": "Invalid JSON from upstream wiring-status endpoint.",
+                "detail": resp.text[:500],
+            },
         }
 
     return jsonify(payload), resp.status_code
+
+
+@app.get("/api/wiring")
+def api_wiring_snapshot():
+    """Augmented wiring snapshot with route checks and config flags."""
+
+    sample_date = datetime.now(timezone.utc).date().isoformat()
+    route_checks = {
+        "flights": _probe_route([
+            "/api/flights",
+            "/api/ops/flights",
+            "/api/ops/schedule/flights",
+        ], params={"date": sample_date, "operator": "ALL"}),
+        "staff": _probe_route([
+            "/api/staff",
+            "/api/ops/staff",
+        ]),
+        "runsDaily": _probe_route([
+            "/api/runs/daily",
+            "/api/ops/runs/daily",
+            "/api/ops/schedule/runs/daily",
+        ], params={"date": sample_date, "operator": "ALL"}),
+        "autoAssign": _probe_route([
+            "/api/runs/auto_assign",
+        ], method="post", json={"date": sample_date, "operator": "ALL"}),
+    }
+
+    try:
+        upstream_status = requests.get(_upstream_url("/api/wiring-status"), timeout=8).json()
+    except Exception:  # noqa: BLE001
+        upstream_status = {"ok": False}
+
+    payload = {
+        "ok": True,
+        "routes": route_checks,
+        "flights_source": "upstream",
+        "config": {
+            "demo_schedule": _env_flag("DEMO_SCHEDULE"),
+            "db_backed": bool(os.getenv("DATABASE_URL")),
+        },
+        "db": {
+            "available": False,
+            "detail": "Proxy layer does not manage a database.",
+        },
+        "upstream": upstream_status,
+    }
+
+    return jsonify(payload)
+
+
+@app.get("/api/contract")
+def api_contract():
+    """Expose a machine-readable API contract map for the Brain frontend."""
+
+    now = datetime.now(timezone.utc).isoformat()
+    version = os.getenv("BRAIN_VERSION", "dev")
+
+    endpoints = {
+        "flights": {
+            "method": "GET",
+            "path": "/api/flights",
+            "query": {
+                "date": "YYYY-MM-DD (required)",
+                "operator": "ALL or airline code (default: ALL)",
+            },
+            "example": "/api/flights?date=2025-12-12&operator=ALL",
+        },
+        "staff": {
+            "method": "GET",
+            "path": "/api/staff",
+            "example": "/api/staff",
+        },
+        "runsDaily": {
+            "method": "GET",
+            "path": "/api/runs/daily",
+            "query": {
+                "date": "YYYY-MM-DD (required)",
+                "operator": "ALL or airline code (default: ALL)",
+            },
+            "example": "/api/runs/daily?date=2025-12-12&operator=ALL",
+        },
+        "autoAssign": {
+            "method": "POST",
+            "path": "/api/runs/auto_assign",
+            "body": {"date": "YYYY-MM-DD", "operator": "ALL or airline code"},
+            "example": {
+                "date": "2025-12-12",
+                "operator": "ALL",
+            },
+        },
+        "wiring": {
+            "method": "GET",
+            "path": "/api/wiring",
+            "example": "/api/wiring",
+        },
+    }
+
+    payload = {
+        "ok": True,
+        "version": version,
+        "build_timestamp": now,
+        "environment": {
+            "demo_schedule": _env_flag("DEMO_SCHEDULE"),
+            "db_backed": bool(os.getenv("DATABASE_URL")),
+            "codecrafter2_base_url": CODECRAFTER2_BASE_URL,
+        },
+        "endpoints": endpoints,
+    }
+
+    return jsonify(payload)
 
 
 @app.get("/api/ops/debug/wiring")
@@ -141,8 +347,8 @@ def api_ops_debug_wiring():
         return json_error(
             "Upstream ops debug wiring endpoint unavailable",
             status_code=502,
-            error_type="upstream_error",
-            context={"detail": str(exc)},
+            code="upstream_error",
+            detail={"detail": str(exc)},
         )
 
     try:
@@ -150,8 +356,11 @@ def api_ops_debug_wiring():
     except Exception:  # noqa: BLE001
         payload = {
             "ok": False,
-            "error": "Invalid JSON from upstream ops debug wiring endpoint.",
-            "raw": resp.text[:500],
+            "error": {
+                "code": "invalid_json",
+                "message": "Invalid JSON from upstream ops debug wiring endpoint.",
+                "detail": resp.text[:500],
+            },
         }
 
     return jsonify(payload), resp.status_code
@@ -164,30 +373,50 @@ def api_ops_debug_wiring():
 
 @app.get("/api/flights")
 def api_flights():
-    """EWOT: proxy GET /api/flights to CC2 for schedule / runs views."""
+    """Proxy GET /api/flights with legacy compatibility fallbacks."""
+
+    if (date_error := _require_date_param()) is not None:
+        return date_error
+
+    operator = request.args.get("operator", "ALL")
+    params = {"date": request.args.get("date"), "operator": operator}
+
+    flights_paths = [
+        "/api/flights",
+        "/api/ops/flights",
+        "/api/ops/schedule/flights",
+    ]
+
     try:
-        resp = requests.get(
-            _upstream_url("/api/flights"),
-            params=request.args,
-            timeout=20,
-        )
+        resp, used_path = _call_upstream(flights_paths, params=params, timeout=20)
     except requests.RequestException as exc:
-        app.logger.exception("Failed to call CC2 /api/flights")
+        app.logger.exception("Failed to call CC2 flights endpoint")
         return json_error(
             "Upstream flights endpoint unavailable",
             status_code=502,
-            error_type="upstream_error",
-            context={"detail": str(exc)},
+            code="upstream_error",
+            detail={"detail": str(exc)},
         )
+
+    if resp is None:
+        return json_error(
+            "Flights endpoint not reachable upstream.",
+            status_code=502,
+            code="upstream_unavailable",
+        )
+
+    if resp.status_code == 404:
+        return _build_ok({"flights": [], "source": "compatibility", "upstream_path": used_path})
 
     try:
         payload = resp.json()
     except Exception:  # noqa: BLE001
-        payload = {
-            "ok": False,
-            "error": "Invalid JSON from flights backend.",
-            "raw": resp.text[:500],
-        }
+        return json_error(
+            "Invalid JSON from flights backend.",
+            status_code=502,
+            code="invalid_json",
+            detail={"raw": resp.text[:500]},
+        )
 
     return jsonify(payload), resp.status_code
 
@@ -209,8 +438,8 @@ def api_employee_assignments_daily():
         return json_error(
             "Upstream employee assignments endpoint unavailable",
             status_code=502,
-            error_type="upstream_error",
-            context={"detail": str(exc)},
+            code="upstream_error",
+            detail={"detail": str(exc)},
         )
 
     try:
@@ -218,9 +447,56 @@ def api_employee_assignments_daily():
     except Exception:  # noqa: BLE001
         payload = {
             "ok": False,
-            "error": "Invalid JSON from employee assignments backend.",
-            "raw": resp.text[:500],
+            "error": {
+                "code": "invalid_json",
+                "message": "Invalid JSON from employee assignments backend.",
+                "detail": resp.text[:500],
+            },
         }
+
+    return jsonify(payload), resp.status_code
+
+
+@app.get("/api/staff")
+def api_staff():
+    """Compatibility endpoint for staff directory."""
+
+    staff_paths = [
+        "/api/staff",
+        "/api/ops/staff",
+        "/api/ops/people",
+    ]
+
+    try:
+        resp, used_path = _call_upstream(staff_paths, timeout=15)
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to call CC2 staff endpoint")
+        return json_error(
+            "Upstream staff endpoint unavailable",
+            status_code=502,
+            code="upstream_error",
+            detail={"detail": str(exc)},
+        )
+
+    if resp is None:
+        return json_error(
+            "Staff endpoint not reachable upstream.",
+            status_code=502,
+            code="upstream_unavailable",
+        )
+
+    if resp.status_code == 404:
+        return _build_ok({"staff": [], "source": "compatibility", "upstream_path": used_path})
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return json_error(
+            "Invalid JSON from staff backend.",
+            status_code=502,
+            code="invalid_json",
+            detail={"raw": resp.text[:500]},
+        )
 
     return jsonify(payload), resp.status_code
 
@@ -236,41 +512,59 @@ def api_runs_daily():
     EWOT: proxy GET /api/runs/daily so the Runs page can fetch runs
     for a given date + operator without seeing 404s from the Brain backend.
     """
+    if (date_error := _require_date_param()) is not None:
+        return date_error
+
     date_str = request.args.get("date")
     operator = request.args.get("operator", "ALL")
 
-    if not date_str:
-        return json_error(
-            "Missing required 'date' query parameter.",
-            status_code=400,
-            error_type="validation_error",
-        )
-
     params = {"date": date_str, "operator": operator}
 
+    runs_paths = [
+        "/api/runs/daily",
+        "/api/ops/runs/daily",
+        "/api/ops/schedule/runs/daily",
+    ]
+
     try:
-        resp = requests.get(
-            _upstream_url("/api/runs/daily"),
-            params=params,
-            timeout=30,
-        )
+        resp, used_path = _call_upstream(runs_paths, params=params, timeout=30)
     except requests.RequestException as exc:
         app.logger.exception("Failed to call CC2 /api/runs/daily")
         return json_error(
             "Upstream runs endpoint unavailable",
             status_code=502,
-            error_type="upstream_error",
-            context={"detail": str(exc)},
+            code="upstream_error",
+            detail={"detail": str(exc)},
+        )
+
+    if resp is None:
+        return json_error(
+            "Runs endpoint not reachable upstream.",
+            status_code=502,
+            code="upstream_unavailable",
+        )
+
+    if resp.status_code == 404:
+        return _build_ok(
+            {
+                "date": date_str,
+                "operator": operator,
+                "runs": [],
+                "unassigned_flights": [],
+                "source": "compatibility",
+                "upstream_path": used_path,
+            }
         )
 
     try:
         payload = resp.json()
     except Exception:  # noqa: BLE001
-        payload = {
-            "ok": False,
-            "error": "Invalid JSON from runs backend.",
-            "raw": resp.text[:500],
-        }
+        return json_error(
+            "Invalid JSON from runs backend.",
+            status_code=502,
+            code="invalid_json",
+            detail={"raw": resp.text[:500]},
+        )
 
     return jsonify(payload), resp.status_code
 
@@ -289,8 +583,8 @@ def api_runs_auto_assign():
         return json_error(
             "Missing 'date' field in JSON body.",
             status_code=400,
-            error_type="validation_error",
-            context={"body": data},
+            code="validation_error",
+            detail={"body": data},
         )
 
     upstream_body = {"date": date_str, "operator": operator}
@@ -306,8 +600,8 @@ def api_runs_auto_assign():
         return json_error(
             "Upstream runs auto-assign endpoint unavailable",
             status_code=502,
-            error_type="upstream_error",
-            context={"detail": str(exc)},
+            code="upstream_error",
+            detail={"detail": str(exc)},
         )
 
     try:
@@ -315,8 +609,11 @@ def api_runs_auto_assign():
     except Exception:  # noqa: BLE001
         payload = {
             "ok": False,
-            "error": "Invalid JSON from runs auto-assign backend.",
-            "raw": resp.text[:500],
+            "error": {
+                "code": "invalid_json",
+                "message": "Invalid JSON from runs auto-assign backend.",
+                "detail": resp.text[:500],
+            },
         }
 
     return jsonify(payload), resp.status_code
