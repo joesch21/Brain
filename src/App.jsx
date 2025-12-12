@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import AppNav from "./components/AppNav";
@@ -12,8 +12,16 @@ import BackendDebugConsole from "./components/BackendDebugConsole";
 import WiringTestPage from "./pages/WiringTestPage";
 import WiringDebugPage from "./pages/WiringDebugPage";
 import ApiBadge from "./components/ApiBadge";
+import { loadApiContract } from "./api/opsContractClient";
 
 const App = () => {
+  useEffect(() => {
+    loadApiContract().catch(err => {
+      console.error(err);
+      alert("API contract could not be loaded. Application wiring is broken.");
+    });
+  }, []);
+
   return (
     <BrowserRouter>
       {/* Global Navigation */}
