@@ -17,8 +17,8 @@ export async function fetchApiStatus(url, options = {}) {
       body = undefined;
     }
 
-    if (response.ok) {
-      return { ok: true, status, data: body };
+    if (response.ok && (typeof body !== "object" || body?.ok !== false)) {
+      return { ok: true, status, data: body, url };
     }
 
     const derivedError = (() => {
@@ -33,12 +33,14 @@ export async function fetchApiStatus(url, options = {}) {
       status,
       data: body,
       error: derivedError,
+      url,
     };
   } catch (err) {
     return {
       ok: false,
       status: 0,
       error: err?.message || "Network error",
+      url,
     };
   }
 }
@@ -47,5 +49,6 @@ export function formatApiError(label, result) {
   if (!result) return label;
   const statusLabel = result.status === 0 ? "network" : result.status;
   const message = result.error || "Unknown error";
-  return `${label} ${statusLabel} – ${message}`;
+  const endpoint = result.url || "unknown endpoint";
+  return `${label} ${statusLabel} @ ${endpoint} – ${message}`;
 }

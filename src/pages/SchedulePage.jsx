@@ -27,7 +27,8 @@ function formatRequestError(label, err) {
   if (!err) return label;
   const statusLabel = err.status ?? "network";
   const message = err.message || "Request failed";
-  return `${label} ${statusLabel} – ${message}`;
+  const endpoint = err.url || "unknown endpoint";
+  return `${label} ${statusLabel} @ ${endpoint} – ${message}`;
 }
 
 function initialsFromName(name) {

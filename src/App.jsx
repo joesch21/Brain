@@ -10,6 +10,7 @@ import RunsOverviewPage from "./pages/RunsOverviewPage";
 
 import BackendDebugConsole from "./components/BackendDebugConsole";
 import WiringTestPage from "./pages/WiringTestPage";
+import WiringDebugPage from "./pages/WiringDebugPage";
 
 const App = () => {
   return (
@@ -26,6 +27,7 @@ const App = () => {
           <Route path="/runsheets" element={<RunSheetsPage />} />
           <Route path="/machine-room" element={<MachineRoomPage />} />
           <Route path="/debug/wiring" element={<WiringTestPage />} />
+          <Route path="/wiring" element={<WiringDebugPage />} />
           <Route path="*" element={<Navigate to="/planner" replace />} />
         </Routes>
       </div>
