@@ -23,14 +23,7 @@ export interface MergedFlightAssignment extends Flight {
   assigned_staff_code: string | null;
 }
 
-// Read base URL from Vite env, with a safe default for local/dev.
-// IMPORTANT: VITE_API_BASE_URL must include the `/api` suffix and no trailing slash.
-const RAW_API_BASE =
-  (import.meta as any).env?.VITE_API_BASE_URL ??
-  "https://codecrafter2.onrender.com/api";
-
-// Normalise so we don't end up with double slashes when building URLs.
-const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+import { API_BASE } from "./apiBase";
 
 async function handleJson<T>(res: Response): Promise<T> {
   let text: string | null = null;

@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 
+import { API_BASE } from "../api/apiBase";
+
 const WiringTestPanel = () => {
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "/api";
+  const apiBase = API_BASE;
 
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -13,7 +15,7 @@ const WiringTestPanel = () => {
     setResult(null);
 
     try {
-      const response = await fetch(`${apiBase}/api/ops/debug/wiring`, {
+      const response = await fetch(`${apiBase}/ops/debug/wiring`, {
         method: "GET",
         headers: {
           Accept: "application/json",
