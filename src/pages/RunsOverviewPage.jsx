@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { autoAssignRuns, fetchDailyRuns } from "../api/runsApi";
+import { autoAssignRuns, fetchRunsForDate } from "../api/runsClients";
 import { fetchRosterOperators } from "../api/rosterApi";
 
 function getTodayISO() {
@@ -29,7 +29,7 @@ const RunsOverviewPage = () => {
     setError(null);
 
     try {
-      const data = await fetchDailyRuns(selectedDate, selectedOperator);
+      const data = await fetchRunsForDate(selectedDate, selectedOperator);
       setRuns(data?.runs || []);
       setRunsMessage(data?.message || "");
     } catch (err) {
