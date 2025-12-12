@@ -265,6 +265,139 @@ def handle_api_errors(err):
     return json_error("Internal server error", status_code=500, error_type="internal_error")
 
 
+@app.get("/api/wiring-status")
+def api_wiring_status():
+    """Proxy wiring/health snapshot from CodeCrafter2.
+
+    EWOT: The Brain calls /api/wiring-status on THIS app, and we forward
+    that call to CC2's /api/wiring-status and return whatever JSON it sends.
+    """
+    try:
+        resp = requests.get(f"{CC2_BASE_URL}/api/wiring-status", timeout=10)
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to reach CodeCrafter2 /api/wiring-status")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Upstream wiring-status endpoint unavailable",
+                "type": "upstream_error",
+                "context": {"detail": str(exc)},
+            }
+        ), 502
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = {
+            "ok": False,
+            "error": "Invalid JSON from upstream wiring-status endpoint.",
+            "raw": resp.text[:500],
+        }
+
+    return jsonify(payload), resp.status_code
+
+
+@app.get("/api/runs/daily")
+def proxy_runs_daily():
+    """Proxy GET /api/runs/daily to CodeCrafter2 for the Runs page.
+
+    EWOT: The Runs page asks this app for runs by date+operator;
+    we simply forward the query to CC2 and return the JSON response.
+    """
+    date_str = request.args.get("date")
+    operator = request.args.get("operator", "ALL")
+
+    if not date_str:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Missing required 'date' query parameter.",
+                "type": "validation_error",
+            }
+        ), 400
+
+    params = {"date": date_str, "operator": operator}
+
+    try:
+        resp = requests.get(
+            f"{CC2_BASE_URL}/api/runs/daily",
+            params=params,
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to reach CodeCrafter2 /api/runs/daily")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Upstream scheduling backend unavailable",
+                "type": "upstream_error",
+                "context": {"detail": str(exc)},
+            }
+        ), 502
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = {
+            "ok": False,
+            "error": "Invalid JSON from scheduling backend.",
+        }
+
+    return jsonify(payload), resp.status_code
+
+
+@app.post("/api/runs/auto_assign")
+def proxy_runs_auto_assign():
+    """Proxy POST /api/runs/auto_assign to CodeCrafter2 for the Auto-assign button.
+
+    EWOT: The Runs page sends {"date", "operator"} to this app;
+    we forward that JSON to CC2's runs engine and return its summary.
+    """
+    data = request.get_json(silent=True) or {}
+
+    date_str = data.get("date")
+    operator = data.get("operator") or "ALL"
+
+    if not date_str:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Missing 'date' field in JSON body.",
+                "type": "validation_error",
+                "context": {"body": data},
+            }
+        ), 400
+
+    upstream_body = {"date": date_str, "operator": operator}
+
+    try:
+        resp = requests.post(
+            f"{CC2_BASE_URL}/api/runs/auto_assign",
+            json=upstream_body,
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to reach CodeCrafter2 /api/runs/auto_assign")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Upstream scheduling backend unavailable",
+                "type": "upstream_error",
+                "context": {"detail": str(exc)},
+            }
+        ), 502
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = {
+            "ok": False,
+            "error": "Invalid JSON from scheduling backend.",
+        }
+
+    return jsonify(payload), resp.status_code
+
+
 TRUCKS = [
     {
         "id": "Truck-1",
@@ -2912,18 +3045,6 @@ def api_ops_auto_assign_flights():
     return jsonify(summary), 200
 
 
-@app.get("/api/wiring-status")
-def api_wiring_status():
-    """Proxy wiring-status to CodeCrafter2 for the Wiring page."""
-
-    return proxy_cc2_json(
-        "GET",
-        "/api/wiring-status",
-        timeout=10,
-        error_label="Upstream wiring-status failed",
-    )
-
-
 @app.get("/api/wiring")
 def api_wiring_report():
     """Server-side super-check for CC2 connectivity and health."""
@@ -2984,59 +3105,6 @@ def api_wiring_report():
             "checks": checks,
             "last_error": last_error,
         }
-    )
-
-
-@app.get("/api/runs/daily")
-def api_runs_daily():
-    """Proxy GET /api/runs/daily to CodeCrafter2."""
-
-    date_str = request.args.get("date")
-    operator = request.args.get("operator", "ALL")
-
-    if not date_str:
-        return json_error(
-            "Missing ?date=YYYY-MM-DD",
-            status_code=400,
-            error_type="validation_error",
-        )
-
-    params = {"date": date_str, "operator": operator}
-
-    return proxy_cc2_json(
-        "GET",
-        "/api/runs/daily",
-        params=params,
-        timeout=20,
-        error_label="Upstream runs endpoint failed",
-    )
-
-
-@app.post("/api/runs/auto_assign")
-def api_runs_auto_assign():
-    """Proxy POST /api/runs/auto_assign to CodeCrafter2."""
-
-    body = request.get_json(silent=True) or {}
-
-    date_str = body.get("date") or request.args.get("date")
-    operator = body.get("operator") or request.args.get("operator") or "ALL"
-
-    if not date_str:
-        return json_error(
-            "Missing date",
-            status_code=400,
-            error_type="validation_error",
-            context={"body": body},
-        )
-
-    upstream_body = {"date": date_str, "operator": operator}
-
-    return proxy_cc2_json(
-        "POST",
-        "/api/runs/auto_assign",
-        json_body=upstream_body,
-        timeout=30,
-        error_label="Upstream auto-assign failed",
     )
 
 
