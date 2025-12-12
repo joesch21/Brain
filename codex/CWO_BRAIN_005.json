@@ -97,7 +97,7 @@
       "step": "Normalise API_BASE in opsClient",
       "details": [
         "In src/api/opsClient.ts, compute the base URL using VITE_API_BASE_URL with a trailing-slash strip:",
-        "  const rawBase = import.meta.env.VITE_API_BASE_URL || \"https://codecrafter2.onrender.com\";",
+        "  const rawBase = import.meta.env.VITE_API_BASE_URL || \"/api\";",
         "  const API_BASE = rawBase.replace(/\\/+$/, \"\");",
         "This prevents double slashes when building URLs (e.g. '//api/flights')."
       ]
@@ -149,7 +149,7 @@
   "test_plan": {
     "manual_tests": [
       "1. Run TypeScript type checking (e.g., npm run build or npm run lint) and confirm there are no errors related to import.meta.env or missing tsconfig.json.",
-      "2. With a valid VITE_API_BASE_URL (or relying on the default codecrafter2.onrender.com), open the Brain UI and:",
+      "2. With a valid VITE_API_BASE_URL (or relying on the default /api), open the Brain UI and:",
       "   - Use any page that calls fetchFlightsForDate() and verify /api/flights?date=...&operator=ALL returns a 200 and data.flights is used correctly.",
       "   - Use any page that calls fetchEmployeeAssignmentsForDate() and verify /api/employee_assignments/daily?date=... returns assignments as expected.",
       "3. Trigger autoAssignFlights and autoAssignEmployees from the UI, confirm that the Network tab shows POST /api/assignments/generate?date=..., not /api/auto_assign/flights or /api/auto_assign/employees, and that responses are 200 rather than 404.",
