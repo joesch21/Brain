@@ -164,9 +164,20 @@ def proxy_to_cc2(
         response.status_code = 500
         return response
 
+    trace_headers = {
+        "X-Brain-Proxy": "true",
+        "X-Brain-Request-Id": request_id,
+        "X-Brain-Target-Path": target_path,
+    }
+
     try:
         upstream_resp = requests.request(
-            method, target_url, params=params, json=json_body, timeout=timeout
+            method,
+            target_url,
+            params=params,
+            json=json_body,
+            timeout=timeout,
+            headers=trace_headers,
         )
         upstream_status = upstream_resp.status_code
     except requests.RequestException as exc:  # noqa: BLE001
@@ -185,6 +196,8 @@ def proxy_to_cc2(
         flask_resp.headers.update(_build_proxy_headers(request_id, target_url))
         return flask_resp
 
+    upstream_body_text = upstream_resp.text
+
     try:
         payload = upstream_resp.json()
     except Exception:  # noqa: BLE001
@@ -194,7 +207,19 @@ def proxy_to_cc2(
             "type": "upstream_error",
             "cc2_target_url": target_url,
             "request_id": request_id,
+            "upstream_body": upstream_body_text,
         }
+
+    app.logger.info(
+        "CC2 proxy %s %s -> %s [request_id=%s] params=%s json=%s body_preview=%s",
+        method,
+        target_path,
+        upstream_status,
+        request_id,
+        params,
+        json_body,
+        upstream_body_text[:500],
+    )
 
     # Treat upstream ok flag as authoritative for error handling
     if upstream_resp.ok and isinstance(payload, dict) and payload.get("ok", True) is False:
