@@ -1,0 +1,46 @@
+{
+  "id": "CWO-BRAIN-BE-API-CONTRACT-JSON-001",
+  "title": "Expose Brain backend API contract via /api/contract",
+  "repo": "Brain",
+  "priority": "high",
+  "status": "todo",
+  "owner": "backend",
+  "target_branch": "brain-lbaj",
+  "summary": "Implement a centralized API contract JSON for the Brain proxy backend with a GET /api/contract route and a reusable module holding the contract object.",
+  "technical_requirements": {
+    "endpoint": {
+      "method": "GET",
+      "path": "/api/contract",
+      "purpose": "Return a machine-readable contract describing the Brain proxy API."
+    },
+    "contract_module": {
+      "file_hint": "services/api_contract.py or similar",
+      "fields": [
+        "service_name",
+        "environment",
+        "version",
+        "generated_at",
+        "api_base_hint",
+        "endpoints"
+      ],
+      "notes": [
+        "Do not include secrets.",
+        "If compatibility mapping exists for an endpoint, include maps_to strings."
+      ]
+    },
+    "endpoints": [
+      "flights_daily",
+      "staff_list",
+      "runs_daily",
+      "runs_auto_assign",
+      "wiring_status",
+      "api_contract"
+    ]
+  },
+  "acceptance_criteria": [
+    "GET /api/contract returns HTTP 200 and includes the required top-level keys.",
+    "Contract object is defined in a dedicated module and imported by the route handler.",
+    "Endpoint entries include maps_to when compatibility paths exist; no secrets are present.",
+    "A basic test/smoke check covers the contract endpoint and required keys."
+  ]
+}
