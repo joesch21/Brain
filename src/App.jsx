@@ -35,6 +35,7 @@ const App = () => {
           <Route path="/runs" element={<RunsOverviewPage />} />
           <Route path="/runsheets" element={<RunSheetsPage />} />
           <Route path="/machine-room" element={<MachineRoomPage />} />
+          <Route path="/machine-room/wiring" element={<WiringTestPage />} />
           <Route path="/debug/wiring" element={<WiringTestPage />} />
           <Route path="/wiring" element={<WiringDebugPage />} />
           <Route path="*" element={<Navigate to="/planner" replace />} />
