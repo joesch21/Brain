@@ -1,7 +1,8 @@
 import os
+import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
 from flask import Flask, g, jsonify, request
@@ -22,9 +23,117 @@ def _env_flag(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).lower() in {"1", "true", "yes", "on"}
 
 
-# Base URL for the CodeCrafter2 Ops API (backend)
-CODECRAFTER2_BASE_URL = (
+CONFIGURED_UPSTREAM_BASE_URL = (
     os.getenv("CODECRAFTER2_BASE_URL", "https://codecrafter2.onrender.com").rstrip("/")
+)
+
+DEFAULT_UPSTREAM_CANDIDATES = [
+    CONFIGURED_UPSTREAM_BASE_URL,
+    "https://codecrafter2.onrender.com",
+    "https://code-crafter2-ay6w.onrender.com",
+]
+
+
+def _deduped_candidates() -> List[str]:
+    candidates: List[str] = []
+
+    def _add(base_url: str):
+        base_url = base_url.strip().rstrip("/")
+        if base_url and base_url not in candidates:
+            candidates.append(base_url)
+
+    _add(CONFIGURED_UPSTREAM_BASE_URL)
+
+    env_candidates = os.getenv("UPSTREAM_CANDIDATES")
+    if env_candidates:
+        for candidate in env_candidates.split(","):
+            _add(candidate)
+
+    for candidate in DEFAULT_UPSTREAM_CANDIDATES:
+        _add(candidate)
+
+    return candidates
+
+
+class UpstreamSelector:
+    def __init__(self, configured_base: str, ttl_minutes: int = 10):
+        self.configured_base = configured_base.rstrip("/")
+        self.candidates = _deduped_candidates()
+        self.ttl_seconds = max(ttl_minutes, 1) * 60
+        self._lock = threading.Lock()
+        self._last_probe_at: Optional[float] = None
+        self._active_base: str = self.configured_base
+        self._last_canary_result: Dict[str, Any] = {}
+
+    def _needs_refresh(self) -> bool:
+        if self._last_probe_at is None:
+            return True
+        return (time.monotonic() - self._last_probe_at) > self.ttl_seconds
+
+    def _probe_candidates(self) -> str:
+        self._last_probe_at = time.monotonic()
+        today = datetime.now(timezone.utc).date().isoformat()
+        attempts: List[Dict[str, Any]] = []
+        chosen_base = self.configured_base
+        found_working = False
+
+        for base_url in self.candidates:
+            probe_url = f"{base_url}/api/ops/schedule/runs/daily"
+            attempt: Dict[str, Any] = {"base_url": base_url}
+            ok = False
+            payload: Dict[str, Any] = {}
+            try:
+                resp = requests.get(
+                    probe_url,
+                    params={"date": today, "operator": "ALL"},
+                    timeout=10,
+                )
+                attempt["status_code"] = resp.status_code
+                try:
+                    payload = resp.json()
+                    attempt["response_ok"] = payload.get("ok") if isinstance(payload, dict) else False
+                except Exception:  # noqa: BLE001
+                    attempt["response_ok"] = False
+                    attempt["body_snippet"] = resp.text[:200]
+
+                ok = resp.status_code == 200 and isinstance(payload, dict) and payload.get("ok") is True
+            except requests.RequestException as exc:
+                attempt["error"] = str(exc)
+            except Exception as exc:  # noqa: BLE001
+                attempt["error"] = str(exc)
+
+            attempt["ok"] = ok
+            attempts.append(attempt)
+
+            if ok:
+                chosen_base = base_url.rstrip("/")
+                found_working = True
+                break
+
+        self._active_base = chosen_base
+        self._last_canary_result = {
+            "ok": found_working,
+            "selected_base_url": chosen_base,
+            "attempts": attempts,
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        return self._active_base
+
+    def get_active_base(self) -> str:
+        with self._lock:
+            if not self._needs_refresh():
+                return self._active_base
+            return self._probe_candidates()
+
+    @property
+    def last_canary_result(self) -> Dict[str, Any]:
+        return self._last_canary_result
+
+
+upstream_selector = UpstreamSelector(
+    CONFIGURED_UPSTREAM_BASE_URL,
+    ttl_minutes=int(os.getenv("UPSTREAM_SELECTION_CACHE_MINUTES", "10")),
 )
 
 
@@ -53,12 +162,24 @@ def _build_ok(payload: Dict[str, Any], status_code: int = 200):
     return jsonify(payload), status_code
 
 
+def _active_upstream_base() -> str:
+    return upstream_selector.get_active_base()
+
+
 def _upstream_url(path: str) -> str:
     """EWOT: join the CC2 base URL with a /api/... path safely."""
     path = path or ""
     if not path.startswith("/"):
         path = "/" + path
-    return f"{CODECRAFTER2_BASE_URL}{path}"
+    return f"{_active_upstream_base()}{path}"
+
+
+def _upstream_meta() -> Dict[str, Any]:
+    return {
+        "upstream_base_url_configured": CONFIGURED_UPSTREAM_BASE_URL,
+        "upstream_base_url_active": _active_upstream_base(),
+        "last_upstream_canary": upstream_selector.last_canary_result,
+    }
 
 
 def _call_upstream(
@@ -145,7 +266,7 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
         "contract_fetch_ok": bool(contract_ok),
         "flights_probe_ok": flights_probe_ok,
         "runs_probe_ok": runs_probe_ok,
-        "upstream_base_url": CODECRAFTER2_BASE_URL,
+        **_upstream_meta(),
         "probe_upstream_paths": probe_paths,
     }
 
@@ -212,9 +333,25 @@ def api_healthz():
         {
             "service": "BrainOpsProxy",
             "time": now,
-            "upstream": {"base_url": CODECRAFTER2_BASE_URL},
+            "upstream": _upstream_meta(),
         }
     )
+
+
+@app.get("/api/upstream")
+def api_upstream_status():
+    """Expose configured and active upstream base URLs plus last canary result."""
+
+    active_base = _active_upstream_base()
+    last_canary = upstream_selector.last_canary_result
+
+    payload = {
+        "configured_base_url": CONFIGURED_UPSTREAM_BASE_URL,
+        "active_base_url": active_base,
+        "last_canary": last_canary,
+    }
+
+    return _build_ok(payload)
 
 
 @app.get("/api/status")
@@ -245,6 +382,7 @@ def api_status():
             "date": date_str,
             "service": "BrainOpsProxy",
             "upstream": upstream,
+            "upstream_meta": _upstream_meta(),
         }
     )
 
@@ -291,6 +429,7 @@ def api_wiring_status():
         payload.setdefault("ok", False)
         payload["upstream_path"] = path
         payload["attempted_paths"] = attempted_paths
+        payload.update(_upstream_meta())
         return jsonify(payload), resp.status_code
 
     compatibility = _compatibility_wiring_snapshot()
@@ -317,6 +456,8 @@ def api_wiring_status():
         },
         "compatibility": compatibility,
     }
+
+    payload.update(_upstream_meta())
 
     status_code = last_resp.status_code if last_resp is not None else 502
     return jsonify(payload), status_code
@@ -685,7 +826,8 @@ def home():
         "<title>Brain Ops Proxy</title>"
         "<h1>Brain Ops Proxy</h1>"
         "<p>Service is up. Health: <code>/api/healthz</code></p>"
-        f"<p>Upstream: <code>{CODECRAFTER2_BASE_URL}</code></p>",
+        f"<p>Configured upstream: <code>{CONFIGURED_UPSTREAM_BASE_URL}</code></p>"
+        f"<p>Active upstream: <code>{_active_upstream_base()}</code></p>",
         200,
         {"Content-Type": "text/html; charset=utf-8"},
     )
