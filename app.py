@@ -233,33 +233,59 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
 
     sample_date = datetime.now(timezone.utc).date().isoformat()
 
-    probe_paths = {
-        "flights": f"/api/ops/schedule/flights?date={sample_date}&operator=ALL",
-        "runs": f"/api/ops/schedule/runs/daily?date={sample_date}&operator=ALL",
-    }
-
-    def _probe_known_path(path: str) -> Tuple[bool, Optional[str]]:
-        try:
-            resp = requests.get(_upstream_url(path), timeout=8)
-        except requests.RequestException as exc:
-            return False, str(exc)
-
-        try:
-            payload = resp.json()
-        except Exception:  # noqa: BLE001
-            body_snippet = resp.text[:120] if resp is not None else ""
-            return False, f"status={resp.status_code} non-json body={body_snippet}"
-
-        if resp.status_code == 200 and payload.get("ok") is True:
-            return True, None
-
-        body_snippet = resp.text[:120] if resp is not None else ""
-        return False, f"status={resp.status_code} body={body_snippet}"
-
-    flights_probe_ok, flights_probe_error = _probe_known_path(probe_paths["flights"])
-    runs_probe_ok, runs_probe_error = _probe_known_path(probe_paths["runs"])
-
     contract = api_contract.build_contract()
+
+    def _maps_to_candidates(endpoint_name: str, fallback: Iterable[str]) -> List[str]:
+        for endpoint in contract.get("endpoints", []):
+            if endpoint.get("name") == endpoint_name:
+                maps_to = endpoint.get("maps_to") or []
+                if isinstance(maps_to, list) and maps_to:
+                    return [f"{path}?date={sample_date}&operator=ALL" for path in maps_to]
+        return [f"{path}?date={sample_date}&operator=ALL" for path in fallback]
+
+    flights_candidates = _maps_to_candidates(
+        "flights_daily",
+        [
+            "/api/flights",
+            "/api/ops/flights",
+            "/api/ops/schedule/flights",
+        ],
+    )
+
+    runs_candidates = _maps_to_candidates(
+        "runs_daily",
+        [
+            "/api/runs/daily",
+            "/api/ops/runs/daily",
+            "/api/ops/schedule/runs/daily",
+        ],
+    )
+
+    def _probe_candidates(paths: Iterable[str]) -> Tuple[bool, Optional[str], List[Dict[str, Any]]]:
+        attempts: List[Dict[str, Any]] = []
+        for path in paths:
+            try:
+                resp = requests.get(_upstream_url(path), timeout=8)
+            except requests.RequestException as exc:
+                attempts.append({"path": path, "error": str(exc)})
+                continue
+
+            attempt: Dict[str, Any] = {"path": path, "status": resp.status_code}
+            is_success = resp.status_code == 200
+            if not is_success:
+                body_snippet = resp.text[:200]
+                if body_snippet:
+                    attempt["body_snippet"] = body_snippet
+            attempts.append(attempt)
+
+            if is_success:
+                return True, path, attempts
+
+        return False, None, attempts
+
+    flights_probe_ok, flights_success_path, flights_probe_attempts = _probe_candidates(flights_candidates)
+    runs_probe_ok, runs_success_path, runs_probe_attempts = _probe_candidates(runs_candidates)
+
     contract_ok, contract_detail = api_contract.validate_contract(contract)
 
     snapshot: Dict[str, Any] = {
@@ -267,14 +293,12 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
         "flights_probe_ok": flights_probe_ok,
         "runs_probe_ok": runs_probe_ok,
         **_upstream_meta(),
-        "probe_upstream_paths": probe_paths,
+        "probe_attempts": {"flights": flights_probe_attempts, "runs": runs_probe_attempts},
+        "probe_success_path": {
+            "flights": flights_success_path,
+            "runs": runs_success_path,
+        },
     }
-
-    if not flights_probe_ok and flights_probe_error:
-        snapshot["flights_probe_error"] = flights_probe_error
-
-    if not runs_probe_ok and runs_probe_error:
-        snapshot["runs_probe_error"] = runs_probe_error
 
     if not contract_ok and contract_detail:
         snapshot["contract_detail"] = contract_detail
