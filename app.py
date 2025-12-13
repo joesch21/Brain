@@ -14,7 +14,7 @@ from services import api_contract
 # CodeCrafter2 Ops API. It exposes /api/* endpoints that forward to CC2
 # and returns JSON, so the React frontend never sees HTML 404s.
 
-# Load environment variables (including CODECRAFTER2_BASE_URL)
+# Load environment variables (including CC2_UPSTREAM_BASE)
 load_dotenv()
 
 app = Flask(__name__)
@@ -23,14 +23,18 @@ def _env_flag(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).lower() in {"1", "true", "yes", "on"}
 
 
+DEFAULT_CC2_UPSTREAM_BASE = "https://code-crafter2-ay6w.onrender.com"
+
 CONFIGURED_UPSTREAM_BASE_URL = (
-    os.getenv("CODECRAFTER2_BASE_URL", "https://codecrafter2.onrender.com").rstrip("/")
-)
+    os.getenv("CC2_UPSTREAM_BASE")
+    or os.getenv("CODECRAFTER2_BASE_URL")
+    or DEFAULT_CC2_UPSTREAM_BASE
+).rstrip("/")
 
 DEFAULT_UPSTREAM_CANDIDATES = [
     CONFIGURED_UPSTREAM_BASE_URL,
+    DEFAULT_CC2_UPSTREAM_BASE,
     "https://codecrafter2.onrender.com",
-    "https://code-crafter2-ay6w.onrender.com",
 ]
 
 
