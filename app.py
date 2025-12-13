@@ -112,22 +112,31 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
 
     sample_date = datetime.now(timezone.utc).date().isoformat()
 
-    flights_probe_ok = _probe_route(
-        [
-            "/api/ops/schedule/flights",
-            "/api/ops/flights",
-            "/api/flights",
-        ],
-        params={"date": sample_date, "operator": "ALL"},
-    )
-    runs_probe_ok = _probe_route(
-        [
-            "/api/ops/schedule/runs/daily",
-            "/api/ops/runs/daily",
-            "/api/runs/daily",
-        ],
-        params={"date": sample_date, "operator": "ALL"},
-    )
+    probe_paths = {
+        "flights": f"/api/ops/schedule/flights?date={sample_date}&operator=ALL",
+        "runs": f"/api/ops/schedule/runs/daily?date={sample_date}&operator=ALL",
+    }
+
+    def _probe_known_path(path: str) -> Tuple[bool, Optional[str]]:
+        try:
+            resp = requests.get(_upstream_url(path), timeout=8)
+        except requests.RequestException as exc:
+            return False, str(exc)
+
+        try:
+            payload = resp.json()
+        except Exception:  # noqa: BLE001
+            body_snippet = resp.text[:120] if resp is not None else ""
+            return False, f"status={resp.status_code} non-json body={body_snippet}"
+
+        if resp.status_code == 200 and payload.get("ok") is True:
+            return True, None
+
+        body_snippet = resp.text[:120] if resp is not None else ""
+        return False, f"status={resp.status_code} body={body_snippet}"
+
+    flights_probe_ok, flights_probe_error = _probe_known_path(probe_paths["flights"])
+    runs_probe_ok, runs_probe_error = _probe_known_path(probe_paths["runs"])
 
     contract = api_contract.build_contract()
     contract_ok, contract_detail = api_contract.validate_contract(contract)
@@ -137,7 +146,14 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
         "flights_probe_ok": flights_probe_ok,
         "runs_probe_ok": runs_probe_ok,
         "upstream_base_url": CODECRAFTER2_BASE_URL,
+        "probe_upstream_paths": probe_paths,
     }
+
+    if not flights_probe_ok and flights_probe_error:
+        snapshot["flights_probe_error"] = flights_probe_error
+
+    if not runs_probe_ok and runs_probe_error:
+        snapshot["runs_probe_error"] = runs_probe_error
 
     if not contract_ok and contract_detail:
         snapshot["contract_detail"] = contract_detail
