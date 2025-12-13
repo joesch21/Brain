@@ -114,17 +114,17 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
 
     flights_probe_ok = _probe_route(
         [
-            "/api/flights",
-            "/api/ops/flights",
             "/api/ops/schedule/flights",
+            "/api/ops/flights",
+            "/api/flights",
         ],
         params={"date": sample_date, "operator": "ALL"},
     )
     runs_probe_ok = _probe_route(
         [
-            "/api/runs/daily",
-            "/api/ops/runs/daily",
             "/api/ops/schedule/runs/daily",
+            "/api/ops/runs/daily",
+            "/api/runs/daily",
         ],
         params={"date": sample_date, "operator": "ALL"},
     )
