@@ -725,6 +725,86 @@ def api_staff():
 # ---------------------------------------------------------------------------
 # Runs daily + auto-assign (core of the Runs page)
 # ---------------------------------------------------------------------------
+@app.get("/api/runs")
+def api_runs_cc3():
+    """
+    EWOT: Proxy CC3-style runs endpoint (GET /api/runs?date&airport&operator&shift)
+    so Brain can talk to CC3 without the frontend doing direct cross-origin calls.
+    """
+    date_str = (request.args.get("date") or "").strip()
+    airport = (request.args.get("airport") or "").strip().upper()
+
+    if not date_str:
+        return json_error(
+            "Missing required 'date' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+    if not airport:
+        return json_error(
+            "Missing required 'airport' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    try:
+        resp = requests.get(
+            _upstream_url("/api/runs"),
+            params=request.args,
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to call upstream /api/runs")
+        return json_error(
+            "Upstream /api/runs endpoint unavailable",
+            status_code=502,
+            code="upstream_error",
+            detail={"detail": str(exc)},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return json_error(
+            "Invalid JSON from upstream /api/runs.",
+            status_code=502,
+            code="invalid_json",
+            detail={"raw": resp.text[:500]},
+        )
+
+    return jsonify(payload), resp.status_code
+@app.get("/api/runs/sheet")
+def api_runs_sheet_cc3():
+    """
+    EWOT: Proxies CC3 run-sheet endpoint so Brain can fetch one run as run-sheet-friendly JSON.
+    """
+    try:
+        resp = requests.get(
+            _upstream_url("/api/runs/sheet"),
+            params=request.args,
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to call upstream /api/runs/sheet")
+        return json_error(
+            "Upstream /api/runs/sheet endpoint unavailable",
+            status_code=502,
+            code="upstream_error",
+            detail={"detail": str(exc)},
+        )
+
+    # If upstream returns JSON, pass it through; otherwise return a clean error
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return json_error(
+            "Invalid JSON from upstream /api/runs/sheet.",
+            status_code=502,
+            code="invalid_json",
+            detail={"raw": resp.text[:500]},
+        )
+
+    return jsonify(payload), resp.status_code
 
 
 @app.get("/api/runs/daily")
@@ -863,4 +943,4 @@ def home():
 
 if __name__ == "__main__":  # pragma: no cover
     # Local dev convenience; in production Render will run via gunicorn.
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5055")), debug=True)
