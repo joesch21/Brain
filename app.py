@@ -778,27 +778,25 @@ def api_runs_cc3():
         )
 
     return jsonify(payload), resp.status_code
-@app.get("/api/runs/sheet")
+@app.get("/api/runs/sheet", endpoint="api_runs_sheet_proxy_cc3")
 def api_runs_sheet_cc3():
     """
-    EWOT: Proxies CC3 run-sheet endpoint so Brain can fetch one run as run-sheet-friendly JSON.
+    EWOT: Direct proxy for CC3 /api/runs/sheet.
+    No fallback, no probing, no path mutation.
     """
+    upstream = _active_upstream_base().rstrip("/")
+    url = f"{upstream}/api/runs/sheet"
+
     try:
-        resp = requests.get(
-            _upstream_url("/api/runs/sheet"),
-            params=request.args,
-            timeout=30,
-        )
+        resp = requests.get(url, params=request.args, timeout=30)
     except requests.RequestException as exc:
-        app.logger.exception("Failed to call upstream /api/runs/sheet")
         return json_error(
-            "Upstream /api/runs/sheet endpoint unavailable",
+            "Upstream /api/runs/sheet unreachable",
             status_code=502,
             code="upstream_error",
-            detail={"detail": str(exc)},
+            detail={"error": str(exc)},
         )
 
-    # If upstream returns JSON, pass it through; otherwise return a clean error
     try:
         payload = resp.json()
     except Exception:  # noqa: BLE001
@@ -806,7 +804,7 @@ def api_runs_sheet_cc3():
             "Invalid JSON from upstream /api/runs/sheet.",
             status_code=502,
             code="invalid_json",
-            detail={"raw": resp.text[:500]},
+            detail={"raw": resp.text[:300]},
         )
 
     return jsonify(payload), resp.status_code
