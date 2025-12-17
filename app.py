@@ -419,37 +419,7 @@ def api_status():
 # Wiring / debug passthroughs
 # ---------------------------------------------------------------------------
 
-@app.get("/api/runs/sheet")
-def api_runs_sheet_cc3():
-    """
-    EWOT: Proxy CC3 run-sheet endpoint (GET /api/runs/sheet?...), passing through query params.
-    """
-    try:
-        resp = requests.get(
-            _upstream_url("/api/runs/sheet"),
-            params=request.args,
-            timeout=30,
-        )
-    except requests.RequestException as exc:
-        app.logger.exception("Failed to call upstream /api/runs/sheet")
-        return json_error(
-            "Upstream /api/runs/sheet endpoint unavailable",
-            status_code=502,
-            code="upstream_error",
-            detail={"detail": str(exc)},
-        )
 
-    try:
-        payload = resp.json()
-    except Exception:  # noqa: BLE001
-        return json_error(
-            "Invalid JSON from upstream /api/runs/sheet.",
-            status_code=502,
-            code="invalid_json",
-            detail={"raw": resp.text[:500]},
-        )
-
-    return jsonify(payload), resp.status_code
 
 
 
