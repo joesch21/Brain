@@ -23,46 +23,45 @@ def _env_flag(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).lower() in {"1", "true", "yes", "on"}
 
 
+### BEGIN CWO_BRAIN_006 upstream selection
+# --- Upstream base URL selection (prefer CC3; keep CC2 fallbacks) ---
+
+DEFAULT_CC3_UPSTREAM_BASE = "https://code-crafter3.onrender.com"
 DEFAULT_CC2_UPSTREAM_BASE = "https://code-crafter2-ay6w.onrender.com"
 
+# Prefer OPS_API_BASE (CC3) if provided; otherwise keep legacy env names
 CONFIGURED_UPSTREAM_BASE_URL = (
-    os.getenv("CC2_UPSTREAM_BASE")
-    or os.getenv("CODECRAFTER2_BASE_URL")
-    or DEFAULT_CC2_UPSTREAM_BASE
-).rstrip("/")
+    os.getenv("OPS_API_BASE")
+    or os.getenv("CODE_CRAFTER2_API_BASE")      # legacy
+    or os.getenv("CODECRAFTER2_BASE_URL")       # legacy
+    or ""
+).strip()
 
-DEFAULT_UPSTREAM_CANDIDATES = [
+FALLBACK_BASE_URLS = [
     CONFIGURED_UPSTREAM_BASE_URL,
-    DEFAULT_CC2_UPSTREAM_BASE,
-    "https://codecrafter2.onrender.com",
+    DEFAULT_CC3_UPSTREAM_BASE,                  # NEW: ensure CC3 is tried early
+    DEFAULT_CC2_UPSTREAM_BASE,                  # legacy default
+    "https://codecrafter2.onrender.com",        # legacy alias
 ]
 
+def upstream_candidates():
+    # de-dupe while preserving order
+    out = []
+    for b in FALLBACK_BASE_URLS:
+        b = (b or "").strip().rstrip("/")
+        if b and b not in out:
+            out.append(b)
+    return out
 
-def _deduped_candidates() -> List[str]:
-    candidates: List[str] = []
-
-    def _add(base_url: str):
-        base_url = base_url.strip().rstrip("/")
-        if base_url and base_url not in candidates:
-            candidates.append(base_url)
-
-    _add(CONFIGURED_UPSTREAM_BASE_URL)
-
-    env_candidates = os.getenv("UPSTREAM_CANDIDATES")
-    if env_candidates:
-        for candidate in env_candidates.split(","):
-            _add(candidate)
-
-    for candidate in DEFAULT_UPSTREAM_CANDIDATES:
-        _add(candidate)
-
-    return candidates
+# Candidate bases for canary/probes/proxying
+_CANDIDATE_BASE_URLS = upstream_candidates()
+### END CWO_BRAIN_006 upstream selection
 
 
 class UpstreamSelector:
     def __init__(self, configured_base: str, ttl_minutes: int = 10):
         self.configured_base = configured_base.rstrip("/")
-        self.candidates = _deduped_candidates()
+        self.candidates = _CANDIDATE_BASE_URLS
         self.ttl_seconds = max(ttl_minutes, 1) * 60
         self._lock = threading.Lock()
         self._last_probe_at: Optional[float] = None
