@@ -16,6 +16,14 @@ function fmt(v) {
   return String(v);
 }
 
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function fmtTime(isoOrText) {
   const s = fmt(isoOrText);
   if (!s) return "";
@@ -29,15 +37,28 @@ export default function RunSheetTable() {
     return getQueryParam("run_id") || getQueryParam("id");
   }, []);
 
-  const [runId, setRunId] = useState(initialRunId);
+  const initialDate = useMemo(() => {
+    return getQueryParam("date") || todayISO();
+  }, []);
+
+  const [runId, setRunId] = useState(initialRunId || "");
+  const [date, setDate] = useState(initialDate || "");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  async function loadSheet(id) {
+  async function loadSheet(id, dt) {
     const rid = (id || "").trim();
+    const d = (dt || "").trim();
+
     if (!rid) {
       setErr("Enter a run id.");
+      setData(null);
+      return;
+    }
+
+    if (!d) {
+      setErr("Enter a date.");
       setData(null);
       return;
     }
@@ -50,7 +71,9 @@ export default function RunSheetTable() {
     const timeout = setTimeout(() => controller.abort(), 25000);
 
     try {
-      const url = `/api/runs/sheet?run_id=${encodeURIComponent(rid)}`;
+      const url = `/api/runs/sheet?run_id=${encodeURIComponent(
+        rid
+      )}&date=${encodeURIComponent(d)}`;
       const res = await fetch(url, {
         method: "GET",
         headers: { Accept: "application/json" },
@@ -83,7 +106,7 @@ export default function RunSheetTable() {
   }
 
   useEffect(() => {
-    if (initialRunId) loadSheet(initialRunId);
+    if (initialRunId) loadSheet(initialRunId, initialDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -107,8 +130,15 @@ export default function RunSheetTable() {
           placeholder="e.g. 123"
           style={{ padding: 8, flex: 1, border: "1px solid #ccc", borderRadius: 6 }}
         />
+        <label style={{ minWidth: 48 }}>Date</label>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          style={{ padding: 8, border: "1px solid #ccc", borderRadius: 6 }}
+        />
         <button
-          onClick={() => loadSheet(runId)}
+          onClick={() => loadSheet(runId, date)}
           disabled={loading}
           style={{ padding: "8px 12px", borderRadius: 6, cursor: loading ? "not-allowed" : "pointer" }}
         >
@@ -127,7 +157,7 @@ export default function RunSheetTable() {
           <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, marginBottom: 12 }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8 }}>
               <div><b>Run</b><div>{fmt(header.run_id ?? header.id ?? runId)}</div></div>
-              <div><b>Date</b><div>{fmt(header.local_date ?? header.date ?? data?.local_date)}</div></div>
+              <div><b>Date</b><div>{fmt(header.local_date ?? header.date ?? data?.local_date ?? date)}</div></div>
               <div><b>Airport</b><div>{fmt(header.airport ?? data?.airport)}</div></div>
               <div><b>Truck</b><div>{fmt(header.truck ?? header.truck_code ?? header.vehicle)}</div></div>
               <div><b>Shift</b><div>{fmt(header.shift ?? header.shift_code ?? data?.shift_requested)}</div></div>
