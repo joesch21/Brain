@@ -140,7 +140,11 @@ const RunSheetsPage = () => {
       {!loading && !error && sheets.length > 0 && (
         <main className="runsheets-main">
           {sheets.map((sheet) => (
-            <RunSheetCard key={sheet.id ?? sheet.run_id ?? JSON.stringify(sheet)} sheet={sheet} />
+            <RunSheetCard
+              key={sheet.id ?? sheet.run_id ?? JSON.stringify(sheet)}
+              sheet={sheet}
+              date={date}
+            />
           ))}
         </main>
       )}
@@ -148,7 +152,7 @@ const RunSheetsPage = () => {
   );
 };
 
-function RunSheetCard({ sheet }) {
+function RunSheetCard({ sheet, date }) {
   const truckId = sheet?.truck_id ?? sheet?.truck ?? "";
   const operatorName = sheet?.operator_name ?? sheet?.operator ?? "";
   const shiftLabel = sheet?.shift_label ?? sheet?.shift ?? "";
@@ -160,7 +164,9 @@ function RunSheetCard({ sheet }) {
     .filter(Boolean)
     .join(" · ");
 
-  const openHref = runId ? `/run-sheet?run_id=${encodeURIComponent(runId)}` : "";
+  const openHref = runId
+    ? `/run-sheet?run_id=${encodeURIComponent(runId)}${date ? `&date=${encodeURIComponent(date)}` : ""}`
+    : "";
 
   return (
     <section className="runsheet-card">
