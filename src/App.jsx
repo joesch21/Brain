@@ -7,6 +7,7 @@ import MachineRoomPage from "./pages/MachineRoomPage";
 import SchedulePage from "./pages/SchedulePage";
 import RunSheetsPage from "./pages/RunSheetsPage";
 import RunsOverviewPage from "./pages/RunsOverviewPage";
+import RunSheetTable from "./pages/RunSheetTable";
 
 import BackendDebugConsole from "./components/BackendDebugConsole";
 import WiringTestPage from "./pages/WiringTestPage";
@@ -16,7 +17,7 @@ import { loadApiContract } from "./api/opsContractClient";
 
 const App = () => {
   useEffect(() => {
-    loadApiContract().catch(err => {
+    loadApiContract().catch((err) => {
       console.error(err);
       alert("API contract could not be loaded. Application wiring is broken.");
     });
@@ -24,16 +25,18 @@ const App = () => {
 
   return (
     <BrowserRouter>
-      {/* Global Navigation */}
       <AppNav />
 
-      {/* Main App Content */}
       <div style={{ paddingTop: "70px" }}>
         <Routes>
           <Route path="/planner" element={<PlannerPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/runs" element={<RunsOverviewPage />} />
           <Route path="/runsheets" element={<RunSheetsPage />} />
+
+          {/* Single-run table view */}
+          <Route path="/run-sheet" element={<RunSheetTable />} />
+
           <Route path="/machine-room" element={<MachineRoomPage />} />
           <Route path="/machine-room/wiring" element={<WiringTestPage />} />
           <Route path="/debug/wiring" element={<WiringTestPage />} />
@@ -42,10 +45,7 @@ const App = () => {
         </Routes>
       </div>
 
-      {/* 🔥 Backend Debug Console — ALWAYS VISIBLE */}
       <BackendDebugConsole />
-
-      {/* Small footer badge showing which API host the UI is wired to */}
       <ApiBadge />
     </BrowserRouter>
   );
