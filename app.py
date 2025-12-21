@@ -786,8 +786,36 @@ def api_runs_sheet_cc3():
     upstream = _active_upstream_base().rstrip("/")
     url = f"{upstream}/api/runs/sheet"
 
+    run_no_raw = request.args.get("run_no") or request.args.get("run_id")
+    if run_no_raw is None:
+        return json_error(
+            "Missing required 'run_no' or 'run_id' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+
     try:
-        resp = requests.get(url, params=request.args, timeout=30)
+        run_no = int(run_no_raw)
+    except (TypeError, ValueError):
+        return json_error(
+            "Query parameter 'run_no' must be a positive integer.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    if run_no <= 0:
+        return json_error(
+            "Query parameter 'run_no' must be a positive integer.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    params = request.args.to_dict(flat=True)
+    params.pop("run_id", None)
+    params["run_no"] = run_no
+
+    try:
+        resp = requests.get(url, params=params, timeout=30)
     except requests.RequestException as exc:
         return json_error(
             "Upstream /api/runs/sheet unreachable",
