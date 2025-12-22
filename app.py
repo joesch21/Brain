@@ -88,7 +88,7 @@ class UpstreamSelector:
             try:
                 resp = requests.get(
                     probe_url,
-                    timeout=8,
+                    timeout=20,
                 )
                 attempt["status_code"] = resp.status_code
                 if resp.text:
@@ -427,72 +427,51 @@ def api_status():
 @app.get("/api/wiring-status")
 def api_wiring_status():
     """EWOT: proxy wiring-status for Wiring Test / BackendDebugConsole."""
-    candidate_paths = [
-        "/api/wiring-status",
-        "/api/ops/wiring-status",
-        "/api/ops/admin/wiring-status",
-        "/api/wiring",
-    ]
-    attempted_paths = []
-    last_resp: Optional[requests.Response] = None
-    last_error: Optional[str] = None
+    active_base = _active_upstream_base().rstrip("/")
+    url = f"{active_base}/api/wiring-status"
 
-    for path in candidate_paths:
-        try:
-            resp = requests.get(_upstream_url(path), timeout=10)
-        except requests.RequestException as exc:
-            last_resp = None
-            last_error = str(exc)
-            attempted_paths.append({"path": path, "error": str(exc)})
-            continue
+    try:
+        resp = requests.get(url, timeout=20)
+    except requests.RequestException as exc:
+        compatibility = _compatibility_wiring_snapshot()
+        payload = {
+            "ok": False,
+            "source": "compatibility",
+            "error": {
+                "code": "upstream_error",
+                "message": "Unable to retrieve upstream wiring-status JSON.",
+                "detail": {"error": str(exc)},
+            },
+            "compatibility": compatibility,
+        }
+        payload.update(_upstream_meta())
+        return jsonify(payload), 502
 
-        last_resp = resp
-        attempt: Dict[str, Any] = {"path": path, "status": resp.status_code}
-        body_snippet = resp.text[:200]
-        if body_snippet:
-            attempt["body_snippet"] = body_snippet
-        attempted_paths.append(attempt)
-
-        try:
-            payload = resp.json()
-        except Exception:  # noqa: BLE001
-            continue
-
-        payload.setdefault("ok", False)
-        payload["upstream_path"] = path
-        payload["attempted_paths"] = attempted_paths
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        compatibility = _compatibility_wiring_snapshot()
+        payload = {
+            "ok": False,
+            "source": "compatibility",
+            "error": {
+                "code": "upstream_non_json",
+                "message": "Unable to retrieve upstream wiring-status JSON.",
+                "detail": {
+                    "status": resp.status_code,
+                    "body_snippet": resp.text[:200],
+                },
+            },
+            "compatibility": compatibility,
+        }
         payload.update(_upstream_meta())
         return jsonify(payload), resp.status_code
 
-    compatibility = _compatibility_wiring_snapshot()
-
-    error_code = "upstream_non_json"
-    detail: Dict[str, Any] = {"attempted_paths": attempted_paths}
-
-    if last_resp is not None:
-        error_code = "upstream_not_found" if last_resp.status_code == 404 else "upstream_non_json"
-        detail["upstream_status"] = last_resp.status_code
-        if last_resp.text:
-            detail["upstream_body_snippet"] = last_resp.text[:200]
-    elif last_error:
-        error_code = "upstream_error"
-        detail["error"] = last_error
-
-    payload = {
-        "ok": False,
-        "source": "compatibility",
-        "error": {
-            "code": error_code,
-            "message": "Unable to retrieve upstream wiring-status JSON.",
-            "detail": detail,
-        },
-        "compatibility": compatibility,
-    }
-
+    payload.setdefault("ok", False)
+    payload["upstream_path"] = "/api/wiring-status"
+    payload["upstream_status_code"] = resp.status_code
     payload.update(_upstream_meta())
-
-    status_code = last_resp.status_code if last_resp is not None else 502
-    return jsonify(payload), status_code
+    return jsonify(payload), resp.status_code
 
 
 @app.get("/api/wiring")
@@ -737,6 +716,11 @@ def api_runs_cc3():
     """
     date_str = (request.args.get("date") or "").strip()
     airport = (request.args.get("airport") or "").strip().upper()
+    params = request.args.to_dict(flat=True)
+    params["date"] = date_str
+    params["airport"] = airport
+
+    active_base = _active_upstream_base().rstrip("/")
 
     if not date_str:
         return json_error(
@@ -753,8 +737,8 @@ def api_runs_cc3():
 
     try:
         resp = requests.get(
-            _upstream_url("/api/runs"),
-            params=request.args,
+            f"{active_base}/api/runs",
+            params=params,
             timeout=30,
         )
     except requests.RequestException as exc:
