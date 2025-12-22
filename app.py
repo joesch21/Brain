@@ -430,19 +430,29 @@ def api_wiring_status():
     active_base = _active_upstream_base().rstrip("/")
     url = f"{active_base}/api/wiring-status"
 
+    start_ts = time.monotonic()
+    app.logger.info("wiring-status: selected_upstream=%s", active_base)
+
     try:
-        resp = requests.get(url, timeout=20)
+        resp = requests.get(url, timeout=10)
+        duration = time.monotonic() - start_ts
+        app.logger.info(
+            "wiring-status: upstream_status=%s duration_sec=%.3f", resp.status_code, duration
+        )
     except requests.RequestException as exc:
-        compatibility = _compatibility_wiring_snapshot()
+        duration = time.monotonic() - start_ts
+        app.logger.warning(
+            "wiring-status: upstream_failed duration_sec=%.3f reason=%s", duration, exc
+        )
         payload = {
             "ok": False,
-            "source": "compatibility",
+            "source": "fallback",
             "error": {
                 "code": "upstream_error",
                 "message": "Unable to retrieve upstream wiring-status JSON.",
                 "detail": {"error": str(exc)},
             },
-            "compatibility": compatibility,
+            "metrics": {"duration_seconds": duration},
         }
         payload.update(_upstream_meta())
         return jsonify(payload), 502
@@ -450,10 +460,13 @@ def api_wiring_status():
     try:
         payload = resp.json()
     except Exception:  # noqa: BLE001
-        compatibility = _compatibility_wiring_snapshot()
+        duration = time.monotonic() - start_ts
+        app.logger.warning(
+            "wiring-status: upstream_non_json status=%s duration_sec=%.3f", resp.status_code, duration
+        )
         payload = {
             "ok": False,
-            "source": "compatibility",
+            "source": "fallback",
             "error": {
                 "code": "upstream_non_json",
                 "message": "Unable to retrieve upstream wiring-status JSON.",
@@ -462,14 +475,16 @@ def api_wiring_status():
                     "body_snippet": resp.text[:200],
                 },
             },
-            "compatibility": compatibility,
+            "metrics": {"duration_seconds": duration},
         }
         payload.update(_upstream_meta())
         return jsonify(payload), resp.status_code
 
+    duration = time.monotonic() - start_ts
     payload.setdefault("ok", False)
     payload["upstream_path"] = "/api/wiring-status"
     payload["upstream_status_code"] = resp.status_code
+    payload["metrics"] = {"duration_seconds": duration}
     payload.update(_upstream_meta())
     return jsonify(payload), resp.status_code
 
