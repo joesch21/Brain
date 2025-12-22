@@ -65,7 +65,7 @@ class UpstreamSelector:
         self.ttl_seconds = max(ttl_minutes, 1) * 60
         self._lock = threading.Lock()
         self._last_probe_at: Optional[float] = None
-        self._active_base: str = self.configured_base
+        self._active_base: str = self.configured_base or (self.candidates[0] if self.candidates else "")
         self._last_canary_result: Dict[str, Any] = {}
 
     def _needs_refresh(self) -> bool:
@@ -75,31 +75,26 @@ class UpstreamSelector:
 
     def _probe_candidates(self) -> str:
         self._last_probe_at = time.monotonic()
-        today = datetime.now(timezone.utc).date().isoformat()
         attempts: List[Dict[str, Any]] = []
-        chosen_base = self.configured_base
+        chosen_base = self._active_base
         found_working = False
+        probe_path = "/api/wiring-status"
 
         for base_url in self.candidates:
-            probe_url = f"{base_url}/api/ops/schedule/runs/daily"
-            attempt: Dict[str, Any] = {"base_url": base_url}
+            base_url = base_url.rstrip("/")
+            probe_url = f"{base_url}{probe_path}"
+            attempt: Dict[str, Any] = {"base_url": base_url, "path": probe_path}
             ok = False
-            payload: Dict[str, Any] = {}
             try:
                 resp = requests.get(
                     probe_url,
-                    params={"date": today, "operator": "ALL"},
-                    timeout=10,
+                    timeout=8,
                 )
                 attempt["status_code"] = resp.status_code
-                try:
-                    payload = resp.json()
-                    attempt["response_ok"] = payload.get("ok") if isinstance(payload, dict) else False
-                except Exception:  # noqa: BLE001
-                    attempt["response_ok"] = False
+                if resp.text:
                     attempt["body_snippet"] = resp.text[:200]
 
-                ok = resp.status_code == 200 and isinstance(payload, dict) and payload.get("ok") is True
+                ok = resp.status_code == 200
             except requests.RequestException as exc:
                 attempt["error"] = str(exc)
             except Exception as exc:  # noqa: BLE001
@@ -125,6 +120,8 @@ class UpstreamSelector:
 
     def get_active_base(self) -> str:
         with self._lock:
+            if not self._active_base and self.candidates:
+                self._active_base = self.candidates[0]
             if not self._needs_refresh():
                 return self._active_base
             return self._probe_candidates()
@@ -174,7 +171,10 @@ def _upstream_url(path: str) -> str:
     path = path or ""
     if not path.startswith("/"):
         path = "/" + path
-    return f"{_active_upstream_base()}{path}"
+    base = _active_upstream_base()
+    if not base:
+        raise requests.exceptions.InvalidURL("No upstream base URL configured or discovered.")
+    return f"{base}{path}"
 
 
 def _upstream_meta() -> Dict[str, Any]:
