@@ -1048,6 +1048,13 @@ def fix_page():
     return redirect(url_for("ui_home"))
 
 
+@app.get("/schedule", endpoint="schedule_page")
+def schedule_page():
+    """Stub route to satisfy home.html Schedule card."""
+
+    return redirect(url_for("planner_page"))
+
+
 @app.get("/know", endpoint="know")
 def know_page():
     return redirect(url_for("ui_home"))
