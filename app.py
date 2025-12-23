@@ -1029,11 +1029,6 @@ def roster_page():
     return redirect(url_for("ui_home"))
 
 
-# ---------------------------------------------------------------------------
-# More UI stubs required by templates/_layout.html navigation
-# ---------------------------------------------------------------------------
-
-
 @app.get("/planner", endpoint="planner_page")
 def planner_page():
     return redirect(url_for("ui_home"))
@@ -1042,7 +1037,6 @@ def planner_page():
 @app.get("/maintenance", endpoint="maintenance_page")
 def maintenance_page():
     return redirect(url_for("ui_home"))
-
 
 # Even if role-gated in template, define it so templates never explode.
 @app.get("/admin/import", endpoint="admin_import_index")
