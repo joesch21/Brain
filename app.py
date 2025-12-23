@@ -25,12 +25,18 @@ app = Flask(__name__)
 
 
 def get_current_role() -> str:
-    """
-    Returns the current UI role.
-    Minimal default to unblock templates; can be expanded later.
+    """Return the current UI role for template gating.
+
+    Defaults to ``viewer`` but allows quick local overrides via ``?role=admin``
+    or ``?role=supervisor`` in the query string to mirror the navigation
+    expectations in ``templates/_layout.html``.
     """
 
-    return "ops"
+    role = (request.args.get("role") or "").strip().lower()
+    if role in {"admin", "supervisor"}:
+        return role
+
+    return "viewer"
 
 
 # Expose as a Jinja global so templates can call get_current_role()
