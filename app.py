@@ -5,7 +5,16 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
-from flask import Flask, g, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from dotenv import load_dotenv
 
 from services import api_contract
@@ -18,6 +27,7 @@ from services import api_contract
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-not-secret")
 
 # ---------------------------------------------------------------------------
 # Jinja helpers required by templates/_layout.html
@@ -979,24 +989,14 @@ def api_runs_auto_assign():
 
 
 # ---------------------------------------------------------------------------
-# Root page (optional – simple text so you know it's alive)
+# Root page (redirect to UI entrypoint)
 # ---------------------------------------------------------------------------
 
 
 @app.route("/", methods=["GET", "HEAD"])
 def home():
-    """EWOT: tiny landing page to show the proxy is running."""
-    return (
-        "<!doctype html>"
-        "<meta charset='utf-8'>"
-        "<title>Brain Ops Proxy</title>"
-        "<h1>Brain Ops Proxy</h1>"
-        "<p>Service is up. Health: <code>/api/healthz</code></p>"
-        f"<p>Configured upstream: <code>{CONFIGURED_UPSTREAM_BASE_URL}</code></p>"
-        f"<p>Active upstream: <code>{_active_upstream_base()}</code></p>",
-        200,
-        {"Content-Type": "text/html; charset=utf-8"},
-    )
+    """Redirect root to the UI dashboard entrypoint."""
+    return redirect(url_for("ui_home"))
 
 
 # ---------------------------------------------------------------------------
@@ -1008,6 +1008,29 @@ def home():
 def ui_home():
     """Dashboard UI entrypoint (served by Brain; calls /api/* which proxy to CC3)."""
     return render_template("home.html")
+
+
+# ---------------------------------------------------------------------------
+# Minimal auth stubs to satisfy layout navigation links
+# ---------------------------------------------------------------------------
+
+
+@app.route("/login", methods=["GET", "POST"], endpoint="login")
+def login():
+    """Stub login endpoint; sets a session flag then returns to the UI."""
+
+    session["is_authed"] = True
+    session.setdefault("display_name", "Supervisor")
+    next_url = request.args.get("next") or url_for("ui_home")
+    return redirect(next_url)
+
+
+@app.get("/logout", endpoint="logout")
+def logout():
+    """Stub logout endpoint; clears the session then returns to the UI."""
+
+    session.clear()
+    return redirect(url_for("ui_home"))
 
 
 # ---------------------------------------------------------------------------
