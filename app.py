@@ -19,6 +19,29 @@ load_dotenv()
 
 app = Flask(__name__)
 
+# ---------------------------------------------------------------------------
+# Jinja helpers required by templates/_layout.html
+# ---------------------------------------------------------------------------
+
+
+def get_current_role() -> str:
+    """
+    Returns the current UI role.
+    Minimal default to unblock templates; can be expanded later.
+    """
+
+    return "ops"
+
+
+# Expose as a Jinja global so templates can call get_current_role()
+app.jinja_env.globals["get_current_role"] = get_current_role
+
+
+# Ensure current_role is always present in template context
+@app.context_processor
+def inject_current_role():
+    return {"current_role": get_current_role()}
+
 def _env_flag(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).lower() in {"1", "true", "yes", "on"}
 
