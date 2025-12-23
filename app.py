@@ -498,67 +498,22 @@ def api_status():
 
 @app.get("/api/wiring-status")
 def api_wiring_status():
-    """EWOT: proxy wiring-status for Wiring Test / BackendDebugConsole."""
-    active_base = _active_upstream_base().rstrip("/")
-    url = f"{active_base}/api/wiring-status"
-
+    """Non-blocking wiring-status. Returns cached upstream selection + last canary."""
     start_ts = time.monotonic()
-    app.logger.info("wiring-status: selected_upstream=%s", active_base)
 
-    try:
-        resp = requests.get(url, timeout=10)
-        duration = time.monotonic() - start_ts
-        app.logger.info(
-            "wiring-status: upstream_status=%s duration_sec=%.3f", resp.status_code, duration
-        )
-    except requests.RequestException as exc:
-        duration = time.monotonic() - start_ts
-        app.logger.warning(
-            "wiring-status: upstream_failed duration_sec=%.3f reason=%s", duration, exc
-        )
-        payload = {
-            "ok": False,
-            "source": "fallback",
-            "error": {
-                "code": "upstream_error",
-                "message": "Unable to retrieve upstream wiring-status JSON.",
-                "detail": {"error": str(exc)},
-            },
-            "metrics": {"duration_seconds": duration},
-        }
-        payload.update(_upstream_meta())
-        return jsonify(payload), 502
+    # Returns immediately (may kick off background probe if TTL expired)
+    active_base = _active_upstream_base().rstrip("/")
 
-    try:
-        payload = resp.json()
-    except Exception:  # noqa: BLE001
-        duration = time.monotonic() - start_ts
-        app.logger.warning(
-            "wiring-status: upstream_non_json status=%s duration_sec=%.3f", resp.status_code, duration
-        )
-        payload = {
-            "ok": False,
-            "source": "fallback",
-            "error": {
-                "code": "upstream_non_json",
-                "message": "Unable to retrieve upstream wiring-status JSON.",
-                "detail": {
-                    "status": resp.status_code,
-                    "body_snippet": resp.text[:200],
-                },
-            },
-            "metrics": {"duration_seconds": duration},
-        }
-        payload.update(_upstream_meta())
-        return jsonify(payload), resp.status_code
-
-    duration = time.monotonic() - start_ts
-    payload.setdefault("ok", False)
-    payload["upstream_path"] = "/api/wiring-status"
-    payload["upstream_status_code"] = resp.status_code
-    payload["metrics"] = {"duration_seconds": duration}
-    payload.update(_upstream_meta())
-    return jsonify(payload), resp.status_code
+    payload = {
+        "ok": True,
+        "source": "local",
+        "upstream_base_url_configured": CONFIGURED_UPSTREAM_BASE_URL,
+        "upstream_base_url_active": active_base,
+        "last_upstream_canary": upstream_selector.last_canary_result,
+        "metrics": {"duration_seconds": round(time.monotonic() - start_ts, 4)},
+        "note": "Non-blocking wiring-status; upstream probes run asynchronously.",
+    }
+    return jsonify(payload), 200
 
 
 @app.get("/api/wiring")
