@@ -104,8 +104,14 @@ class UpstreamSelector:
         self.ttl_seconds = max(ttl_minutes, 1) * 60
         self._lock = threading.Lock()
         self._last_probe_at: Optional[float] = None
-        self._active_base: str = self.configured_base or (self.candidates[0] if self.candidates else "")
+        self._active_base: str = self.configured_base
         self._last_canary_result: Dict[str, Any] = {}
+
+        # prevent request threads blocking on probes
+        self._probe_inflight = False
+
+        # tuneable probe timeout (keep it short)
+        self._probe_timeout_sec = float(os.getenv("UPSTREAM_PROBE_TIMEOUT_SEC", "2.0"))
 
     def _needs_refresh(self) -> bool:
         if self._last_probe_at is None:
@@ -114,26 +120,31 @@ class UpstreamSelector:
 
     def _probe_candidates(self) -> str:
         self._last_probe_at = time.monotonic()
+        today = datetime.now(timezone.utc).date().isoformat()
         attempts: List[Dict[str, Any]] = []
-        chosen_base = self._active_base
+        chosen_base = self._active_base or self.configured_base
         found_working = False
-        probe_path = "/api/wiring-status"
 
         for base_url in self.candidates:
-            base_url = base_url.rstrip("/")
-            probe_url = f"{base_url}{probe_path}"
-            attempt: Dict[str, Any] = {"base_url": base_url, "path": probe_path}
+            probe_url = f"{base_url}/api/ops/schedule/runs/daily"
+            attempt: Dict[str, Any] = {"base_url": base_url}
             ok = False
+            payload: Dict[str, Any] = {}
+
             try:
                 resp = requests.get(
                     probe_url,
-                    timeout=20,
+                    params={"date": today, "operator": "ALL"},
+                    timeout=self._probe_timeout_sec,
                 )
-                attempt["status_code"] = resp.status_code
-                if resp.text:
-                    attempt["body_snippet"] = resp.text[:200]
+                attempt["status"] = resp.status_code
+                try:
+                    payload = resp.json() if resp is not None else {}
+                except Exception:
+                    payload = {}
+                attempt["response_ok"] = isinstance(payload, dict)
+                ok = resp.status_code == 200 and isinstance(payload, dict) and payload.get("ok") is True
 
-                ok = resp.status_code == 200
             except requests.RequestException as exc:
                 attempt["error"] = str(exc)
             except Exception as exc:  # noqa: BLE001
@@ -157,13 +168,33 @@ class UpstreamSelector:
 
         return self._active_base
 
+    def _probe_wrapper(self) -> None:
+        try:
+            with self._lock:
+                if not self._needs_refresh():
+                    return
+            # probe without holding lock
+            new_base = self._probe_candidates()
+            with self._lock:
+                self._active_base = new_base
+        finally:
+            with self._lock:
+                self._probe_inflight = False
+
     def get_active_base(self) -> str:
         with self._lock:
-            if not self._active_base and self.candidates:
-                self._active_base = self.candidates[0]
+            current = self._active_base or self.configured_base
+
             if not self._needs_refresh():
-                return self._active_base
-            return self._probe_candidates()
+                return current
+
+            if not self._probe_inflight:
+                self._probe_inflight = True
+                t = threading.Thread(target=self._probe_wrapper, daemon=True)
+                t.start()
+
+            # do not block the caller
+            return current
 
     @property
     def last_canary_result(self) -> Dict[str, Any]:
