@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
-from flask import Flask, g, jsonify, render_template, request
+from flask import Flask, g, jsonify, redirect, render_template, request, url_for
 from dotenv import load_dotenv
 
 from services import api_contract
@@ -1002,6 +1002,31 @@ def home():
 def ui_home():
     """Dashboard UI entrypoint (served by Brain; calls /api/* which proxy to CC3)."""
     return render_template("home.html")
+
+
+# ---------------------------------------------------------------------------
+# UI stubs required by templates/_layout.html navigation
+# ---------------------------------------------------------------------------
+
+
+@app.get("/build", endpoint="build")
+def build_page():
+    return redirect(url_for("ui_home"))
+
+
+@app.get("/fix", endpoint="fix")
+def fix_page():
+    return redirect(url_for("ui_home"))
+
+
+@app.get("/know", endpoint="know")
+def know_page():
+    return redirect(url_for("ui_home"))
+
+
+@app.get("/roster", endpoint="roster_page")
+def roster_page():
+    return redirect(url_for("ui_home"))
 
 
 if __name__ == "__main__":  # pragma: no cover
