@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
-from flask import Flask, g, jsonify, request
+from flask import Flask, g, jsonify, render_template, request
 from dotenv import load_dotenv
 
 from services import api_contract
@@ -968,6 +968,17 @@ def home():
         200,
         {"Content-Type": "text/html; charset=utf-8"},
     )
+
+
+# ---------------------------------------------------------------------------
+# UI entrypoint (dashboard)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/ui")
+def ui_home():
+    """Dashboard UI entrypoint (served by Brain; calls /api/* which proxy to CC3)."""
+    return render_template("home.html")
 
 
 if __name__ == "__main__":  # pragma: no cover
