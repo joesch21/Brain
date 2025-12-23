@@ -99,12 +99,14 @@ _CANDIDATE_BASE_URLS = upstream_candidates()
 
 class UpstreamSelector:
     def __init__(self, configured_base: str, ttl_minutes: int = 10):
-        self.configured_base = configured_base.rstrip("/")
+        self.configured_base = (configured_base or "").strip().rstrip("/")
         self.candidates = _CANDIDATE_BASE_URLS
         self.ttl_seconds = max(ttl_minutes, 1) * 60
         self._lock = threading.Lock()
         self._last_probe_at: Optional[float] = None
-        self._active_base: str = self.configured_base
+        # Always have a sane default base if env-configured base is empty
+        default_base = self.configured_base or (self.candidates[0] if self.candidates else "")
+        self._active_base: str = default_base
         self._last_canary_result: Dict[str, Any] = {}
 
         # prevent request threads blocking on probes
@@ -122,7 +124,7 @@ class UpstreamSelector:
         self._last_probe_at = time.monotonic()
         today = datetime.now(timezone.utc).date().isoformat()
         attempts: List[Dict[str, Any]] = []
-        chosen_base = self._active_base or self.configured_base
+        chosen_base = self._active_base or self.configured_base or (self.candidates[0] if self.candidates else "")
         found_working = False
 
         for base_url in self.candidates:
