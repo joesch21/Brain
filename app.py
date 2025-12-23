@@ -1074,6 +1074,13 @@ def planner_page():
 def maintenance_page():
     return redirect(url_for("ui_home"))
 
+
+@app.get("/machine-room", endpoint="machine_room")
+def machine_room():
+    """Stub Machine Room route to satisfy navigation links."""
+
+    return redirect(url_for("ui_home"))
+
 # Even if role-gated in template, define it so templates never explode.
 @app.get("/admin/import", endpoint="admin_import_index")
 def admin_import_index():
