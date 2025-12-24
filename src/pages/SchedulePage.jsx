@@ -65,6 +65,8 @@ function formatAutoAssignSummary(result) {
   return `Auto-assigned staff for ${result.date || "selected date"}. Assigned: ${assignedCount}, unassigned: ${unassignedCount}.`;
 }
 
+const DEFAULT_AIRPORT = "YSSY";
+
 const SchedulePage = () => {
   const [date, setDate] = useState(todayISO());
   const [operator, setOperator] = useState("");
@@ -103,7 +105,8 @@ const SchedulePage = () => {
     }
 
     try {
-      const flightsResp = await fetchFlights(date, operator || "all", {
+      const flightsResp = await fetchFlights(date, operator || "ALL", {
+        airport: DEFAULT_AIRPORT,
         signal,
       });
 
