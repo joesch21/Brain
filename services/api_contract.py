@@ -37,7 +37,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "path": "/flights",
             "query": {
                 "date": "YYYY-MM-DD (required)",
-                "airport": "YSSY (required)",
+                "airport": "YSSY (optional)",
                 "operator": "ALL or operator code (optional, default ALL)",
             },
             "maps_to": [
