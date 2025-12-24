@@ -627,9 +627,18 @@ def api_flights():
     operator = request.args.get("operator", "ALL")
     airport = (request.args.get("airport") or "").strip().upper()
 
-    params = {"date": request.args.get("date"), "operator": operator}
-    if airport:
-        params["airport"] = airport
+    if not airport:
+        return json_error(
+            "Missing required 'airport' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    params = {
+        "date": request.args.get("date"),
+        "operator": operator,
+        "airport": airport,
+    }
 
     flights_paths = [
         "/api/flights",
