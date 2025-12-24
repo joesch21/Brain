@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from "react";
 
-import { API_BASE } from "../api/apiBase";
+import { apiRequest } from "../lib/apiClient";
 
 type Flight = {
   id: number;
@@ -39,29 +39,27 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
 
   // --- helpers --------------------------------------------------------------
 
-  async function fetchJson<T>(url: string): Promise<T> {
-    const res = await fetch(url);
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Request failed ${res.status}: ${text}`);
-    }
-    return (await res.json()) as T;
-  }
-
   async function fetchFlightsForDate(date: string): Promise<Flight[]> {
-    const url = `${API_BASE}/flights?date=${encodeURIComponent(date)}`;
-    const json = await fetchJson<{ flights: Flight[] }>(url);
-    return json.flights ?? [];
+    const params = new URLSearchParams({
+      date,
+      airport: "YSSY",
+      operator: "JQ",
+    });
+    const { data } = await apiRequest(`/api/flights?${params.toString()}`);
+    return data?.flights ?? [];
   }
 
   async function fetchEmployeeAssignmentsForDate(
     date: string,
   ): Promise<Assignment[]> {
-    const url = `${API_BASE}/employee_assignments/daily?date=${encodeURIComponent(
+    const params = new URLSearchParams({
       date,
-    )}`;
-    const json = await fetchJson<{ assignments: Assignment[] }>(url);
-    return json.assignments ?? [];
+      airport: "YSSY",
+    });
+    const { data } = await apiRequest(
+      `/api/employee_assignments/daily?${params.toString()}`,
+    );
+    return data?.assignments ?? [];
   }
 
   function mergeFlightsWithAssignments(
@@ -81,9 +79,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
       return {
         ...f,
         assigned_employee_name: first?.staff_name ?? null,
-        assigned_employee_id: first?.staff_code
-          ? Number.NaN // unknown id, but we don’t need it in the UI
-          : null,
+        assigned_employee_id: null,
       };
     });
   }
