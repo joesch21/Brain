@@ -23,14 +23,15 @@ const TESTS = [
     key: "flights",
     label: "GET /api/flights?date=YYYY-MM-DD",
     method: "GET",
-    buildPath: (date) => `/api/flights?date=${encodeURIComponent(date)}&operator=ALL`,
+    buildPath: (date) =>
+      `/api/flights?date=${encodeURIComponent(date)}&operator=ALL&airport=YSSY`,
   },
   {
     key: "runs-daily",
     label: "GET /api/runs/daily",
     method: "GET",
     buildPath: (date) =>
-      `/api/runs/daily?date=${encodeURIComponent(date)}&operator=ALL`,
+      `/api/runs/daily?date=${encodeURIComponent(date)}&operator=ALL&airport=YSSY`,
   },
   {
     key: "auto-assign",

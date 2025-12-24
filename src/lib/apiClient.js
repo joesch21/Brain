@@ -3,6 +3,16 @@
 import { OPS_API_BASE } from "./opsApiBase";
 import { pushBackendDebugEntry } from "./backendDebug";
 
+const DEFAULT_AIRPORT = "YSSY";
+
+function ensureAirportParam(path, airport = DEFAULT_AIRPORT) {
+  const url = new URL(path, window.location.origin);
+  if (!url.searchParams.get("airport")) {
+    url.searchParams.set("airport", airport);
+  }
+  return `${url.pathname}${url.search}`;
+}
+
 function buildUrl(path) {
   const base = OPS_API_BASE;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
@@ -89,6 +99,18 @@ async function safeRequest(path, options = {}) {
       errorType: type,
     });
   } catch (err) {
+    if (err?.name === "AbortError") {
+      return normalizeResult({
+        ok: false,
+        status: null,
+        body: null,
+        statusText: null,
+        url,
+        method,
+        errorType: "aborted",
+        networkError: "aborted",
+      });
+    }
     const debugEntry = pushBackendDebugEntry({
       type: "network-error",
       url,
@@ -164,6 +186,9 @@ async function request(path, options = {}) {
 
     return { status, data: body };
   } catch (err) {
+    if (err?.name === "AbortError") {
+      throw err;
+    }
     if (!err.status) {
       const debugEntry = pushBackendDebugEntry({
         type: "network-error",
@@ -187,7 +212,9 @@ export async function fetchFlights(date, operator = "all", options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
   if (operator) qs.set("operator", operator);
-  return request(`/api/flights?${qs.toString()}`, options);
+  const { airport, ...requestOptions } = options || {};
+  const path = ensureAirportParam(`/api/flights?${qs.toString()}`, airport);
+  return request(path, requestOptions);
 }
 
 export async function fetchRuns(date, airline = "JQ", options = {}) {
@@ -276,7 +303,8 @@ export async function fetchDailyRuns(
   if (airport) qs.set("airport", airport);
   if (operator) qs.set("operator", operator);
   if (shift) qs.set("shift", shift);
-  return safeRequest(`/api/runs/daily?${qs.toString()}`, {
+  const path = ensureAirportParam(`/api/runs/daily?${qs.toString()}`, airport);
+  return safeRequest(path, {
     method: "GET",
     headers: {
       Accept: "application/json",
