@@ -775,12 +775,6 @@ def api_runs_cc3():
     """
     date_str = (request.args.get("date") or "").strip()
     airport = (request.args.get("airport") or "").strip().upper()
-    params = request.args.to_dict(flat=True)
-    params["date"] = date_str
-    params["airport"] = airport
-
-    active_base = _active_upstream_base().rstrip("/")
-
     if not date_str:
         return json_error(
             "Missing required 'date' query parameter.",
@@ -794,19 +788,49 @@ def api_runs_cc3():
             code="validation_error",
         )
 
-    try:
-        resp = requests.get(
-            f"{active_base}/api/runs",
-            params=params,
-            timeout=30,
-        )
-    except requests.RequestException as exc:
-        app.logger.exception("Failed to call upstream /api/runs")
+    operator = request.args.get("operator", "ALL")
+    shift = request.args.get("shift", "ALL")
+    params = {
+        "date": date_str,
+        "airport": airport,
+        "operator": operator,
+        "shift": shift,
+    }
+
+    active_base = _active_upstream_base().rstrip("/")
+
+    # Prefer CC3 canonical runs endpoint
+    runs_paths = [
+        "/api/runs",
+        "/api/runs/daily",
+        "/api/ops/runs/daily",
+        "/api/ops/schedule/runs/daily",
+    ]
+
+    resp = None
+    last_error = None
+    for path in runs_paths:
+        url = f"{active_base}{path}"
+        try:
+            candidate = requests.get(
+                url,
+                params=params,
+                timeout=30,
+            )
+            if candidate.status_code == 404:
+                continue
+            candidate.raise_for_status()
+            resp = candidate
+            break
+        except requests.RequestException as exc:
+            last_error = str(exc)
+            continue
+
+    if resp is None:
         return json_error(
-            "Upstream /api/runs endpoint unavailable",
+            f"Upstream runs request failed. Last error: {last_error}",
             status_code=502,
             code="upstream_error",
-            detail={"detail": str(exc)},
         )
 
     try:
@@ -819,7 +843,22 @@ def api_runs_cc3():
             detail={"raw": resp.text[:500]},
         )
 
-    return jsonify(payload), resp.status_code
+    # ---- Normalize to Brain envelope ----
+    runs = payload.get("runs") or []
+    out = {
+        "ok": bool(payload.get("ok", True)),
+        "source": payload.get("source") or "upstream",
+        "airport": payload.get("airport") or airport,
+        "local_date": payload.get("local_date") or payload.get("date") or date_str,
+        "count": int(payload.get("count") or len(runs)),
+        "runs": runs,
+    }
+
+    # Preserve unassigned flights if present (compat fields)
+    if "unassigned_flights" in payload:
+        out["unassigned_flights"] = payload.get("unassigned_flights") or []
+
+    return jsonify(out), resp.status_code
 @app.get("/api/runs/sheet", endpoint="api_runs_sheet_proxy_cc3")
 def api_runs_sheet_cc3():
     """
