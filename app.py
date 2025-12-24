@@ -412,6 +412,17 @@ def _require_date_param() -> Optional[Tuple[Any, int]]:
     return None
 
 
+def _require_airport_field(payload: Dict[str, Any]) -> Tuple[Optional[str], Optional[Tuple[Any, int]]]:
+    airport = str(payload.get("airport") or "").strip().upper()
+    if not airport:
+        return None, json_error(
+            "airport is required",
+            status_code=400,
+            code="validation_error",
+        )
+    return airport, None
+
+
 # ---------------------------------------------------------------------------
 # Basic health + status
 # ---------------------------------------------------------------------------
@@ -698,6 +709,92 @@ def api_flights():
         )
 
     return jsonify(payload), resp.status_code
+
+
+@app.post("/api/flights/pull")
+def api_flights_pull():
+    """EWOT: Explicit, user-driven ingest trigger for a given airport/date.
+
+    Brain stays read-only by default. This endpoint is the explicit "pull now"
+    button that forwards to CC3 ingestion and (optionally) stores into DB.
+    """
+
+    data = request.get_json(silent=True) or {}
+
+    airport, airport_err = _require_airport_field(data)
+    if airport_err is not None:
+        return airport_err
+
+    date_str = str(data.get("date") or "").strip()
+    if not date_str:
+        return json_error(
+            "date is required",
+            status_code=400,
+            code="bad_request",
+        )
+
+    operator = str(data.get("operator") or "ALL").strip() or "ALL"
+    timeout = int(data.get("timeout") or 30)
+
+    # Map Brain operator -> CC3 airlines filter.
+    # - ALL => no airline filter
+    # - otherwise => airlines=[operator]
+    airlines = None
+    if operator.upper() != "ALL":
+        airlines = [operator.upper()]
+
+    upstream_path = "/api/flights/ingest/aeroapi"
+    upstream_body: Dict[str, Any] = {
+        "airport": airport,
+        "date": date_str,
+        "scope": str(data.get("scope") or "both"),
+        "store": bool(data.get("store", True)),
+        "timeout": timeout,
+    }
+    if airlines:
+        upstream_body["airlines"] = airlines
+
+    try:
+        resp = requests.post(
+            _upstream_url(upstream_path),
+            json=upstream_body,
+            timeout=max(timeout, 10),
+        )
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to call upstream flights ingest")
+        return json_error(
+            "Upstream flights ingest endpoint unavailable",
+            status_code=502,
+            code="upstream_error",
+            detail={"detail": str(exc), "upstream_path": upstream_path},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return json_error(
+            "Invalid JSON from upstream flights ingest endpoint.",
+            status_code=502,
+            code="invalid_json",
+            detail={"raw": resp.text[:500], "upstream_path": upstream_path},
+        )
+
+    # Normalize response so UI/PS can depend on stable keys.
+    out: Dict[str, Any] = {
+        "ok": bool(payload.get("ok")) if isinstance(payload, dict) else False,
+        "airport": airport,
+        "local_date": date_str,
+        "operator": operator,
+        "source": "upstream",
+        "upstream": {
+            "base_url": _active_upstream_base(),
+            "path": upstream_path,
+            "status_code": resp.status_code,
+        },
+        "payload": payload,
+    }
+
+    return jsonify(out), resp.status_code
 
 
 @app.get("/api/employee_assignments/daily")

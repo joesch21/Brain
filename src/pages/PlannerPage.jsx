@@ -8,6 +8,7 @@ import {
   fetchFlights,
   fetchDailyRuns,
   fetchStaffRuns,
+  pullFlights,
 } from "../lib/apiClient";
 import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../utils/runConflictUtils";
 
@@ -1006,6 +1007,8 @@ const PlannerPage = () => {
   const [hoverUnassigned, setHoverUnassigned] = useState(false);
   const [selectedStaffKey, setSelectedStaffKey] = useState(null);
   const [isStaffPanelOpen, setIsStaffPanelOpen] = useState(false);
+  const [pullLoading, setPullLoading] = useState(false);
+  const [pullMessage, setPullMessage] = useState("");
 
   const decorateRunsList = useCallback((list) => decorateRuns(list), []);
 
@@ -1333,28 +1336,11 @@ const PlannerPage = () => {
           { operator: (airlineCode || "ALL"), airport: DEFAULT_AIRPORT, shift: "ALL" },
           { signal }
         );
-        setRunsError("");
-      } else {
-        const statusLabel = runsResp?.status ?? "network";
-        const endpoint = runsResp?.raw?.url || "/api/runs";
-        const message = runsResp?.error || "Request failed";
-        setRunsWithConflicts([]);
-        setUnassigned([]);
-        setRunsDailyCount(null);
-        setRunsError(`Runs ${statusLabel} @ ${endpoint} – ${message}`);
-      }
-    } catch (err) {
-      if (!signal?.aborted) {
-        setRunsWithConflicts([]);
-        setUnassigned([]);
-        setRunsDailyCount(null);
-        setRunsError(formatRequestError("Runs", err));
-      }
-    }
-
         if (signal?.aborted) {
-          // no-op
-        } else if (runsResp && runsResp.ok) {
+          return;
+        }
+
+        if (runsResp && runsResp.ok) {
           const payload = runsResp.data || {};
           const normalizedRuns = normalizeRuns(payload);
           setRunsWithConflicts(normalizedRuns);
@@ -1549,6 +1535,24 @@ const PlannerPage = () => {
       );
     } finally {
       setAutoAssignLoading(false);
+    }
+  }
+
+  async function handlePullFlights() {
+    if (!date) return;
+    setPullLoading(true);
+    setPullMessage("");
+    try {
+      const op = airline || "ALL";
+      await pullFlights(date, op, { airport: DEFAULT_AIRPORT });
+      setPullMessage(`Pulled flights for ${date} (${op}). Refreshing…`);
+      await loadPlannerData();
+    } catch (err) {
+      const statusLabel = err?.status ?? "network";
+      const endpoint = err?.url || "unknown endpoint";
+      setPullMessage(`Pull flights ${statusLabel} @ ${endpoint} – ${err?.message || "failed"}`);
+    } finally {
+      setPullLoading(false);
     }
   }
 
@@ -1884,8 +1888,24 @@ const PlannerPage = () => {
         !error &&
         flights.length === 0 && (
           <div className="planner-status planner-status--warn">
-            No flights returned for this date from the backend.
-            If this looks wrong, check the office system export or DB adapter.
+            <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+              <span>
+                No flights returned for this date. Use <b>Pull flights</b> to ingest/store them explicitly.
+              </span>
+              <button
+                type="button"
+                onClick={handlePullFlights}
+                disabled={pullLoading}
+                title="Explicitly pull flights for this date (no automatic ingestion)."
+              >
+                {pullLoading ? "Pulling flights…" : "Pull flights"}
+              </button>
+            </div>
+            {pullMessage && (
+              <div style={{ marginTop: "0.5rem" }}>
+                {pullMessage}
+              </div>
+            )}
           </div>
         )}
 

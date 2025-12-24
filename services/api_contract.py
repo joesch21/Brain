@@ -37,7 +37,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "path": "/flights",
             "query": {
                 "date": "YYYY-MM-DD (required)",
-                "airport": "YSSY (optional)",
+                "airport": "YSSY (required, explicit)",
                 "operator": "ALL or operator code (optional, default ALL)",
             },
             "maps_to": [
@@ -46,6 +46,20 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
                 "/api/ops/schedule/flights",
             ],
             "response_shape": {"flights": "list", "source": "upstream|compatibility"},
+        },
+        {
+            "name": "flights_pull",
+            "method": "POST",
+            "path": "/flights/pull",
+            "body": {
+                "date": "YYYY-MM-DD (required)",
+                "airport": "YSSY (required, explicit)",
+                "operator": "ALL or operator code (optional, default ALL)",
+                "store": "bool (optional, default true)",
+                "timeout": "seconds (optional, default 30)",
+            },
+            "maps_to": ["/api/flights/pull"],
+            "response_shape": {"ok": "bool", "upstream": "object", "payload": "object"},
         },
         {
             "name": "staff_list",
