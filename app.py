@@ -930,8 +930,22 @@ def api_runs_daily():
 
     date_str = request.args.get("date")
     operator = request.args.get("operator", "ALL")
+    shift = request.args.get("shift", "ALL")
+    airport = (request.args.get("airport") or "").strip().upper()
 
-    params = {"date": date_str, "operator": operator}
+    if not airport:
+        return json_error(
+            "Missing required 'airport' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    params = {
+        "date": date_str,
+        "operator": operator,
+        "shift": shift,
+        "airport": airport,
+    }
 
     runs_paths = [
         "/api/runs/daily",
@@ -962,6 +976,8 @@ def api_runs_daily():
             {
                 "date": date_str,
                 "operator": operator,
+                "shift": shift,
+                "airport": airport,
                 "runs": [],
                 "unassigned_flights": [],
                 "source": "compatibility",
