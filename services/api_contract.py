@@ -37,6 +37,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "path": "/flights",
             "query": {
                 "date": "YYYY-MM-DD (required)",
+                "airport": "YSSY (required)",
                 "operator": "ALL or operator code (optional, default ALL)",
             },
             "maps_to": [
@@ -63,6 +64,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "path": "/runs/daily",
             "query": {
                 "date": "YYYY-MM-DD (required)",
+                "airport": "YSSY (required)",
                 "operator": "ALL or operator code (optional, default ALL)",
             },
             "maps_to": [
