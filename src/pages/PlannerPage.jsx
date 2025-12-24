@@ -205,6 +205,39 @@ function normalizeStaffRuns(data) {
   return { runs, unassigned };
 }
 
+const SECONDARY_TIMEOUT_MS = 8000;
+
+function createTimeoutSignal(parentSignal, timeoutMs) {
+  const controller = new AbortController();
+  let timeoutId = null;
+
+  const handleAbort = () => controller.abort();
+
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      controller.abort();
+    } else {
+      parentSignal.addEventListener("abort", handleAbort);
+    }
+  }
+
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  return {
+    signal: controller.signal,
+    clear: () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (parentSignal) {
+        parentSignal.removeEventListener("abort", handleAbort);
+      }
+    },
+  };
+}
+
 // --- subcomponents ----------------------------------------------------------
 
 /**
@@ -1166,13 +1199,18 @@ const PlannerPage = () => {
     setAssignmentsLoading(true);
     setAssignmentsError("");
 
+    const { signal: timeoutSignal, clear } = createTimeoutSignal(
+      signal,
+      SECONDARY_TIMEOUT_MS
+    );
+
     try {
       const resp = await fetchEmployeeAssignments(dateStr, {
-        signal,
+        signal: timeoutSignal,
         airport: DEFAULT_AIRPORT,
       });
       const payload = resp.data || {};
-      if (!signal?.aborted) {
+      if (!signal?.aborted && !timeoutSignal.aborted) {
         const list = Array.isArray(payload.assignments)
           ? payload.assignments
           : Array.isArray(payload)
@@ -1184,12 +1222,74 @@ const PlannerPage = () => {
       if (!signal?.aborted) {
         setAssignments([]);
         setAssignmentsError(
-          err?.message || "Failed to load employee assignments."
+          err?.name === "AbortError"
+            ? "Employee assignments timed out."
+            : err?.message || "Failed to load employee assignments."
         );
       }
     } finally {
+      clear();
       if (!signal?.aborted) {
         setAssignmentsLoading(false);
+      }
+    }
+  }
+
+  async function loadRosterForDate(dateStr, signal) {
+    if (!dateStr) return;
+
+    const { signal: timeoutSignal, clear } = createTimeoutSignal(
+      signal,
+      SECONDARY_TIMEOUT_MS
+    );
+
+    try {
+      const rosterResp = await fetchDailyRoster(dateStr, { signal: timeoutSignal });
+      if (!signal?.aborted && !timeoutSignal.aborted) {
+        setRoster(normalizeRoster(rosterResp.data));
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setRoster([]);
+        setStaffViewError(
+          err?.name === "AbortError"
+            ? "Roster timed out."
+            : formatRequestError("Roster", err)
+        );
+      }
+    } finally {
+      clear();
+    }
+  }
+
+  async function loadStaffRunsForDate(dateStr, airlineCode, signal) {
+    if (!dateStr) return;
+
+    const { signal: timeoutSignal, clear } = createTimeoutSignal(
+      signal,
+      SECONDARY_TIMEOUT_MS
+    );
+
+    try {
+      const staffRunsResp = await fetchStaffRuns(dateStr, airlineCode, {
+        signal: timeoutSignal,
+      });
+      if (!signal?.aborted && !timeoutSignal.aborted) {
+        setStaffRuns(normalizeStaffRuns(staffRunsResp.data));
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setStaffRuns({ runs: [], unassigned: [] });
+        setStaffViewError(
+          err?.name === "AbortError"
+            ? "Staff runs timed out."
+            : formatRequestError("Staff runs", err)
+        );
+      }
+    } finally {
+      clear();
+      if (!signal?.aborted) {
+        setLoadingStaffRuns(false);
       }
     }
   }
@@ -1209,81 +1309,70 @@ const PlannerPage = () => {
     setStaffViewError("");
     setRunsDailyCount(null);
 
-    try {
-      const flightsResp = await fetchFlights(date, airlineCode, { signal, airport: DEFAULT_AIRPORT });
-      if (!signal?.aborted) {
-        setFlights(normalizeFlights(flightsResp.data));
+    const flightsPromise = (async () => {
+      try {
+        const flightsResp = await fetchFlights(date, airlineCode, {
+          signal,
+          airport: DEFAULT_AIRPORT,
+        });
+        if (!signal?.aborted) {
+          setFlights(normalizeFlights(flightsResp.data));
+        }
+      } catch (err) {
+        if (!signal?.aborted) {
+          setFlights([]);
+          setError(formatRequestError("Flights", err));
+        }
       }
-    } catch (err) {
-      if (!signal?.aborted) {
-        setFlights([]);
-        setError(formatRequestError("Flights", err));
-      }
-    }
+    })();
 
-    try {
-      const runsResp = await fetchDailyRuns(date, { operator: (airlineCode || "ALL"), airport: DEFAULT_AIRPORT, shift: "ALL" }, { signal });
-
-      if (signal?.aborted) {
-        // no-op
-      } else if (runsResp && runsResp.ok) {
-        const payload = runsResp.data || {};
-        const normalizedRuns = normalizeRuns(payload);
-        setRunsWithConflicts(normalizedRuns);
-        setUnassigned(normalizeUnassigned(payload));
-        setRunsDailyCount(
-          Number.isFinite(payload.count) ? payload.count : normalizedRuns.length
+    const runsPromise = (async () => {
+      try {
+        const runsResp = await fetchDailyRuns(
+          date,
+          { operator: (airlineCode || "ALL"), airport: DEFAULT_AIRPORT, shift: "ALL" },
+          { signal }
         );
-        setRunsError("");
-      } else {
-        const statusLabel = runsResp?.status ?? "network";
-        const endpoint = runsResp?.raw?.url || "/api/runs/daily";
-        const message = runsResp?.error || "Request failed";
-        setRunsWithConflicts([]);
-        setUnassigned([]);
-        setRunsDailyCount(null);
-        setRunsError(`Runs ${statusLabel} @ ${endpoint} – ${message}`);
-      }
-    } catch (err) {
-      if (!signal?.aborted) {
-        setRunsWithConflicts([]);
-        setUnassigned([]);
-        setRunsDailyCount(null);
-        setRunsError(formatRequestError("Runs", err));
-      }
-    }
 
-    await loadAssignmentsForDate(date, signal);
+        if (signal?.aborted) {
+          // no-op
+        } else if (runsResp && runsResp.ok) {
+          const payload = runsResp.data || {};
+          const normalizedRuns = normalizeRuns(payload);
+          setRunsWithConflicts(normalizedRuns);
+          setUnassigned(normalizeUnassigned(payload));
+          setRunsDailyCount(
+            Number.isFinite(payload.count) ? payload.count : normalizedRuns.length
+          );
+          setRunsError("");
+        } else {
+          const statusLabel = runsResp?.status ?? "network";
+          const endpoint = runsResp?.raw?.url || "/api/runs/daily";
+          const message = runsResp?.error || "Request failed";
+          setRunsWithConflicts([]);
+          setUnassigned([]);
+          setRunsDailyCount(null);
+          setRunsError(`Runs ${statusLabel} @ ${endpoint} – ${message}`);
+        }
+      } catch (err) {
+        if (!signal?.aborted) {
+          setRunsWithConflicts([]);
+          setUnassigned([]);
+          setRunsDailyCount(null);
+          setRunsError(formatRequestError("Runs", err));
+        }
+      }
+    })();
 
-    try {
-      const rosterResp = await fetchDailyRoster(date, { signal });
-      if (!signal?.aborted) {
-        setRoster(normalizeRoster(rosterResp.data));
-      }
-    } catch (err) {
-      if (!signal?.aborted) {
-        setRoster([]);
-        setStaffViewError(formatRequestError("Roster", err));
-      }
-    }
+    void loadAssignmentsForDate(date, signal);
+    void loadRosterForDate(date, signal);
+    void loadStaffRunsForDate(date, airlineCode, signal);
 
-    try {
-      const staffRunsResp = await fetchStaffRuns(date, airlineCode, { signal });
-      if (!signal?.aborted) {
-        setStaffRuns(normalizeStaffRuns(staffRunsResp.data));
-      }
-    } catch (err) {
-      if (!signal?.aborted) {
-        setStaffRuns({ runs: [], unassigned: [] });
-        setStaffViewError(formatRequestError("Staff runs", err));
-      }
-    }
+    await Promise.all([flightsPromise, runsPromise]);
 
     if (!signal?.aborted) {
       setLoading(false);
       setLoadingRuns(false);
-      setAssignmentsLoading(false);
-      setLoadingStaffRuns(false);
     }
   }
 
@@ -1898,6 +1987,8 @@ const PlannerPage = () => {
                           (acc, r) => acc + (Array.isArray(r.jobs) ? r.jobs.length : 0),
                           0
                         ) || 0;
+                      const flightsLabel =
+                        staffViewError || loadingStaffRuns ? "—" : assignedFlights;
                       const isSelected =
                         selectedStaffId === (shift.staff_id || shift.staffId);
                       return (
@@ -1925,7 +2016,7 @@ const PlannerPage = () => {
                           </div>
                           <div className="planner-staff-meta">
                             Shift {shift.start_local || "?"}–
-                            {shift.end_local || "?"} · Flights: {assignedFlights}
+                            {shift.end_local || "?"} · Flights: {flightsLabel}
                           </div>
                         </li>
                       );
