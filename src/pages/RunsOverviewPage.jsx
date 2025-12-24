@@ -29,7 +29,7 @@ const RunsOverviewPage = () => {
     setError(null);
 
     try {
-      const data = await fetchRunsForDate(selectedDate, selectedOperator);
+      const data = await fetchRunsForDate(selectedDate, selectedOperator, "ALL");
       setRuns(data?.runs || []);
       setRunsMessage(data?.message || "");
     } catch (err) {

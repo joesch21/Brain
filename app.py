@@ -816,12 +816,7 @@ def api_runs_cc3():
     active_base = _active_upstream_base().rstrip("/")
 
     # Prefer CC3 canonical runs endpoint
-    runs_paths = [
-        "/api/runs",
-        "/api/runs/daily",
-        "/api/ops/runs/daily",
-        "/api/ops/schedule/runs/daily",
-    ]
+    runs_paths = ["/api/runs"]
 
     resp = None
     last_error = None
@@ -938,11 +933,14 @@ def api_runs_sheet_cc3():
 @app.get("/api/runs/daily")
 def api_runs_daily():
     """
-    Deprecated: proxy GET /api/runs/daily by forwarding to /api/runs.
-    Requires: date, airport
+    Deprecated: /api/runs/daily endpoint removed in favor of /api/runs.
     """
-    app.logger.warning("Deprecated endpoint hit: /api/runs/daily. Forwarding to /api/runs.")
-    return api_runs_cc3()
+    app.logger.warning("Deprecated endpoint hit: /api/runs/daily. Returning 410.")
+    return json_error(
+        "Use /api/runs with airport parameter",
+        status_code=410,
+        code="deprecated",
+    )
 
 
 
