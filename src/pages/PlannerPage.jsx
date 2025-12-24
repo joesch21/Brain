@@ -1365,7 +1365,7 @@ const PlannerPage = () => {
           setRunsError("");
         } else {
           const statusLabel = runsResp?.status ?? "network";
-          const endpoint = runsResp?.raw?.url || "/api/runs/daily";
+          const endpoint = runsResp?.raw?.url || "/api/runs";
           const message = runsResp?.error || "Request failed";
           setRunsWithConflicts([]);
           setUnassigned([]);

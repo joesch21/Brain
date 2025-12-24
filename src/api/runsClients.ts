@@ -11,13 +11,18 @@ async function handleJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function fetchRunsForDate(date: string, operator: string) {
+export async function fetchRunsForDate(
+  date: string,
+  operator: string,
+  shift: string = "ALL",
+) {
   const ep = await getEndpoint("runs");
 
   const url = new URL(`${(import.meta as any).env.VITE_API_BASE_URL}${ep.path}`);
   url.searchParams.set("date", date);
   url.searchParams.set("operator", operator);
   url.searchParams.set("airport", "YSSY");
+  url.searchParams.set("shift", shift);
 
   const res = await fetch(url.toString(), { method: ep.method });
   return handleJson<any>(res);
