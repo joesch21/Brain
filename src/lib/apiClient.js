@@ -249,6 +249,8 @@ export async function fetchDailyRoster(date, options = {}) {
 export async function fetchEmployeeAssignments(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
+  // STRICT CONTRACT: always send airport
+  qs.set("airport", options.airport || DEFAULT_AIRPORT);
   return request(
     `/api/employee_assignments/daily${qs.toString() ? `?${qs.toString()}` : ""}`,
     options
