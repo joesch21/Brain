@@ -215,7 +215,10 @@ const SchedulePage = () => {
       if (result && result.ok === false) {
         throw new Error(result.message || "Auto-assign staff failed.");
       }
-      setAutoAssignStatus({ ok: true, message: formatAutoAssignSummary(result) });
+      setAutoAssignStatus({
+        ok: true,
+        message: formatAutoAssignSummary(result.data),
+      });
       await loadSchedule();
     } catch (err) {
       setAutoAssignStatus({

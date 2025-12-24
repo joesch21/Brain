@@ -1167,7 +1167,10 @@ const PlannerPage = () => {
     setAssignmentsError("");
 
     try {
-      const resp = await fetchEmployeeAssignments(dateStr, { signal });
+      const resp = await fetchEmployeeAssignments(dateStr, {
+        signal,
+        airport: DEFAULT_AIRPORT,
+      });
       const payload = resp.data || {};
       if (!signal?.aborted) {
         const list = Array.isArray(payload.assignments)
