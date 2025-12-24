@@ -136,7 +136,11 @@ class UpstreamSelector:
             try:
                 resp = requests.get(
                     probe_url,
-                    params={"date": today, "operator": "ALL"},
+                    params={
+                        "date": today,
+                        "operator": "ALL",
+                        "airport": os.getenv("DEFAULT_AIRPORT", "YSSY"),
+                    },
                     timeout=self._probe_timeout_sec,
                 )
                 attempt["status"] = resp.status_code
