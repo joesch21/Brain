@@ -8,6 +8,7 @@ import {
   fetchEmployeeAssignments,
   fetchFlights,
   fetchStatus,
+  pullFlights,
 } from "../lib/apiClient";
 import { autoAssignStaff } from "../api/opsClient";
 
@@ -86,6 +87,8 @@ const SchedulePage = () => {
   const [autoAssignStatus, setAutoAssignStatus] = useState(null);
   const [statusData, setStatusData] = useState(null);
   const [statusError, setStatusError] = useState("");
+  const [pullLoading, setPullLoading] = useState(false);
+  const [pullStatus, setPullStatus] = useState(null);
 
   async function loadSchedule(signal) {
     setLoading(true);
@@ -230,6 +233,25 @@ const SchedulePage = () => {
     }
   }
 
+  async function handlePullFlights() {
+    if (!date) return;
+    setPullLoading(true);
+    setPullStatus(null);
+    try {
+      const op = operator ? operator : "ALL";
+      await pullFlights(date, op, { airport: DEFAULT_AIRPORT });
+      setPullStatus({ ok: true, message: `Pulled flights for ${date} (${op}).` });
+      await loadSchedule();
+    } catch (err) {
+      setPullStatus({
+        ok: false,
+        message: formatRequestError("Pull flights", err),
+      });
+    } finally {
+      setPullLoading(false);
+    }
+  }
+
   return (
     <div className="schedule-page">
       <header className="schedule-header">
@@ -277,6 +299,14 @@ const SchedulePage = () => {
         >
           {autoAssignLoading ? "Assigning staff…" : "Auto-assign staff"}
         </button>
+        <button
+          type="button"
+          onClick={handlePullFlights}
+          disabled={pullLoading || loading}
+          title="Explicitly pull flights for this date (no automatic ingestion)."
+        >
+          {pullLoading ? "Pulling flights…" : "Pull flights"}
+        </button>
         <ApiTestButton
           date={date}
           onAfterSeed={() => loadSchedule()}
@@ -293,6 +323,16 @@ const SchedulePage = () => {
           }
         >
           {autoAssignStatus.message}
+        </div>
+      )}
+
+      {pullStatus && (
+        <div
+          className={`schedule-status ${
+            pullStatus.ok ? "schedule-status--success" : "schedule-status--error"
+          }`}
+        >
+          {pullStatus.message}
         </div>
       )}
 
@@ -316,7 +356,8 @@ const SchedulePage = () => {
 
       {!loading && !error && flightsCount === 0 && (
         <div className="schedule-status schedule-status--warn">
-          No flights returned for this date. If this seems wrong, check the office export or backend adapter.
+          No flights returned for this date. Click <b>Pull flights</b> to ingest/store
+          them explicitly.
         </div>
       )}
       {!loading && !error && flightsCount !== 0 && visibleFlights.length === 0 && (

@@ -211,6 +211,30 @@ export async function fetchFlights(date, operator = "ALL", options = {}) {
   return request(`/api/flights?${qs.toString()}`, options);
 }
 
+export async function pullFlights(date, operator = "ALL", options = {}) {
+  if (!date) {
+    throw new Error("pullFlights: date is required");
+  }
+
+  const body = {
+    date,
+    airport: options.airport || DEFAULT_AIRPORT,
+    operator: operator || "ALL",
+    store: true,
+  };
+
+  return request("/api/flights/pull", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...options.headers,
+    },
+    body: JSON.stringify(body),
+    ...options,
+  });
+}
+
 export async function fetchRuns(date, airline = "JQ", options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
