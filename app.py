@@ -641,9 +641,9 @@ def api_flights():
     }
 
     flights_paths = [
-        "/api/flights",
-        "/api/ops/flights",
         "/api/ops/schedule/flights",
+        "/api/ops/flights",
+        "/api/flights",
     ]
 
     try:
