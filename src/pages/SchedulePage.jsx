@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "../styles/schedule.css";
+
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
+
 import { fetchFlights, fetchStatus } from "../lib/apiClient";
 import {
   autoAssignStaff,
   fetchEmployeeAssignmentsForDate,
 } from "../api/opsClient";
+
+const DEFAULT_AIRPORT = "YSSY";
 
 function todayISO() {
   const d = new Date();
@@ -15,6 +19,7 @@ function todayISO() {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
+
 
 function normalizeFlights(data) {
   if (!data) return [];
@@ -65,8 +70,6 @@ function formatAutoAssignSummary(result) {
   return `Auto-assigned staff for ${result.date || "selected date"}. Assigned: ${assignedCount}, unassigned: ${unassignedCount}.`;
 }
 
-const DEFAULT_AIRPORT = "YSSY";
-
 const SchedulePage = () => {
   const [date, setDate] = useState(todayISO());
   const [operator, setOperator] = useState("");
@@ -106,8 +109,8 @@ const SchedulePage = () => {
 
     try {
       const flightsResp = await fetchFlights(date, operator || "ALL", {
-        airport: DEFAULT_AIRPORT,
         signal,
+        airport: DEFAULT_AIRPORT,
       });
 
       if (!signal?.aborted) {

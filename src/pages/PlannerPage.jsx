@@ -11,6 +11,8 @@ import {
 } from "../lib/apiClient";
 import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../utils/runConflictUtils";
 
+const DEFAULT_AIRPORT = "YSSY";
+
 // --- small helpers ---------------------------------------------------------
 
 function todayISO() {
@@ -22,7 +24,6 @@ function todayISO() {
 }
 
 const DEFAULT_AIRLINE = "JQ";
-const DEFAULT_AIRPORT = "YSSY";
 const AIRLINE_OPTIONS = ["JQ", "QF", "VA", "ZL"];
 
 // Extract airline code from a flight number, e.g. "JQ719" -> "JQ".
@@ -1205,10 +1206,7 @@ const PlannerPage = () => {
     setRunsDailyCount(null);
 
     try {
-      const flightsResp = await fetchFlights(date, airlineCode, {
-        airport: DEFAULT_AIRPORT,
-        signal,
-      });
+      const flightsResp = await fetchFlights(date, airlineCode, { signal, airport: DEFAULT_AIRPORT });
       if (!signal?.aborted) {
         setFlights(normalizeFlights(flightsResp.data));
       }
@@ -1220,15 +1218,7 @@ const PlannerPage = () => {
     }
 
     try {
-      const runsResp = await fetchDailyRuns(
-        date,
-        {
-          operator: airlineCode || "ALL",
-          airport: DEFAULT_AIRPORT,
-          shift: "ALL",
-        },
-        { signal }
-      );
+      const runsResp = await fetchDailyRuns(date, { operator: (airlineCode || "ALL"), airport: DEFAULT_AIRPORT, shift: "ALL" }, { signal });
 
       if (signal?.aborted) {
         // no-op
@@ -1434,9 +1424,7 @@ const PlannerPage = () => {
       setSelectedRunId((prev) => prev ?? (newRuns[0]?.id ?? null));
 
       try {
-        const flightsResp = await fetchFlights(date, airlineCode, {
-          airport: DEFAULT_AIRPORT,
-        });
+        const flightsResp = await fetchFlights(date, airlineCode, { airport: DEFAULT_AIRPORT });
         const flightsData = flightsResp.data || {};
         setFlights(normalizeFlights(flightsData));
         await loadAssignmentsForDate(date);
