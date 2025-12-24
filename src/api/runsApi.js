@@ -1,8 +1,8 @@
 import { fetchJson } from "../utils/api";
 
 export async function fetchDailyRuns(date, operator = "ALL") {
-  const params = new URLSearchParams({ date, operator });
-  const response = await fetchJson(`/api/runs/daily?${params.toString()}`);
+  const params = new URLSearchParams({ date, operator, airport: "YSSY" });
+  const response = await fetchJson(`/api/runs?${params.toString()}`);
 
   if (!response.ok) {
     throw new Error(`Runs daily failed: ${response.error || `HTTP ${response.status}`}`);

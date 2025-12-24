@@ -26,11 +26,11 @@ const TESTS = [
     buildPath: (date) => `/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&operator=ALL`,
   },
   {
-    key: "runs-daily",
-    label: "GET /api/runs/daily",
+    key: "runs",
+    label: "GET /api/runs",
     method: "GET",
     buildPath: (date) =>
-      `/api/runs/daily?date=${encodeURIComponent(date)}&airport=YSSY&operator=ALL`,
+      `/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&operator=ALL`,
   },
   {
     key: "auto-assign",

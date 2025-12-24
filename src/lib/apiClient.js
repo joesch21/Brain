@@ -302,7 +302,7 @@ export async function fetchDailyRuns(
   qs.set("airport", airport || options.airport || DEFAULT_AIRPORT);
   if (operator) qs.set("operator", operator);
   if (shift) qs.set("shift", shift);
-  return safeRequest(`/api/runs/daily?${qs.toString()}`, {
+  return safeRequest(`/api/runs?${qs.toString()}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
