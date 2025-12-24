@@ -156,6 +156,8 @@ function normalizeRuns(data) {
 function normalizeUnassigned(data) {
   if (!data) return [];
   if (Array.isArray(data.unassigned)) return data.unassigned;
+  if (Array.isArray(data.unassigned_flights)) return data.unassigned_flights;
+  if (Array.isArray(data.unassignedFlights)) return data.unassignedFlights;
   if (Array.isArray(data)) return data;
   return [];
 }
@@ -1190,8 +1192,6 @@ const PlannerPage = () => {
     if (!date) return;
 
     const airlineCode = airline || DEFAULT_AIRLINE;
-    const runsOperator = airline || "ALL";
-    const runsShift = "ALL";
 
     setLoading(true);
     setLoadingRuns(true);
@@ -1216,26 +1216,27 @@ const PlannerPage = () => {
     }
 
     try {
-      const runsResp = await fetchDailyRuns(
-        date,
-        { operator: runsOperator, shift: runsShift },
-        { signal }
-      );
-      if (!signal?.aborted) {
-        if (!runsResp.ok) {
-          setRunsWithConflicts([]);
-          setUnassigned([]);
-          setRunsDailyCount(null);
-          setRunsError(formatSafeRequestError("Runs", runsResp));
-        } else {
-          const payload = runsResp.data || {};
-          const normalizedRuns = normalizeRuns(payload);
-          setRunsWithConflicts(normalizedRuns);
-          setUnassigned(normalizeUnassigned(payload));
-          setRunsDailyCount(
-            Number.isFinite(payload.count) ? payload.count : normalizedRuns.length
-          );
-        }
+      const runsResp = await fetchDailyRuns(date, airlineCode || "ALL", { signal });
+
+      if (signal?.aborted) {
+        // no-op
+      } else if (runsResp && runsResp.ok) {
+        const payload = runsResp.data || {};
+        const normalizedRuns = normalizeRuns(payload);
+        setRunsWithConflicts(normalizedRuns);
+        setUnassigned(normalizeUnassigned(payload));
+        setRunsDailyCount(
+          Number.isFinite(payload.count) ? payload.count : normalizedRuns.length
+        );
+        setRunsError("");
+      } else {
+        const statusLabel = runsResp?.status ?? "network";
+        const endpoint = runsResp?.raw?.url || "/api/runs/daily";
+        const message = runsResp?.error || "Request failed";
+        setRunsWithConflicts([]);
+        setUnassigned([]);
+        setRunsDailyCount(null);
+        setRunsError(`Runs ${statusLabel} @ ${endpoint} – ${message}`);
       }
     } catch (err) {
       if (!signal?.aborted) {
