@@ -16,7 +16,7 @@ def test_api_contract_returns_required_keys():
     assert {
         "flights_daily",
         "staff_list",
-        "runs_daily",
+        "runs",
         "runs_auto_assign",
         "wiring_status",
         "api_contract",

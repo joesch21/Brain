@@ -128,7 +128,7 @@ class UpstreamSelector:
         found_working = False
 
         for base_url in self.candidates:
-            probe_url = f"{base_url}/api/ops/schedule/runs/daily"
+            probe_url = f"{base_url}/api/runs"
             attempt: Dict[str, Any] = {"base_url": base_url}
             ok = False
             payload: Dict[str, Any] = {}
@@ -314,13 +314,28 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
 
     contract = api_contract.build_contract()
 
-    def _maps_to_candidates(endpoint_name: str, fallback: Iterable[str]) -> List[str]:
+    def _maps_to_candidates(
+        endpoint_name: str,
+        fallback: Iterable[str],
+        *,
+        include_airport: bool = False,
+    ) -> List[str]:
+        airport = os.getenv("DEFAULT_AIRPORT", "YSSY")
+
         for endpoint in contract.get("endpoints", []):
             if endpoint.get("name") == endpoint_name:
                 maps_to = endpoint.get("maps_to") or []
                 if isinstance(maps_to, list) and maps_to:
-                    return [f"{path}?date={sample_date}&operator=ALL" for path in maps_to]
-        return [f"{path}?date={sample_date}&operator=ALL" for path in fallback]
+                    return [
+                        f"{path}?date={sample_date}&operator=ALL"
+                        f"{'&airport=' + airport if include_airport else ''}"
+                        for path in maps_to
+                    ]
+        return [
+            f"{path}?date={sample_date}&operator=ALL"
+            f"{'&airport=' + airport if include_airport else ''}"
+            for path in fallback
+        ]
 
     flights_candidates = _maps_to_candidates(
         "flights_daily",
@@ -332,12 +347,13 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
     )
 
     runs_candidates = _maps_to_candidates(
-        "runs_daily",
+        "runs",
         [
-            "/api/runs/daily",
+            "/api/runs",
             "/api/ops/runs/daily",
             "/api/ops/schedule/runs/daily",
         ],
+        include_airport=True,
     )
 
     def _probe_candidates(paths: Iterable[str]) -> Tuple[bool, Optional[str], List[Dict[str, Any]]]:
@@ -535,11 +551,11 @@ def api_wiring_snapshot():
             "/api/staff",
             "/api/ops/staff",
         ]),
-        "runsDaily": _probe_route([
-            "/api/runs/daily",
+        "runs": _probe_route([
+            "/api/runs",
             "/api/ops/runs/daily",
             "/api/ops/schedule/runs/daily",
-        ], params={"date": sample_date, "operator": "ALL"}),
+        ], params={"date": sample_date, "operator": "ALL", "airport": os.getenv("DEFAULT_AIRPORT", "YSSY")}),
         "autoAssign": _probe_route([
             "/api/runs/auto_assign",
         ], method="post", json={"date": sample_date, "operator": "ALL"}),
@@ -922,81 +938,11 @@ def api_runs_sheet_cc3():
 @app.get("/api/runs/daily")
 def api_runs_daily():
     """
-    EWOT: proxy GET /api/runs/daily with strict contract.
+    Deprecated: proxy GET /api/runs/daily by forwarding to /api/runs.
     Requires: date, airport
-    Forwards: date, airport, operator, shift
     """
-    if (date_error := _require_date_param()) is not None:
-        return date_error
-
-    date_str = (request.args.get("date") or "").strip()
-    airport = (request.args.get("airport") or "").strip().upper()
-    operator = request.args.get("operator", "ALL")
-    shift = request.args.get("shift", "ALL")
-
-    if not airport:
-        return json_error(
-            "Missing required 'airport' query parameter.",
-            status_code=400,
-            code="validation_error",
-        )
-
-    params = {
-        "date": date_str,
-        "airport": airport,
-        "operator": operator,
-        "shift": shift,
-    }
-
-    runs_paths = [
-        "/api/runs/daily",
-        "/api/ops/runs/daily",
-        "/api/ops/schedule/runs/daily",
-    ]
-
-    try:
-        resp, used_path = _call_upstream(runs_paths, params=params, timeout=30)
-    except requests.RequestException as exc:
-        app.logger.exception("Failed to call upstream /api/runs/daily")
-        return json_error(
-            "Upstream runs endpoint unavailable",
-            status_code=502,
-            code="upstream_error",
-            detail={"detail": str(exc)},
-        )
-
-    if resp is None:
-        return json_error(
-            "Runs endpoint not reachable upstream.",
-            status_code=502,
-            code="upstream_unavailable",
-        )
-
-    if resp.status_code == 404:
-        return _build_ok(
-            {
-                "date": date_str,
-                "airport": airport,
-                "operator": operator,
-                "shift": shift,
-                "runs": [],
-                "unassigned_flights": [],
-                "source": "compatibility",
-                "upstream_path": used_path,
-            }
-        )
-
-    try:
-        payload = resp.json()
-    except Exception:  # noqa: BLE001
-        return json_error(
-            "Invalid JSON from runs backend.",
-            status_code=502,
-            code="invalid_json",
-            detail={"raw": resp.text[:500]},
-        )
-
-    return jsonify(payload), resp.status_code
+    app.logger.warning("Deprecated endpoint hit: /api/runs/daily. Forwarding to /api/runs.")
+    return api_runs_cc3()
 
 
 

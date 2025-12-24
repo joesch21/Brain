@@ -46,8 +46,8 @@ $rosterUrl = "$BaseUrl/api/employee_assignments/daily?date=$today"
 Test-Endpoint -Name "Daily employee assignments" -Url $rosterUrl -Method "GET"
 
 # 3) Daily runs: used by Runs page to display run layout for today
-$runsDailyUrl = "$BaseUrl/api/runs/daily?date=$today&operator=ALL"
-Test-Endpoint -Name "Daily runs" -Url $runsDailyUrl -Method "GET"
+$runsUrl = "$BaseUrl/api/runs?date=$today&operator=ALL&airport=YSSY"
+Test-Endpoint -Name "Runs" -Url $runsUrl -Method "GET"
 
 # 4) Auto-assign runs: used by Runs page 'Auto-assign runs for this day' button
 $autoAssignUrl = "$BaseUrl/api/runs/auto_assign"

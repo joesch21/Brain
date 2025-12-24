@@ -33,7 +33,7 @@ function Get-BrainRunsDaily {
     [string]$AirportOverride
   )
   $a = $AirportOverride ? $AirportOverride : $script:Airport
-  Invoke-RestMethod "$script:UiBase/api/runs/daily?date=$Date&airport=$a&operator=$Operator&shift=$Shift" -TimeoutSec 30
+  Invoke-RestMethod "$script:UiBase/api/runs?date=$Date&airport=$a&operator=$Operator&shift=$Shift" -TimeoutSec 30
 }
 
 function Get-BrainWiring {
