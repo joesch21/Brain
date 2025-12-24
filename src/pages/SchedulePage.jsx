@@ -5,11 +5,11 @@ import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 
 import {
-  autoAssignRuns,
   fetchEmployeeAssignments,
   fetchFlights,
   fetchStatus,
 } from "../lib/apiClient";
+import { autoAssignStaff } from "../api/opsClient";
 
 const DEFAULT_AIRPORT = "YSSY";
 
@@ -25,6 +25,7 @@ function todayISO() {
 function normalizeFlights(data) {
   if (!data) return [];
   if (Array.isArray(data)) return data;
+  if (Array.isArray(data.records)) return data.records;
   if (Array.isArray(data.flights)) return data.flights;
   return [];
 }
@@ -131,10 +132,7 @@ const SchedulePage = () => {
     }
 
     try {
-      const assignmentsResp = await fetchEmployeeAssignments(date, {
-        signal,
-        airport: DEFAULT_AIRPORT,
-      });
+      const assignmentsResp = await fetchEmployeeAssignments(date, { signal });
       if (!signal?.aborted) {
         const payload = assignmentsResp.data || {};
         const list = Array.isArray(payload.assignments)
@@ -213,9 +211,9 @@ const SchedulePage = () => {
     setAutoAssignLoading(true);
     setAutoAssignStatus(null);
     try {
-      const result = await autoAssignRuns(date, operator || "ALL");
-      if (!result.ok) {
-        throw new Error(result.error || "Auto-assign staff failed.");
+      const result = await autoAssignStaff(date, operator || "ALL");
+      if (result && result.ok === false) {
+        throw new Error(result.message || "Auto-assign staff failed.");
       }
       setAutoAssignStatus({
         ok: true,

@@ -142,6 +142,7 @@ function formatByAirline(byAirline) {
 
 function normalizeFlights(data) {
   if (!data) return [];
+  if (Array.isArray(data.records)) return data.records;
   if (Array.isArray(data.flights)) return data.flights;
   if (Array.isArray(data)) return data;
   return [];
@@ -149,8 +150,8 @@ function normalizeFlights(data) {
 
 function normalizeRuns(data) {
   if (!data) return [];
-  if (Array.isArray(data.runs)) return data.runs;
   if (Array.isArray(data.records)) return data.records;
+  if (Array.isArray(data.runs)) return data.runs;
   if (Array.isArray(data)) return data;
   return [];
 }

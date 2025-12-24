@@ -25,7 +25,9 @@ function normalizeResult({
   const typeFromBody = body?.type;
   const type = errorType || typeFromBody || null;
   const errorMessage =
-    body?.error ||
+    (body?.error && typeof body.error === "object"
+      ? body.error.message
+      : body?.error) ||
     (typeof body === "string" ? body : null) ||
     networkError ||
     statusText;
