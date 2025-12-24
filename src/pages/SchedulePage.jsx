@@ -69,6 +69,7 @@ const SchedulePage = () => {
   const [date, setDate] = useState(todayISO());
   const [operator, setOperator] = useState("");
   const [flights, setFlights] = useState([]);
+  const [flightsCount, setFlightsCount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [assignments, setAssignments] = useState([]);
@@ -85,6 +86,7 @@ const SchedulePage = () => {
     setStatusError("");
     setAssignmentsError("");
     setAssignmentsLoading(true);
+    setFlightsCount(null);
 
     try {
       const statusResp = await fetchStatus(date, { signal });
@@ -106,11 +108,17 @@ const SchedulePage = () => {
       });
 
       if (!signal?.aborted) {
-        setFlights(normalizeFlights(flightsResp.data));
+        const payload = flightsResp.data || {};
+        const normalizedFlights = normalizeFlights(payload);
+        setFlights(normalizedFlights);
+        setFlightsCount(
+          Number.isFinite(payload.count) ? payload.count : normalizedFlights.length
+        );
       }
     } catch (err) {
       if (!signal?.aborted) {
         setFlights([]);
+        setFlightsCount(null);
         setError(formatRequestError("Flights", err));
       }
     }
@@ -289,9 +297,14 @@ const SchedulePage = () => {
         </div>
       )}
 
-      {!loading && !error && visibleFlights.length === 0 && (
+      {!loading && !error && flightsCount === 0 && (
         <div className="schedule-status schedule-status--warn">
           No flights returned for this date. If this seems wrong, check the office export or backend adapter.
+        </div>
+      )}
+      {!loading && !error && flightsCount !== 0 && visibleFlights.length === 0 && (
+        <div className="schedule-status schedule-status--warn">
+          No flights match the selected operator.
         </div>
       )}
 

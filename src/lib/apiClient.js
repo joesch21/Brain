@@ -254,10 +254,28 @@ export async function fetchWiringStatus(options = {}) {
   });
 }
 
-export async function fetchDailyRuns(date, operator = "ALL", options = {}) {
+export async function fetchDailyRuns(
+  date,
+  operatorOrParams = "ALL",
+  options = {}
+) {
+  let operator = "ALL";
+  let airport;
+  let shift = "ALL";
+
+  if (operatorOrParams && typeof operatorOrParams === "object") {
+    operator = operatorOrParams.operator ?? "ALL";
+    airport = operatorOrParams.airport;
+    shift = operatorOrParams.shift ?? "ALL";
+  } else {
+    operator = operatorOrParams;
+  }
+
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
+  if (airport) qs.set("airport", airport);
   if (operator) qs.set("operator", operator);
+  if (shift) qs.set("shift", shift);
   return safeRequest(`/api/runs/daily?${qs.toString()}`, {
     method: "GET",
     headers: {

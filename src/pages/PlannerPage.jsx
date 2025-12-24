@@ -6,7 +6,7 @@ import {
   fetchDailyRoster,
   fetchEmployeeAssignments,
   fetchFlights,
-  fetchRuns,
+  fetchDailyRuns,
   fetchStaffRuns,
 } from "../lib/apiClient";
 import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../utils/runConflictUtils";
@@ -148,6 +148,7 @@ function normalizeFlights(data) {
 function normalizeRuns(data) {
   if (!data) return [];
   if (Array.isArray(data.runs)) return data.runs;
+  if (Array.isArray(data.records)) return data.records;
   if (Array.isArray(data)) return data;
   return [];
 }
@@ -170,6 +171,18 @@ function formatRequestError(label, err) {
   const statusLabel = err.status ?? "network";
   const message = (err.data && err.data.error) || err.message || "Request failed";
   const endpoint = err.url || "unknown endpoint";
+  return `${label} ${statusLabel} @ ${endpoint} – ${message}`;
+}
+
+function formatSafeRequestError(label, response) {
+  if (!response) return `${label} request failed.`;
+  const statusLabel = response.status ?? "network";
+  const endpoint = response.raw?.url || "unknown endpoint";
+  const message =
+    response.error ||
+    response.data?.error ||
+    response.data?.message ||
+    "Request failed";
   return `${label} ${statusLabel} @ ${endpoint} – ${message}`;
 }
 
@@ -931,6 +944,7 @@ const PlannerPage = () => {
   const [unassigned, setUnassigned] = useState([]);
   const [staffRuns, setStaffRuns] = useState({ runs: [], unassigned: [] });
   const [roster, setRoster] = useState([]);
+  const [runsDailyCount, setRunsDailyCount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
@@ -1176,6 +1190,8 @@ const PlannerPage = () => {
     if (!date) return;
 
     const airlineCode = airline || DEFAULT_AIRLINE;
+    const runsOperator = airline || "ALL";
+    const runsShift = "ALL";
 
     setLoading(true);
     setLoadingRuns(true);
@@ -1185,6 +1201,7 @@ const PlannerPage = () => {
     setRunsError("");
     setAssignmentsError("");
     setStaffViewError("");
+    setRunsDailyCount(null);
 
     try {
       const flightsResp = await fetchFlights(date, airlineCode, { signal });
@@ -1199,15 +1216,32 @@ const PlannerPage = () => {
     }
 
     try {
-      const runsResp = await fetchRuns(date, airlineCode, { signal });
+      const runsResp = await fetchDailyRuns(
+        date,
+        { operator: runsOperator, shift: runsShift },
+        { signal }
+      );
       if (!signal?.aborted) {
-        setRunsWithConflicts(normalizeRuns(runsResp.data));
-        setUnassigned(normalizeUnassigned(runsResp.data));
+        if (!runsResp.ok) {
+          setRunsWithConflicts([]);
+          setUnassigned([]);
+          setRunsDailyCount(null);
+          setRunsError(formatSafeRequestError("Runs", runsResp));
+        } else {
+          const payload = runsResp.data || {};
+          const normalizedRuns = normalizeRuns(payload);
+          setRunsWithConflicts(normalizedRuns);
+          setUnassigned(normalizeUnassigned(payload));
+          setRunsDailyCount(
+            Number.isFinite(payload.count) ? payload.count : normalizedRuns.length
+          );
+        }
       }
     } catch (err) {
       if (!signal?.aborted) {
         setRunsWithConflicts([]);
         setUnassigned([]);
+        setRunsDailyCount(null);
         setRunsError(formatRequestError("Runs", err));
       }
     }
@@ -1745,7 +1779,7 @@ const PlannerPage = () => {
         !loadingRuns &&
         !error &&
         !runsError &&
-        runs.length === 0 && (
+        runsDailyCount === 0 && (
           <div className="planner-status planner-status--warn">
             No runs returned for this date from the backend.
             If this looks wrong, check the office runs configuration.
