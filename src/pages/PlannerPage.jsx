@@ -1333,6 +1333,24 @@ const PlannerPage = () => {
           { operator: (airlineCode || "ALL"), airport: DEFAULT_AIRPORT, shift: "ALL" },
           { signal }
         );
+        setRunsError("");
+      } else {
+        const statusLabel = runsResp?.status ?? "network";
+        const endpoint = runsResp?.raw?.url || "/api/runs";
+        const message = runsResp?.error || "Request failed";
+        setRunsWithConflicts([]);
+        setUnassigned([]);
+        setRunsDailyCount(null);
+        setRunsError(`Runs ${statusLabel} @ ${endpoint} – ${message}`);
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setRunsWithConflicts([]);
+        setUnassigned([]);
+        setRunsDailyCount(null);
+        setRunsError(formatRequestError("Runs", err));
+      }
+    }
 
         if (signal?.aborted) {
           // no-op

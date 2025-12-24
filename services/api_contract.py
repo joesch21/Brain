@@ -59,18 +59,17 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "response_shape": {"staff": "list", "source": "upstream|compatibility"},
         },
         {
-            "name": "runs_daily",
+            "name": "runs",
             "method": "GET",
-            "path": "/runs/daily",
+            "path": "/runs",
             "query": {
                 "date": "YYYY-MM-DD (required)",
                 "airport": "YSSY (required)",
                 "operator": "ALL or operator code (optional, default ALL)",
+                "shift": "ALL or shift code (optional, default ALL)",
             },
             "maps_to": [
-                "/api/runs/daily",
-                "/api/ops/runs/daily",
-                "/api/ops/schedule/runs/daily",
+                "/api/runs",
             ],
             "response_shape": {
                 "runs": "list",
