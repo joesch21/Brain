@@ -22,6 +22,7 @@ function todayISO() {
 }
 
 const DEFAULT_AIRLINE = "JQ";
+const DEFAULT_AIRPORT = "YSSY";
 const AIRLINE_OPTIONS = ["JQ", "QF", "VA", "ZL"];
 
 // Extract airline code from a flight number, e.g. "JQ719" -> "JQ".
@@ -1204,7 +1205,10 @@ const PlannerPage = () => {
     setRunsDailyCount(null);
 
     try {
-      const flightsResp = await fetchFlights(date, airlineCode, { signal });
+      const flightsResp = await fetchFlights(date, airlineCode, {
+        airport: DEFAULT_AIRPORT,
+        signal,
+      });
       if (!signal?.aborted) {
         setFlights(normalizeFlights(flightsResp.data));
       }
@@ -1216,7 +1220,15 @@ const PlannerPage = () => {
     }
 
     try {
-      const runsResp = await fetchDailyRuns(date, airlineCode || "ALL", { signal });
+      const runsResp = await fetchDailyRuns(
+        date,
+        {
+          operator: airlineCode || "ALL",
+          airport: DEFAULT_AIRPORT,
+          shift: "ALL",
+        },
+        { signal }
+      );
 
       if (signal?.aborted) {
         // no-op
@@ -1422,7 +1434,9 @@ const PlannerPage = () => {
       setSelectedRunId((prev) => prev ?? (newRuns[0]?.id ?? null));
 
       try {
-        const flightsResp = await fetchFlights(date, airlineCode);
+        const flightsResp = await fetchFlights(date, airlineCode, {
+          airport: DEFAULT_AIRPORT,
+        });
         const flightsData = flightsResp.data || {};
         setFlights(normalizeFlights(flightsData));
         await loadAssignmentsForDate(date);
