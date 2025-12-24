@@ -922,23 +922,23 @@ def api_runs_sheet_cc3():
 @app.get("/api/runs/daily")
 def api_runs_daily():
     """
-    EWOT: proxy GET /api/runs/daily so the Runs page can fetch runs
-    for a given date + operator without seeing 404s from the Brain backend.
+    EWOT: proxy GET /api/runs/daily with strict contract.
+    Requires: date, airport
+    Forwards: date, airport, operator, shift
     """
     if (date_error := _require_date_param()) is not None:
         return date_error
 
-    date_str = request.args.get("date")
-    airport = request.args.get("airport")
+    date_str = (request.args.get("date") or "").strip()
+    airport = (request.args.get("airport") or "").strip().upper()
     operator = request.args.get("operator", "ALL")
     shift = request.args.get("shift", "ALL")
 
     if not airport:
         return json_error(
-            "airport is required",
+            "Missing required 'airport' query parameter.",
             status_code=400,
             code="validation_error",
-            detail={"message": "Missing required 'airport' query parameter."},
         )
 
     params = {
@@ -957,7 +957,7 @@ def api_runs_daily():
     try:
         resp, used_path = _call_upstream(runs_paths, params=params, timeout=30)
     except requests.RequestException as exc:
-        app.logger.exception("Failed to call CC2 /api/runs/daily")
+        app.logger.exception("Failed to call upstream /api/runs/daily")
         return json_error(
             "Upstream runs endpoint unavailable",
             status_code=502,
@@ -976,7 +976,9 @@ def api_runs_daily():
         return _build_ok(
             {
                 "date": date_str,
+                "airport": airport,
                 "operator": operator,
+                "shift": shift,
                 "runs": [],
                 "unassigned_flights": [],
                 "source": "compatibility",
@@ -995,6 +997,7 @@ def api_runs_daily():
         )
 
     return jsonify(payload), resp.status_code
+
 
 
 @app.post("/api/runs/auto_assign")
