@@ -351,6 +351,18 @@ export async function fetchDailyRoster(date, options = {}) {
   );
 }
 
+export async function fetchStaff(options = {}) {
+  const qs = new URLSearchParams();
+  qs.set("airport", options.airport || REQUIRED_AIRPORT);
+  if (options.date) qs.set("date", options.date);
+  const operator = options.operator || options.airline;
+  if (operator) qs.set("operator", operator);
+  return safeRequest(`/api/staff${qs.toString() ? `?${qs.toString()}` : ""}`, {
+    ...options,
+    method: "GET",
+  });
+}
+
 export async function fetchEmployeeAssignments(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);

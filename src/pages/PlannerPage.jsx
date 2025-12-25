@@ -4,6 +4,7 @@ import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 import {
   fetchEmployeeAssignments,
+  fetchStaff,
   fetchFlights,
   fetchDailyRuns,
   pullFlights,
@@ -30,11 +31,11 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-const DEFAULT_AIRLINE = "ALL";
-const AIRLINE_OPTIONS = ["ALL", "JQ", "QF", "VA", "ZL"];
+const DEFAULT_OPERATOR = "ALL";
+const OPERATOR_OPTIONS = ["ALL", "JQ", "QF", "VA", "ZL"];
 
-// Extract airline code from a flight number, e.g. "JQ719" -> "JQ".
-function getAirlineCode(flightNumber) {
+// Extract operator code from a flight number, e.g. "JQ719" -> "JQ".
+function getOperatorCode(flightNumber) {
   if (!flightNumber || typeof flightNumber !== "string") return "UNK";
   let prefix = "";
   for (const ch of flightNumber) {
@@ -100,35 +101,23 @@ function formatLocalTimeLabel(value) {
 
 function flightStableKey(f, idx) {
   if (!f) return `flight-null-${idx}`;
-  const preferred =
-    f?.flight_key ??
-    f?.key ??
-    f?.fa_flight_id ??
-    f?.id ??
-    f?.flight_id ??
-    f?.faFlightId ??
-    null;
-  if (preferred != null) return String(preferred);
+  const primaryId = f?.id ?? f?.flight_id ?? null;
+  if (primaryId != null) return `fid:${primaryId}`;
+  if (f?.fa_flight_id != null) return `fa:${f.fa_flight_id}`;
 
   const ident =
-    f?.flight_number ??
     f?.ident ??
+    f?.flight_number ??
     f?.ident_iata ??
     f?.flightNumber ??
     null;
-  const timeToken =
-    f?.time_local ??
-    f?.time ??
-    f?.timeLocal ??
-    f?.dep_time ??
+  const timeIso =
     f?.time_iso ??
     f?.estimated_off ??
     f?.scheduled_off ??
     null;
-  if (ident && timeToken) return `${ident}|${timeToken}`;
-  if (ident) return `${ident}|${idx}`;
-  if (timeToken) return `UNK|${timeToken}|${idx}`;
-  return `flight-${idx}`;
+  if (ident && timeIso) return `it:${ident}|${timeIso}`;
+  return `row:${idx}`;
 }
 
 function flightRunStableKey(fr, flt, idx) {
@@ -151,8 +140,8 @@ function getAssignmentsForFlight(map, flight) {
 function computeSummary(flights, flightToRunMap) {
   const summary = {
     total: 0,
-    am: { total: 0, byAirline: {} },
-    pm: { total: 0, byAirline: {} },
+    am: { total: 0, byOperator: {} },
+    pm: { total: 0, byOperator: {} },
     unassigned: 0,
   };
 
@@ -161,8 +150,8 @@ function computeSummary(flights, flightToRunMap) {
   for (const [idx, f] of flights.entries()) {
     summary.total += 1;
 
-    const airline =
-      f.operator_code || getAirlineCode(f.flight_number || f.ident || f.flightNumber);
+    const operator =
+      f.operator_code || getOperatorCode(f.flight_number || f.ident || f.flightNumber);
     const timeStr = f.time_local || f.time || f.timeLocal || null;
     const band = classifyTimeBand(timeStr);
 
@@ -173,20 +162,20 @@ function computeSummary(flights, flightToRunMap) {
 
     if (band === "AM") {
       summary.am.total += 1;
-      summary.am.byAirline[airline] =
-        (summary.am.byAirline[airline] || 0) + 1;
+      summary.am.byOperator[operator] =
+        (summary.am.byOperator[operator] || 0) + 1;
     } else if (band === "PM") {
       summary.pm.total += 1;
-      summary.pm.byAirline[airline] =
-        (summary.pm.byAirline[airline] || 0) + 1;
+      summary.pm.byOperator[operator] =
+        (summary.pm.byOperator[operator] || 0) + 1;
     }
   }
 
   return summary;
 }
 
-function formatByAirline(byAirline) {
-  const entries = Object.entries(byAirline || {});
+function formatByOperator(byOperator) {
+  const entries = Object.entries(byOperator || {});
   if (!entries.length) return "—";
   return entries
     .sort(([a], [b]) => a.localeCompare(b))
@@ -220,6 +209,72 @@ function normalizeUnassigned(data) {
   if (Array.isArray(data.unassignedFlights)) return data.unassignedFlights;
   if (Array.isArray(data)) return data;
   return [];
+}
+
+function extractStaffList(data) {
+  if (!data) return [];
+  const list =
+    data.staff ??
+    data.employees ??
+    data.records ??
+    data.rows ??
+    data.items ??
+    data.data ??
+    data;
+  return Array.isArray(list) ? list : [];
+}
+
+function normalizeStaffEntry(entry, idx) {
+  if (!entry || typeof entry !== "object") {
+    return {
+      staff_id: idx,
+      staff_code: `STAFF${String(idx + 1).padStart(2, "0")}`,
+      staff_name: `Staff ${idx + 1}`,
+      employment_type: null,
+      start_local: null,
+      end_local: null,
+    };
+  }
+
+  const staffId =
+    entry.staff_id ??
+    entry.staffId ??
+    entry.employee_id ??
+    entry.employeeId ??
+    entry.id ??
+    idx;
+  const staffCode =
+    entry.staff_code ??
+    entry.staffCode ??
+    entry.employee_code ??
+    entry.employeeCode ??
+    entry.code ??
+    `STAFF${String(idx + 1).padStart(2, "0")}`;
+  const staffName =
+    entry.staff_name ??
+    entry.staffName ??
+    entry.employee_name ??
+    entry.employeeName ??
+    entry.name ??
+    `Staff ${idx + 1}`;
+
+  return {
+    ...entry,
+    staff_id: staffId,
+    staffId,
+    staff_code: staffCode,
+    staff_name: staffName,
+    employment_type:
+      entry.employment_type ?? entry.employmentType ?? entry.type ?? null,
+    start_local:
+      entry.start_local ??
+      entry.startTime ??
+      entry.start_time ??
+      entry.shift_start ??
+      null,
+    end_local:
+      entry.end_local ?? entry.endTime ?? entry.end_time ?? entry.shift_end ?? null,
+  };
 }
 
 function formatRequestError(label, err) {
@@ -430,7 +485,7 @@ function FlightListColumn({
               <th>Time</th>
               <th>Flight</th>
               <th>Dest</th>
-              <th>Airline</th>
+              <th>Operator</th>
               <th>Staff</th>
               <th>Assigned</th>
             </tr>
@@ -440,7 +495,7 @@ function FlightListColumn({
               const flightNumber = f.flight_number || f.ident || f.flightNumber;
               const timeStr = f.time_local || f.time || f.timeLocal || "";
               const dest = f.dest || f.destination || "";
-              const airline = f.operator_code || getAirlineCode(flightNumber);
+              const operator = f.operator_code || getOperatorCode(flightNumber);
               const flightId = f.flight_id || f.id || f.raw?.flight_id || f.raw?.id;
               const key = flightStableKey(f, idx);
               const assignedRun = flightToRunMap[key];
@@ -463,7 +518,7 @@ function FlightListColumn({
                   <td>{timeStr}</td>
                   <td>{flightNumber}</td>
                   <td>{dest}</td>
-                  <td>{airline}</td>
+                  <td>{operator}</td>
                   <td>
                     {assignmentsLoading ? (
                       <span className="planner-subtext">Loading…</span>
@@ -1021,7 +1076,7 @@ function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
 
 const PlannerPage = () => {
   const [date, setDate] = useState(todayISO());
-  const [airline, setAirline] = useState(DEFAULT_AIRLINE);
+  const [operator, setOperator] = useState(DEFAULT_OPERATOR);
   const [flights, setFlights] = useState([]);
   const [flightsCount, setFlightsCount] = useState(null);
   const [flightsOk, setFlightsOk] = useState(null);
@@ -1030,10 +1085,12 @@ const PlannerPage = () => {
   const [runs, setRuns] = useState([]);
   const [unassigned, setUnassigned] = useState([]);
   const [roster, setRoster] = useState([]);
+  const [rosterSource, setRosterSource] = useState("placeholder");
   const [runsDailyCount, setRunsDailyCount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [rosterLoading, setRosterLoading] = useState(false);
   const [autoAssignLoading, setAutoAssignLoading] = useState(false);
   const [autoAssignError, setAutoAssignError] = useState("");
   const [autoAssignSuccess, setAutoAssignSuccess] = useState(false);
@@ -1105,6 +1162,7 @@ const PlannerPage = () => {
     return { runs: runsList, unassigned: unassignedFlights };
   }, [resolvedAssignments, roster, flights, assignmentByFlightKey]);
   const loadingStaffRuns = assignmentsLoading;
+  const loadingStaffView = rosterLoading || loadingStaffRuns;
 
   // Convenience flags based on dragPayload type
   const isDraggingUnassignedFlight = dragPayload?.type === "UNASSIGNED_FLIGHT";
@@ -1180,7 +1238,7 @@ const PlannerPage = () => {
       const params = new URLSearchParams({
         date,
         airport: DEFAULT_AIRPORT,
-        airline: "ALL",
+        operator: "ALL",
         shift: "ALL",
         runId: String(runId),
       });
@@ -1197,7 +1255,7 @@ const PlannerPage = () => {
       const params = new URLSearchParams({
         date,
         airport: DEFAULT_AIRPORT,
-        airline: operator,
+        operator: operator,
         shift,
       });
       const url = `/runsheets/pack?${params.toString()}`;
@@ -1397,13 +1455,60 @@ const PlannerPage = () => {
     }
   }
 
+  async function loadRosterForDate(dateStr, operatorCode, signal) {
+    if (!dateStr) return;
+    setRosterLoading(true);
+    setStaffViewError("");
+
+    try {
+      const resp = await fetchStaff(
+        { date: dateStr, airport: DEFAULT_AIRPORT, operator: operatorCode },
+        { signal }
+      );
+      if (signal?.aborted) return;
+
+      if (resp?.ok) {
+        const payload = resp.data || {};
+        const list = extractStaffList(payload);
+        if (list.length) {
+          const normalized = list.map(normalizeStaffEntry);
+          setRoster(normalized);
+          setRosterSource("api");
+          setStaffViewError("");
+        } else {
+          setRoster(placeholderRoster);
+          setRosterSource("placeholder");
+          setStaffViewError("Staff roster unavailable; using DEV fallback.");
+        }
+      } else {
+        setRoster(placeholderRoster);
+        setRosterSource("placeholder");
+        setStaffViewError(formatSafeRequestError("Staff roster", resp));
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setRoster(placeholderRoster);
+        setRosterSource("placeholder");
+        setStaffViewError(
+          err?.message
+            ? `Staff roster ${err.message}. Using DEV fallback.`
+            : "Staff roster unavailable; using DEV fallback."
+        );
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setRosterLoading(false);
+      }
+    }
+  }
+
 
   async function refreshFlightsOnly() {
     if (!date) {
       throw new Error("Flights refresh requires a date.");
     }
-    const airlineCode = airline || DEFAULT_AIRLINE;
-    const flightsResp = await fetchFlights(date, airlineCode, DEFAULT_AIRPORT);
+    const operatorCode = operator || DEFAULT_OPERATOR;
+    const flightsResp = await fetchFlights(date, operatorCode, DEFAULT_AIRPORT);
     const flightsData = flightsResp.data || {};
     const normalizedFlights = toSortedNormalizedFlights(flightsData);
     const nextCount = normalizedFlights.length;
@@ -1416,7 +1521,7 @@ const PlannerPage = () => {
   async function loadPlannerData(signal) {
     if (!date) return;
 
-    const airlineCode = airline || DEFAULT_AIRLINE;
+    const operatorCode = operator || DEFAULT_OPERATOR;
 
     setLoading(true);
     setLoadingRuns(true);
@@ -1433,7 +1538,7 @@ const PlannerPage = () => {
       try {
         const flightsResp = await fetchFlights(
           date,
-          airlineCode,
+          operatorCode,
           DEFAULT_AIRPORT,
           { signal }
         );
@@ -1458,7 +1563,7 @@ const PlannerPage = () => {
       try {
         const runsResp = await fetchDailyRuns(
           date,
-          { operator: (airlineCode || "ALL"), airport: DEFAULT_AIRPORT, shift: "ALL" },
+          { operator: (operatorCode || "ALL"), airport: DEFAULT_AIRPORT, shift: "ALL" },
           { signal }
         );
         if (signal?.aborted) {
@@ -1494,8 +1599,9 @@ const PlannerPage = () => {
     })();
 
     void loadAssignmentsForDate(date, signal);
+    const rosterPromise = loadRosterForDate(date, operatorCode, signal);
 
-    await Promise.all([flightsPromise, runsPromise]);
+    await Promise.all([flightsPromise, runsPromise, rosterPromise]);
 
     if (!signal?.aborted) {
       setLoading(false);
@@ -1509,17 +1615,18 @@ const PlannerPage = () => {
 
     loadPlannerData(controller.signal);
     return () => controller.abort();
-  }, [date, airline]);
+  }, [date, operator]);
 
   useEffect(() => {
     setRoster(placeholderRoster);
+    setRosterSource("placeholder");
     setStaffViewError("");
   }, [placeholderRoster]);
 
   useEffect(() => {
     setAutoAssignError("");
     setAutoAssignSuccess(false);
-  }, [date, airline]);
+  }, [date, operator]);
 
   useEffect(() => {
     if (!autoAssignSuccess) return undefined;
@@ -1629,7 +1736,7 @@ const PlannerPage = () => {
 
   async function handleAutoAssign() {
     if (!date) return;
-    const airlineCode = airline || DEFAULT_AIRLINE;
+    const operatorCode = operator || DEFAULT_OPERATOR;
 
     setAutoAssignLoading(true);
     setAutoAssignError("");
@@ -1663,7 +1770,7 @@ const PlannerPage = () => {
       setSelectedRunId((prev) => prev ?? (newRuns[0]?.id ?? null));
 
       try {
-        const flightsResp = await fetchFlights(date, airlineCode, DEFAULT_AIRPORT);
+        const flightsResp = await fetchFlights(date, operatorCode, DEFAULT_AIRPORT);
         const flightsData = flightsResp.data || {};
         const normalizedFlights = toSortedNormalizedFlights(flightsData);
         setFlights(normalizedFlights);
@@ -1687,7 +1794,7 @@ const PlannerPage = () => {
     setPullLoading(true);
     setPullMessage("");
     try {
-      const op = airline || "ALL";
+      const op = operator || "ALL";
       const resp = await pullFlights(date, op, {
         airport: DEFAULT_AIRPORT,
         timeoutMs: 60000,
@@ -2121,12 +2228,12 @@ const PlannerPage = () => {
             />
           </label>
           <label style={{ marginLeft: "0.75rem" }}>
-            Airline:{" "}
+            Operator:{" "}
             <select
-              value={airline}
-              onChange={(e) => setAirline(e.target.value)}
+              value={operator}
+              onChange={(e) => setOperator(e.target.value)}
             >
-              {AIRLINE_OPTIONS.map((code) => (
+              {OPERATOR_OPTIONS.map((code) => (
                 <option key={code} value={code}>
                   {code}
                 </option>
@@ -2457,14 +2564,17 @@ const PlannerPage = () => {
                 <div className="planner-staff-roster">
                   <div className="planner-staff-header">
                     <h3>Rostered staff</h3>
-                    {loadingStaffRuns && <span className="muted">Loading…</span>}
+                    {rosterSource === "placeholder" && (
+                      <span className="tag tag--warn">DEV fallback</span>
+                    )}
+                    {loadingStaffView && <span className="muted">Loading…</span>}
                   </div>
                   {staffViewError && (
                     <div className="planner-status planner-status--warn">
                       {staffViewError}
                     </div>
                   )}
-                  {!staffViewError && !roster.length && !loadingStaffRuns && (
+                  {!staffViewError && !roster.length && !loadingStaffView && (
                     <div className="planner-status planner-status--warn">
                       No roster entries for this date.
                     </div>
@@ -2480,7 +2590,7 @@ const PlannerPage = () => {
                           0
                         ) || 0;
                       const flightsLabel =
-                        staffViewError || loadingStaffRuns ? "—" : assignedFlights;
+                        staffViewError || loadingStaffView ? "—" : assignedFlights;
                       const isSelected =
                         selectedStaffId === (shift.staff_id || shift.staffId);
                       return (
@@ -2521,7 +2631,7 @@ const PlannerPage = () => {
                     !loadingStaffRuns &&
                     (staffRuns.runs || []).length === 0 && (
                       <div className="planner-status planner-status--warn">
-                        No staff runs available for {airline} on {date}. Showing
+                        No staff runs available for {operator} on {date}. Showing
                         placeholder assignments.
                       </div>
                     )}
@@ -2624,11 +2734,11 @@ const PlannerPage = () => {
           </span>
           <span>
             <strong>AM (05:00–12:00):</strong> {summary.am.total} [
-            {formatByAirline(summary.am.byAirline)}]
+            {formatByOperator(summary.am.byOperator)}]
           </span>
           <span>
             <strong>PM (12:01–23:00):</strong> {summary.pm.total} [
-            {formatByAirline(summary.pm.byAirline)}]
+            {formatByOperator(summary.pm.byOperator)}]
           </span>
           <span>
             <strong>Unassigned:</strong> {unassignedCount}
