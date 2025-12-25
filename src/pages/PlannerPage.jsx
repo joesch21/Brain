@@ -10,9 +10,10 @@ import {
   fetchStaffRuns,
   pullFlights,
 } from "../lib/apiClient";
+import { REQUIRED_AIRPORT } from "../lib/opsDefaults";
 import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../utils/runConflictUtils";
 
-const DEFAULT_AIRPORT = "YSSY";
+const DEFAULT_AIRPORT = REQUIRED_AIRPORT;
 
 // --- small helpers ---------------------------------------------------------
 
@@ -1390,9 +1391,7 @@ const PlannerPage = () => {
       throw new Error("Flights refresh requires a date.");
     }
     const airlineCode = airline || DEFAULT_AIRLINE;
-    const flightsResp = await fetchFlights(date, airlineCode, {
-      airport: DEFAULT_AIRPORT,
-    });
+    const flightsResp = await fetchFlights(date, airlineCode, DEFAULT_AIRPORT);
     const flightsData = flightsResp.data || {};
     const normalizedFlights = normalizeFlights(flightsData);
     const nextCount = Number.isFinite(flightsData.count)
@@ -1423,10 +1422,12 @@ const PlannerPage = () => {
 
     const flightsPromise = (async () => {
       try {
-        const flightsResp = await fetchFlights(date, airlineCode, {
-          signal,
-          airport: DEFAULT_AIRPORT,
-        });
+        const flightsResp = await fetchFlights(
+          date,
+          airlineCode,
+          DEFAULT_AIRPORT,
+          { signal }
+        );
         if (!signal?.aborted) {
           const flightsData = flightsResp.data || {};
           const normalizedFlights = normalizeFlights(flightsData);
@@ -1654,7 +1655,7 @@ const PlannerPage = () => {
       setSelectedRunId((prev) => prev ?? (newRuns[0]?.id ?? null));
 
       try {
-        const flightsResp = await fetchFlights(date, airlineCode, { airport: DEFAULT_AIRPORT });
+        const flightsResp = await fetchFlights(date, airlineCode, DEFAULT_AIRPORT);
         const flightsData = flightsResp.data || {};
         const normalizedFlights = normalizeFlights(flightsData);
         setFlights(normalizedFlights);
@@ -1767,9 +1768,7 @@ const PlannerPage = () => {
     const warnings = [];
 
     try {
-      const flightsResp = await fetchFlights(date, "ALL", {
-        airport: DEFAULT_AIRPORT,
-      });
+      const flightsResp = await fetchFlights(date, "ALL", DEFAULT_AIRPORT);
       const flightsData = flightsResp.data || {};
       nextFlights = normalizeFlights(flightsData);
       nextFlightsCount = Number.isFinite(flightsData.count)
@@ -1793,9 +1792,7 @@ const PlannerPage = () => {
             airport: DEFAULT_AIRPORT,
             timeoutMs: 30000,
           });
-          const refreshedResp = await fetchFlights(date, "ALL", {
-            airport: DEFAULT_AIRPORT,
-          });
+          const refreshedResp = await fetchFlights(date, "ALL", DEFAULT_AIRPORT);
           const refreshedData = refreshedResp.data || {};
           nextFlights = normalizeFlights(refreshedData);
           nextFlightsCount = Number.isFinite(refreshedData.count)

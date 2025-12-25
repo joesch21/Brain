@@ -1,6 +1,7 @@
 // Centralized API client for Brain frontend
 // Uses VITE_OPS_API_BASE (or same-origin) and normalizes errors for schedule/planner flows.
 import { OPS_API_BASE } from "./opsApiBase";
+import { REQUIRED_AIRPORT, normalizeOperator } from "./opsDefaults";
 import { pushBackendDebugEntry } from "./backendDebug";
 
 const DEFAULT_AIRPORT = "YSSY";
@@ -202,23 +203,25 @@ export async function fetchStatus(date, options = {}) {
   return request(`/api/status${qs.toString() ? `?${qs.toString()}` : ""}`, options);
 }
 
-export async function fetchFlights(date, airline = "ALL", options = {}) {
+export async function fetchFlights(
+  date,
+  operator = "ALL",
+  airport = REQUIRED_AIRPORT,
+  options = {}
+) {
   if (!date) {
     throw new Error("fetchFlights: date is required");
-  }
-  if (!options.airport) {
-    throw new Error("fetchFlights: airport is required");
   }
 
   const qs = new URLSearchParams();
   qs.set("date", date);
-  qs.set("airport", options.airport);
-  if (airline) qs.set("airline", airline);
+  qs.set("airport", String(airport).toUpperCase());
+  qs.set("operator", normalizeOperator(operator));
   return request(`/api/flights?${qs.toString()}`, options);
 }
 
 export async function getFlights({ date, airport, airline = "ALL", signal } = {}) {
-  return fetchFlights(date, airline, { airport, signal });
+  return fetchFlights(date, airline, airport, { signal });
 }
 
 export async function pullFlights(date, airline = "ALL", options = {}) {

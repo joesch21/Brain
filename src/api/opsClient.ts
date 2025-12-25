@@ -28,6 +28,8 @@ import {
   DEFAULT_OPERATOR,
   DEFAULT_SHIFT,
   REQUIRED_AIRPORT,
+  normalizeOperator,
+  normalizeShift,
 } from "../lib/opsDefaults";
 
 async function handleJson<T>(res: Response): Promise<T> {
@@ -90,7 +92,25 @@ export interface EmployeeAssignmentsResponse {
   ok: boolean;
   date: string;
   assignments: EmployeeAssignment[];
+  error?: string;
+  available?: boolean;
+  reason?: string;
   [key: string]: any;
+}
+
+function normalizeAssignmentsToList(assignments: any): EmployeeAssignment[] {
+  if (!assignments) return [];
+  if (Array.isArray(assignments)) return assignments as EmployeeAssignment[];
+  if (typeof assignments === "object") {
+    const out: EmployeeAssignment[] = [];
+    for (const v of Object.values(assignments)) {
+      if (!v) continue;
+      if (Array.isArray(v)) out.push(...(v as EmployeeAssignment[]));
+      else if (typeof v === "object") out.push(v as EmployeeAssignment);
+    }
+    return out;
+  }
+  return [];
 }
 
 /**
@@ -98,17 +118,18 @@ export interface EmployeeAssignmentsResponse {
  */
 export async function fetchFlightsForDate(
   date: string,
-  airline: string = DEFAULT_OPERATOR,
+  operator: string = DEFAULT_OPERATOR,
+  airport: string = REQUIRED_AIRPORT,
 ): Promise<Flight[]> {
   const url = new URL(`${API_BASE}/flights`);
   url.searchParams.set("date", date);
-  url.searchParams.set("airline", airline);
-  url.searchParams.set("airport", REQUIRED_AIRPORT);
+  url.searchParams.set("airport", String(airport).toUpperCase());
+  url.searchParams.set("operator", normalizeOperator(operator));
 
   const res = await fetch(url.toString());
   const payload = await handleJson<FlightsResponse>(res);
 
-  // Be defensive: if backend says ok:false, throw a readable error.
+  // Flights are required data; allow caller to handle errors.
   if (!payload.ok) {
     throw new Error(payload.error || "Failed to load flights from Ops API");
   }
@@ -121,25 +142,45 @@ export async function fetchFlightsForDate(
  */
 export async function fetchEmployeeAssignmentsForDate(
   date: string,
-  operator: string = DEFAULT_OPERATOR,
-  shift: string = DEFAULT_SHIFT,
+  opts?: { airport?: string; operator?: string; shift?: string } | string,
 ): Promise<EmployeeAssignment[]> {
-  const url = new URL(`${API_BASE}/employee_assignments/daily`);
-  url.searchParams.set("date", date);
-  url.searchParams.set("operator", operator);
-  url.searchParams.set("shift", shift);
-  url.searchParams.set("airport", REQUIRED_AIRPORT);
+  // Staff assignments are OPTIONAL overlay: never throw, never block renders.
+  try {
+    const legacyOperator = typeof opts === "string" ? opts : null;
+    const airport =
+      typeof opts === "object" && opts?.airport ? opts.airport : REQUIRED_AIRPORT;
+    const operator =
+      typeof opts === "object" && opts?.operator
+        ? opts.operator
+        : legacyOperator || DEFAULT_OPERATOR;
+    const shift =
+      typeof opts === "object" && opts?.shift ? opts.shift : DEFAULT_SHIFT;
 
-  const res = await fetch(url.toString());
-  const payload = await handleJson<EmployeeAssignmentsResponse>(res);
+    const url = new URL(`${API_BASE}/employee_assignments/daily`);
+    url.searchParams.set("date", date);
+    url.searchParams.set("airport", String(airport).toUpperCase());
+    url.searchParams.set("operator", normalizeOperator(operator));
+    url.searchParams.set("shift", normalizeShift(shift));
 
-  if (!payload.ok) {
-    throw new Error(
-      payload.error || "Failed to load employee assignments from Ops API",
-    );
+    const res = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return [];
+
+    let payload: EmployeeAssignmentsResponse | null = null;
+    try {
+      payload = (await res.json()) as EmployeeAssignmentsResponse;
+    } catch {
+      return [];
+    }
+
+    if (payload?.available === false) return [];
+    if (payload?.ok === false) return [];
+
+    return normalizeAssignmentsToList((payload as any)?.assignments);
+  } catch {
+    return [];
   }
-
-  return payload.assignments ?? [];
 }
 
 /**
