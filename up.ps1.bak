@@ -210,31 +210,13 @@ try {
 }
 
 # 3) UI -> flights smoke test
-$FlightsUrl = "$UiBaseUrl/api/flights?date=$SmokeDate&airport=$SmokeAirport&airline=ALL"
-
-# UI->Flights (retry, then WARN; never block bring-up)
-$FlightsOk = $false
-$FlightsResp = $null
-$FlightsErr = $null
-
-for ($i = 1; $i -le 4; $i++) {
-  try {
-    $t = Measure-Command {
-      $FlightsResp = Invoke-RestMethod $FlightsUrl -TimeoutSec 20
-    }
-    $FlightsOk = $true
-    Write-Host ("UI->Flights: ok={0} count={1} source={2} airport={3} local_date={4} ({5}ms) attempt={6}" -f `
-      $FlightsResp.ok, $FlightsResp.count, $FlightsResp.source, $FlightsResp.airport, $FlightsResp.local_date,
-      [math]::Round($t.TotalMilliseconds,0), $i) -ForegroundColor Green
-    break
-  } catch {
-    $FlightsErr = $_.Exception.Message
-    Start-Sleep -Seconds 2
-  }
-}
-
-if (-not $FlightsOk) {
-  Write-Host "UI->Flights: WARN (non-fatal) $FlightsErr" -ForegroundColor Yellow
+try {
+  $flightsUrl = "$UiBaseUrl/api/flights?date=$SmokeDate&airport=$SmokeAirport&airline=ALL"
+  $flights = Try-JsonGet -Url $flightsUrl -TimeoutSec 30
+  Write-Host ("UI->Flights: ok={0} count={1} source={2} airport={3} local_date={4}" -f $flights.ok, $flights.count, $flights.source, $flights.airport, $flights.local_date) -ForegroundColor Green
+} catch {
+  Write-Host "UI->Flights: FAIL" -ForegroundColor Red
+  Write-Host $_.Exception.Message
 }
 
 # 4) UI -> runs smoke test
