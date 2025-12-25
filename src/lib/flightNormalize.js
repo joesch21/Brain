@@ -34,12 +34,20 @@ export function normalizeFlightRow(raw) {
   const dest = pickFirst(raw?.destination, raw?.dest);
   const timeIso = pickFirst(raw?.estimated_off, raw?.scheduled_off);
   const time = formatLocalHHmm(timeIso);
+  const key =
+    raw?.key ??
+    raw?.fa_flight_id ??
+    (ident && timeIso ? `${ident}|${timeIso}` : null);
+  const flightId = raw?.flight_id ?? raw?.id ?? null;
 
   return {
     // keep raw for debugging
     raw,
 
     // UI-friendly core fields
+    key,
+    id: flightId,
+    flight_id: flightId,
     ident: ident ?? "—",
     operator: operator ?? "UNK",
     dest: dest ?? "—",

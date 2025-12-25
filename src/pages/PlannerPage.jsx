@@ -11,10 +11,13 @@ import {
   pullFlights,
 } from "../lib/apiClient";
 import { extractFlightsList, normalizeFlightRow } from "../lib/flightNormalize";
-import { REQUIRED_AIRPORT } from "../lib/opsDefaults";
+import { ENABLE_ROSTER, ENABLE_STAFF_RUNS, REQUIRED_AIRPORT } from "../lib/opsDefaults";
 import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../utils/runConflictUtils";
 
 const DEFAULT_AIRPORT = REQUIRED_AIRPORT;
+const ROSTER_ENABLED = ENABLE_ROSTER;
+const STAFF_RUNS_ENABLED = ENABLE_STAFF_RUNS;
+const STAFF_VIEW_ENABLED = ROSTER_ENABLED && STAFF_RUNS_ENABLED;
 
 // --- small helpers ---------------------------------------------------------
 
@@ -95,21 +98,25 @@ function formatLocalTimeLabel(value) {
 }
 
 function flightRowKey(f, idx) {
-  // Prefer stable IDs from backend if present
-  const id =
-    f?.id ??
-    f?.flight_id ??
-    f?.fa_flight_id ??
-    f?.faFlightId ??
+  const preferred = f?.key ?? f?.fa_flight_id ?? f?.faFlightId ?? null;
+  if (preferred != null) return String(preferred);
+
+  const ident =
     f?.ident ??
     f?.ident_iata ??
+    f?.flight_number ??
+    f?.flightNumber ??
     null;
-
-  if (id != null) return String(id);
-
-  const fn = f?.flight_number || f?.flightNumber || "UNK";
-  const t = f?.time_local || f?.timeLocal || f?.dep_time || "UNK";
-  return `${fn}|${t}|${idx}`;
+  const timeIso =
+    f?.time_iso ??
+    f?.timeIso ??
+    f?.estimated_off ??
+    f?.scheduled_off ??
+    null;
+  if (ident && timeIso) return `${ident}|${timeIso}`;
+  if (ident) return `${ident}|${idx}`;
+  if (timeIso) return `UNK|${timeIso}`;
+  return `row-${idx}`;
 }
 
 // --- summary computation ----------------------------------------------------
@@ -127,8 +134,8 @@ function computeSummary(flights, flightToRunMap) {
   for (const [idx, f] of flights.entries()) {
     summary.total += 1;
 
-    const airline = getAirlineCode(f.flight_number || f.flightNumber);
-    const timeStr = f.time_local || f.timeLocal || f.time || null;
+    const airline = getAirlineCode(f.ident || f.flight_number || f.flightNumber);
+    const timeStr = f.time || f.time_local || f.timeLocal || null;
     const band = classifyTimeBand(timeStr);
 
     const key = flightRowKey(f, idx);
@@ -159,9 +166,15 @@ function formatByAirline(byAirline) {
     .join(", ");
 }
 
-function normalizeFlights(data) {
-  const raw = extractFlightsList(data);
-  return raw.map(normalizeFlightRow);
+function toSortedNormalizedFlights(payload) {
+  const rawList = extractFlightsList(payload);
+  const normalized = rawList.map(normalizeFlightRow);
+  normalized.sort((a, b) => {
+    const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
+    const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
+    return ta - tb;
+  });
+  return normalized;
 }
 
 function normalizeRuns(data) {
@@ -340,15 +353,16 @@ function FlightListColumn({
                 </tr>
               ) : (
                 safeUnassigned.map((f, idx) => {
-                  const flightNumber = f.flight_number || f.flightNumber;
+                  const flightNumber = f.ident || f.flight_number || f.flightNumber;
                   const timeStr =
+                    f.time ||
                     f.dep_time ||
                     f.time_local ||
                     f.timeLocal ||
                     f.planned_start_time ||
                     f.plannedStartTime ||
                     "";
-                  const dest = f.destination || f.dest || "";
+                  const dest = f.dest || f.destination || "";
                   const reason = f.reason || f.unassigned_reason || "";
                   const seq =
                     f.sequence_index ??
@@ -357,7 +371,7 @@ function FlightListColumn({
                     null;
                   const key = flightRowKey(f, idx);
                   const isSelected = selectedFlightKey === key;
-                  const flightId = f.flight_id || f.id;
+                  const flightId = f.flight_id || f.id || f.raw?.flight_id || f.raw?.id;
 
                   return (
                     <tr
@@ -409,11 +423,11 @@ function FlightListColumn({
           </thead>
           <tbody>
             {flights.map((f, idx) => {
-              const flightNumber = f.flight_number || f.flightNumber;
-              const timeStr = f.time_local || f.timeLocal || "";
-              const dest = f.destination || f.dest || "";
+              const flightNumber = f.ident || f.flight_number || f.flightNumber;
+              const timeStr = f.time || f.time_local || f.timeLocal || "";
+              const dest = f.dest || f.destination || "";
               const airline = getAirlineCode(flightNumber);
-              const flightId = f.id || f.flight_id;
+              const flightId = f.id || f.flight_id || f.raw?.flight_id || f.raw?.id;
               const key = flightRowKey(f, idx);
               const assignedRun = flightToRunMap[key];
               const assignedForFlight =
@@ -1353,7 +1367,7 @@ const PlannerPage = () => {
   }
 
   async function loadRosterForDate(dateStr, signal) {
-    if (!dateStr) return;
+    if (!dateStr || !ROSTER_ENABLED) return;
 
     const { signal: timeoutSignal, clear } = createTimeoutSignal(
       signal,
@@ -1380,7 +1394,7 @@ const PlannerPage = () => {
   }
 
   async function loadStaffRunsForDate(dateStr, airlineCode, signal) {
-    if (!dateStr) return;
+    if (!dateStr || !STAFF_RUNS_ENABLED) return;
 
     const { signal: timeoutSignal, clear } = createTimeoutSignal(
       signal,
@@ -1418,15 +1432,8 @@ const PlannerPage = () => {
     const airlineCode = airline || DEFAULT_AIRLINE;
     const flightsResp = await fetchFlights(date, airlineCode, DEFAULT_AIRPORT);
     const flightsData = flightsResp.data || {};
-    const normalizedFlights = normalizeFlights(flightsData);
-    normalizedFlights.sort((a, b) => {
-      const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
-      const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
-      return ta - tb;
-    });
-    const nextCount = Number.isFinite(flightsData.count)
-      ? flightsData.count
-      : normalizedFlights.length;
+    const normalizedFlights = toSortedNormalizedFlights(flightsData);
+    const nextCount = normalizedFlights.length;
     setFlights(normalizedFlights);
     setFlightsCount(nextCount);
     setFlightsOk(true);
@@ -1441,7 +1448,7 @@ const PlannerPage = () => {
     setLoading(true);
     setLoadingRuns(true);
     setAssignmentsLoading(true);
-    setLoadingStaffRuns(true);
+    setLoadingStaffRuns(STAFF_VIEW_ENABLED);
     setError("");
     setRunsError("");
     setAssignmentsError("");
@@ -1460,18 +1467,9 @@ const PlannerPage = () => {
         );
         if (!signal?.aborted) {
           const flightsData = flightsResp.data || {};
-          const normalizedFlights = normalizeFlights(flightsData);
-          normalizedFlights.sort((a, b) => {
-            const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
-            const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
-            return ta - tb;
-          });
+          const normalizedFlights = toSortedNormalizedFlights(flightsData);
           setFlights(normalizedFlights);
-          setFlightsCount(
-            Number.isFinite(flightsData.count)
-              ? flightsData.count
-              : normalizedFlights.length
-          );
+          setFlightsCount(normalizedFlights.length);
           setFlightsOk(true);
         }
       } catch (err) {
@@ -1524,11 +1522,17 @@ const PlannerPage = () => {
     })();
 
     void loadAssignmentsForDate(date, signal);
-    // Optional endpoints (currently 404): disable calls to avoid console spam.
-    // When Brain provides safe envelopes (ok:true, available:false), re-enable.
-    setRoster([]);
-    setStaffRuns({ runs: [], unassigned: [] });
-    setLoadingStaffRuns(false);
+    if (ROSTER_ENABLED) {
+      void loadRosterForDate(date, signal);
+    } else {
+      setRoster([]);
+    }
+    if (STAFF_RUNS_ENABLED) {
+      void loadStaffRunsForDate(date, airlineCode, signal);
+    } else {
+      setStaffRuns({ runs: [], unassigned: [] });
+      setLoadingStaffRuns(false);
+    }
 
     await Promise.all([flightsPromise, runsPromise]);
 
@@ -1545,6 +1549,12 @@ const PlannerPage = () => {
     loadPlannerData(controller.signal);
     return () => controller.abort();
   }, [date, airline]);
+
+  useEffect(() => {
+    if (!STAFF_VIEW_ENABLED && activeTab === "staff") {
+      setActiveTab("runs");
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     setAutoAssignError("");
@@ -1695,11 +1705,9 @@ const PlannerPage = () => {
       try {
         const flightsResp = await fetchFlights(date, airlineCode, DEFAULT_AIRPORT);
         const flightsData = flightsResp.data || {};
-        const normalizedFlights = normalizeFlights(flightsData);
+        const normalizedFlights = toSortedNormalizedFlights(flightsData);
         setFlights(normalizedFlights);
-        setFlightsCount(
-          Number.isFinite(flightsData.count) ? flightsData.count : normalizedFlights.length
-        );
+        setFlightsCount(normalizedFlights.length);
         await loadAssignmentsForDate(date);
       } catch (flightErr) {
         console.error("Auto-assign refresh flights failed", flightErr);
@@ -1757,6 +1765,10 @@ const PlannerPage = () => {
 
   async function handleGenerateStaffRuns() {
     if (!date) return;
+    if (!STAFF_RUNS_ENABLED) {
+      setStaffViewError("Staff runs are disabled.");
+      return;
+    }
 
     const airlineCode = airline || DEFAULT_AIRLINE;
     try {
@@ -1808,15 +1820,8 @@ const PlannerPage = () => {
     try {
       const flightsResp = await fetchFlights(date, "ALL", DEFAULT_AIRPORT);
       const flightsData = flightsResp.data || {};
-      nextFlights = normalizeFlights(flightsData);
-      nextFlights.sort((a, b) => {
-        const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
-        const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
-        return ta - tb;
-      });
-      nextFlightsCount = Number.isFinite(flightsData.count)
-        ? flightsData.count
-        : nextFlights.length;
+      nextFlights = toSortedNormalizedFlights(flightsData);
+      nextFlightsCount = nextFlights.length;
       setFlights(nextFlights);
       setFlightsCount(nextFlightsCount);
       setFlightsOk(true);
@@ -1837,15 +1842,8 @@ const PlannerPage = () => {
           });
           const refreshedResp = await fetchFlights(date, "ALL", DEFAULT_AIRPORT);
           const refreshedData = refreshedResp.data || {};
-          nextFlights = normalizeFlights(refreshedData);
-          nextFlights.sort((a, b) => {
-            const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
-            const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
-            return ta - tb;
-          });
-          nextFlightsCount = Number.isFinite(refreshedData.count)
-            ? refreshedData.count
-            : nextFlights.length;
+          nextFlights = toSortedNormalizedFlights(refreshedData);
+          nextFlightsCount = nextFlights.length;
           setFlights(nextFlights);
           setFlightsCount(nextFlightsCount);
           setFlightsOk(true);
@@ -2205,7 +2203,12 @@ const PlannerPage = () => {
           <button
             type="button"
             onClick={handleGenerateStaffRuns}
-            disabled={generatingStaffRuns || loadingStaffRuns}
+            disabled={generatingStaffRuns || loadingStaffRuns || !STAFF_RUNS_ENABLED}
+            title={
+              STAFF_RUNS_ENABLED
+                ? "Generate staff runs"
+                : "Staff runs are disabled in this environment."
+            }
           >
             {generatingStaffRuns ? "Generating staff runs…" : "Generate staff runs"}
           </button>
@@ -2479,16 +2482,18 @@ const PlannerPage = () => {
             >
               Runs View
             </button>
-            <button
-              type="button"
-              className={activeTab === "staff" ? "active" : ""}
-              onClick={() => setActiveTab("staff")}
-            >
-              Staff View
-            </button>
+            {STAFF_VIEW_ENABLED && (
+              <button
+                type="button"
+                className={activeTab === "staff" ? "active" : ""}
+                onClick={() => setActiveTab("staff")}
+              >
+                Staff View
+              </button>
+            )}
           </div>
 
-          {activeTab === "runs" ? (
+          {activeTab === "runs" || !STAFF_VIEW_ENABLED ? (
             <main className="planner-main">
               <FlightListColumn
                 flights={flights}
