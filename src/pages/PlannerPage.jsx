@@ -1124,6 +1124,21 @@ const PlannerPage = () => {
     [date]
   );
 
+  const openRunPack = useCallback(
+    ({ shift = "ALL", operator = "ALL" } = {}) => {
+      if (!date) return;
+      const params = new URLSearchParams({
+        date,
+        airport: DEFAULT_AIRPORT,
+        operator,
+        shift,
+      });
+      const url = `/runsheets/pack?${params.toString()}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
+    [date]
+  );
+
   // Flights that are NOT present in any run -> Unassigned pool
   const fallbackUnassignedFlights = useMemo(() => {
     if (!Array.isArray(flights) || !flights.length) return [];
@@ -2229,6 +2244,11 @@ const PlannerPage = () => {
               </div>
               <div className="planner-prepare-status-pill">
                 {prepareStatus.replace("_", " ")}
+              </div>
+              <div className="planner-prepare-summary-actions">
+                <button type="button" onClick={() => openRunPack()}>
+                  Print Pack
+                </button>
               </div>
             </div>
 

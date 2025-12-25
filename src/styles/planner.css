@@ -251,6 +251,23 @@
   flex-wrap: wrap;
 }
 
+.planner-prepare-summary-actions {
+  margin-left: auto;
+}
+
+.planner-prepare-summary-actions button {
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5f5;
+  background: #f5f7ff;
+  color: #1a237e;
+  cursor: pointer;
+}
+
+.planner-prepare-summary-actions button:hover {
+  background: #e8edff;
+}
+
 .planner-prepare-status-pill {
   padding: 0.2rem 0.6rem;
   border-radius: 999px;

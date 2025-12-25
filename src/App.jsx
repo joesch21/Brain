@@ -6,6 +6,7 @@ import PlannerPage from "./pages/PlannerPage";
 import MachineRoomPage from "./pages/MachineRoomPage";
 import SchedulePage from "./pages/SchedulePage";
 import RunSheetsPage from "./pages/RunSheetsPage";
+import RunSheetsPackPage from "./pages/RunSheetsPackPage";
 import RunsOverviewPage from "./pages/RunsOverviewPage";
 import RunSheetTable from "./pages/RunSheetTable";
 
@@ -33,6 +34,7 @@ const App = () => {
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/runs" element={<RunsOverviewPage />} />
           <Route path="/runsheets" element={<RunSheetsPage />} />
+          <Route path="/runsheets/pack" element={<RunSheetsPackPage />} />
 
           {/* Single-run table view */}
           <Route path="/run-sheet" element={<RunSheetTable />} />
