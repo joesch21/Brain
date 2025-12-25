@@ -1,0 +1,371 @@
+--- a/src/lib/opsDefaults.js
++++ b/src/lib/opsDefaults.js
+@@ -0,0 +1,29 @@
++// src/lib/opsDefaults.js
++// EWOT: Centralizes explicit ops defaults (airport/operator/shift) so UI requests are always contract-safe.
++
++function envUpper(name, fallback) {
++  try {
++    const raw = (import.meta?.env?.[name] ?? "").toString().trim();
++    const value = raw.length > 0 ? raw : fallback;
++    return String(value).toUpperCase();
++  } catch {
++    return String(fallback).toUpperCase();
++  }
++}
++
++// Airport is required everywhere. Keep it explicit, never inferred.
++export const REQUIRED_AIRPORT = envUpper("VITE_REQUIRED_AIRPORT", "YSSY");
++
++// Operator + shift default to ALL unless explicitly overridden.
++export const DEFAULT_OPERATOR = envUpper("VITE_DEFAULT_OPERATOR", "ALL");
++export const DEFAULT_SHIFT = envUpper("VITE_DEFAULT_SHIFT", "ALL");
++
++export function normalizeOperator(op) {
++  const v = String(op ?? DEFAULT_OPERATOR).trim().toUpperCase();
++  return v === "ALL" || v === "ALL " ? "ALL" : v;
++}
++
++export function normalizeShift(shift) {
++  const v = String(shift ?? DEFAULT_SHIFT).trim().toUpperCase();
++  return v === "AM" || v === "PM" || v === "ALL" ? v : "ALL";
++}
+--- a/src/api/opsClient.ts
++++ b/src/api/opsClient.ts
+@@ -24,6 +24,7 @@
+ }
+ 
+ import { API_BASE } from "./apiBase";
++import { REQUIRED_AIRPORT, DEFAULT_OPERATOR, DEFAULT_SHIFT, normalizeOperator, normalizeShift } from "../lib/opsDefaults";
+@@ -95,6 +96,23 @@
+ export interface EmployeeAssignmentsResponse {
+   ok: boolean;
+   assignments: EmployeeAssignment[];
+   error?: string;
++  available?: boolean;
++  reason?: string;
+ }
+ 
++function normalizeAssignmentsToList(assignments: any): EmployeeAssignment[] {
++  if (!assignments) return [];
++  if (Array.isArray(assignments)) return assignments as EmployeeAssignment[];
++  if (typeof assignments === "object") {
++    const out: EmployeeAssignment[] = [];
++    for (const v of Object.values(assignments)) {
++      if (!v) continue;
++      if (Array.isArray(v)) out.push(...(v as EmployeeAssignment[]));
++      else if (typeof v === "object") out.push(v as EmployeeAssignment);
++    }
++    return out;
++  }
++  return [];
++}
++
+ export async function fetchFlightsForDate(
+-  date: string,
+-  operator: string,
++  date: string,
++  operator: string = DEFAULT_OPERATOR,
++  airport: string = REQUIRED_AIRPORT,
+ ): Promise<Flight[]> {
+   const url = new URL(`${API_BASE}/flights`);
+   url.searchParams.set("date", date);
+-  url.searchParams.set("operator", operator);
++  url.searchParams.set("airport", String(airport).toUpperCase());
++  url.searchParams.set("operator", normalizeOperator(operator));
+ 
+   const res = await fetch(url.toString());
+   const payload = await handleJson<FlightsResponse>(res);
+ 
+-  // Be defensive: if backend says ok:false, throw a readable error.
++  // Flights are required data; allow caller to handle errors.
+   if (!payload.ok) {
+     throw new Error(payload.error || "Failed to load flights from Ops API");
+   }
+ 
+   return payload.flights ?? [];
+ }
+ 
+ export async function fetchEmployeeAssignmentsForDate(
+   date: string,
+-  airline: string,
++  opts?: { airport?: string; operator?: string; shift?: string } | string,
+ ): Promise<EmployeeAssignment[]> {
+-  const url = new URL(`${API_BASE}/employee_assignments/daily`);
+-  url.searchParams.set("date", date);
+-  url.searchParams.set("airline", airline);
+-
+-  const res = await fetch(url.toString());
+-  const payload = await handleJson<EmployeeAssignmentsResponse>(res);
+-
+-  if (!payload.ok) {
+-    throw new Error(
+-      payload.error || "Failed to load employee assignments from Ops API",
+-    );
+-  }
+-
+-  return payload.assignments ?? [];
++  // Staff assignments are OPTIONAL overlay: never throw, never block renders.
++  try {
++    const legacyOperator = typeof opts === "string" ? opts : null;
++    const airport =
++      typeof opts === "object" && opts?.airport ? opts.airport : REQUIRED_AIRPORT;
++    const operator =
++      typeof opts === "object" && opts?.operator
++        ? opts.operator
++        : legacyOperator || DEFAULT_OPERATOR;
++    const shift =
++      typeof opts === "object" && opts?.shift ? opts.shift : DEFAULT_SHIFT;
++
++    const url = new URL(`${API_BASE}/employee_assignments/daily`);
++    url.searchParams.set("date", date);
++    url.searchParams.set("airport", String(airport).toUpperCase());
++    url.searchParams.set("operator", normalizeOperator(operator));
++    url.searchParams.set("shift", normalizeShift(shift));
++
++    const res = await fetch(url.toString(), {
++      headers: { Accept: "application/json" },
++    });
++    if (!res.ok) return [];
++
++    let payload: EmployeeAssignmentsResponse | null = null;
++    try {
++      payload = (await res.json()) as EmployeeAssignmentsResponse;
++    } catch {
++      return [];
++    }
++
++    if (payload?.available === false) return [];
++    if (payload?.ok === false) return [];
++
++    return normalizeAssignmentsToList((payload as any)?.assignments);
++  } catch {
++    return [];
++  }
+ }
+--- a/src/components/JetstarFlightsAssignmentsCard.tsx
++++ b/src/components/JetstarFlightsAssignmentsCard.tsx
+@@ -6,6 +6,7 @@
+ import React, { useEffect, useState } from "react";
+ 
+ import { API_BASE } from "../api/apiBase";
++import { REQUIRED_AIRPORT, DEFAULT_OPERATOR, DEFAULT_SHIFT, normalizeOperator, normalizeShift } from "../lib/opsDefaults";
+@@ -52,7 +53,7 @@
+ 
+   async function fetchFlightsForDate(date: string): Promise<Flight[]> {
+-    const url = `${API_BASE}/flights?date=${encodeURIComponent(date)}`;
++    const url = `${API_BASE}/flights?date=${encodeURIComponent(date)}&airport=${encodeURIComponent(REQUIRED_AIRPORT)}&operator=${encodeURIComponent(normalizeOperator(DEFAULT_OPERATOR))}`;
+     const json = await fetchJson<{ flights: Flight[] }>(url);
+     return json.flights ?? [];
+   }
+@@ -62,12 +63,31 @@
+   async function fetchEmployeeAssignmentsForDate(
+     date: string,
+   ): Promise<Assignment[]> {
+-    const url = `${API_BASE}/employee_assignments/daily?date=${encodeURIComponent(
+-      date,
+-    )}`;
+-    const json = await fetchJson<{ assignments: Assignment[] }>(url);
+-    return json.assignments ?? [];
++    // Optional overlay: never throw.
++    try {
++      const url = `${API_BASE}/employee_assignments/daily?date=${encodeURIComponent(
++        date,
++      )}&airport=${encodeURIComponent(REQUIRED_AIRPORT)}&operator=${encodeURIComponent(
++        normalizeOperator(DEFAULT_OPERATOR),
++      )}&shift=${encodeURIComponent(normalizeShift(DEFAULT_SHIFT))}`;
++
++      const res = await fetch(url, { headers: { Accept: "application/json" } });
++      if (!res.ok) return [];
++
++      let json: any = null;
++      try {
++        json = await res.json();
++      } catch {
++        return [];
++      }
++
++      if (json?.available === false) return [];
++      if (json?.ok === false) return [];
++
++      return Array.isArray(json?.assignments)
++        ? (json.assignments as Assignment[])
++        : [];
++    } catch {
++      return [];
++    }
+   }
+--- a/src/pages/SchedulePage.jsx
++++ b/src/pages/SchedulePage.jsx
+@@ -3,6 +3,7 @@
+ import SystemHealthBar from "../components/SystemHealthBar";
+ import ApiTestButton from "../components/ApiTestButton";
+ import { fetchFlights, fetchStatus } from "../lib/apiClient";
++import { REQUIRED_AIRPORT, normalizeOperator } from "../lib/opsDefaults";
+ import {
+   autoAssignStaff,
+   fetchEmployeeAssignmentsForDate,
+@@ -116,17 +117,19 @@
+     }
+ 
+     try {
+-      const assignmentsResp = await fetchEmployeeAssignmentsForDate(date);
++      const assignmentsResp = await fetchEmployeeAssignmentsForDate(date, {
++        airport: REQUIRED_AIRPORT,
++        operator: normalizeOperator(operator || "ALL"),
++        shift: "ALL",
++      });
+       if (!signal?.aborted) {
+         setAssignments(assignmentsResp);
+       }
+-    } catch (err) {
++    } catch {
+       if (!signal?.aborted) {
+-        const message = formatRequestError("Assignments", err);
++        // Optional overlay: silently ignore.
+         setAssignments([]);
+-        setAssignmentsError(message);
+-        setError((prev) => prev || message);
++        setAssignmentsError("");
+       }
+     }
+--- a/src/api/rosterApi.js
++++ b/src/api/rosterApi.js
+@@ -1,3 +1,5 @@
++import { REQUIRED_AIRPORT, DEFAULT_OPERATOR, DEFAULT_SHIFT, normalizeOperator, normalizeShift } from "../lib/opsDefaults";
++
+ // EWOT: Fetches the roster for a date and returns the unique operator codes on duty that day.
+ 
+ export async function fetchRosterOperators(date) {
+-  const params = new URLSearchParams({ date });
++  const params = new URLSearchParams({
++    date,
++    airport: REQUIRED_AIRPORT,
++    operator: normalizeOperator(DEFAULT_OPERATOR),
++    shift: normalizeShift(DEFAULT_SHIFT),
++  });
+ 
+   // Adjust this path if the roster endpoint differs.
+   const res = await fetch(`/api/employee_assignments/daily?${params.toString()}`, {
+@@ -10,9 +12,13 @@
+     },
+   });
+ 
+   if (!res.ok) {
+-    throw new Error(`Roster HTTP ${res.status}`);
++    return [];
+   }
+ 
+-  const data = await res.json();
++  const data = await res.json();
++  if (data?.available === false) return [];
++  if (data?.ok === false) return [];
+ 
+   // Expecting something like: { assignments: [ { operator: "QF", ... }, ... ] }
+   const assignments = Array.isArray(data.assignments) ? data.assignments : [];
+--- a/src/lib/apiClient.js
++++ b/src/lib/apiClient.js
+@@ -1,6 +1,7 @@
+ // Centralized API client for Brain frontend
+ // Uses VITE_OPS_API_BASE (or same-origin) and normalizes errors for schedule/planner flows.
+ import { OPS_API_BASE } from "./opsApiBase";
++import { REQUIRED_AIRPORT, normalizeOperator } from "./opsDefaults";
+ import { pushBackendDebugEntry } from "./backendDebug";
+ 
+ function buildUrl(path) {
+@@ -204,11 +205,12 @@
+   }
+ }
+ 
+-export async function fetchFlights(date, operator = "all", options = {}) {
++export async function fetchFlights(date, operator = "ALL", airport = REQUIRED_AIRPORT, options = {}) {
+   const qs = new URLSearchParams();
+   if (date) qs.set("date", date);
+-  if (operator) qs.set("operator", operator);
++  qs.set("airport", String(airport).toUpperCase());
++  qs.set("operator", normalizeOperator(operator));
+   return request(`/api/flights?${qs.toString()}`, options);
+ }
+--- a/src/components/ApiTestButton.jsx
++++ b/src/components/ApiTestButton.jsx
+@@ -4,6 +4,7 @@
+ import React, { useState } from "react";
+ import { fetchFlights, fetchStatus } from "../lib/apiClient";
++import { REQUIRED_AIRPORT } from "../lib/opsDefaults";
+ 
+ const ENABLE_DEV_SEED = import.meta.env.VITE_ENABLE_DEV_SEED !== "0";
+@@ -36,7 +37,7 @@
+     try {
+       const [statusRes, flightsRes, runsRes] = await Promise.all([
+         fetchStatus(date),
+-        fetchFlights(date, "all"),
++        fetchFlights(date, "ALL", REQUIRED_AIRPORT),
+         fetchRuns(date, "all"),
+       ]);
+--- a/src/pages/PlannerPage.jsx
++++ b/src/pages/PlannerPage.jsx
+@@ -4,6 +4,7 @@
+ import SystemHealthBar from "../components/SystemHealthBar";
+ import ApiTestButton from "../components/ApiTestButton";
+ import { fetchFlights, fetchStatus } from "../lib/apiClient";
++import { REQUIRED_AIRPORT } from "../lib/opsDefaults";
+ 
+@@ -1187,7 +1188,7 @@
+     try {
+-      const flightsResp = await fetchFlights(date, airlineCode, { signal });
++      const flightsResp = await fetchFlights(date, airlineCode, REQUIRED_AIRPORT, { signal });
+       if (!signal?.aborted) {
+         setFlights(normalizeFlights(flightsResp.data));
+       }
+@@ -1387,7 +1388,7 @@
+     try {
+-      const flightsResp = await fetchFlights(date, airlineCode);
++      const flightsResp = await fetchFlights(date, airlineCode, REQUIRED_AIRPORT);
+       setFlights(normalizeFlights(flightsResp.data));
+     } catch (err) {
+       setFlights([]);
+--- a/scripts/test_staff_overlay.ps1
++++ b/scripts/test_staff_overlay.ps1
+@@ -0,0 +1,43 @@
++param(
++  [string]$Base = "http://127.0.0.1:5173",
++  [string]$Date = "2025-12-22",
++  [string]$Airport = "YSSY",
++  [string]$Operator = "ALL",
++  [string]$Shift = "ALL",
++  [int]$TimeoutSec = 8
++)
++
++# EWOT: Validates staff overlay endpoint is non-blocking (HTTP 200, valid JSON, ok:true) within 8 seconds.
++
++$uri = "$Base/api/employee_assignments/daily?date=$Date&airport=$Airport&operator=$Operator&shift=$Shift"
++
++Write-Host "GET $uri" -ForegroundColor Cyan
++
++try {
++  $sw = [System.Diagnostics.Stopwatch]::StartNew()
++  $resp = Invoke-WebRequest -Uri $uri -TimeoutSec $TimeoutSec -UseBasicParsing
++  $sw.Stop()
++} catch {
++  throw "Request failed (timeout/network). $($_.Exception.Message)"
++}
++
++if ($resp.StatusCode -ne 200) {
++  throw "Expected HTTP 200, got $($resp.StatusCode). Body: $($resp.Content)"
++}
++
++try {
++  $json = $resp.Content | ConvertFrom-Json -Depth 20
++} catch {
++  throw "Response was not valid JSON. Body: $($resp.Content)"
++}
++
++if ($json.ok -ne $true) {
++  throw "Expected ok:true for non-blocking overlay. Got ok=$($json.ok). Body: $($resp.Content)"
++}
++
++if ($null -eq $json.available) { throw "Expected 'available' field (true/false)." }
++if ($null -eq $json.assignments) { throw "Expected 'assignments' field (object or array)." }
++
++Write-Host ("ok=true available={0} reason={1} ({2}ms)" -f $json.available, ($json.reason ?? ""), [math]::Round($sw.Elapsed.TotalMilliseconds,0)) -ForegroundColor Green
++Write-Host "PASS: staff overlay is non-blocking." -ForegroundColor Green
