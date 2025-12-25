@@ -6,6 +6,8 @@ import {
   fetchEmployeeAssignments,
   fetchFlights,
   fetchDailyRuns,
+  fetchDailyRoster,
+  fetchStaffRuns,
   pullFlights,
 } from "../lib/apiClient";
 import { extractFlightsList, normalizeFlightRow } from "../lib/flightNormalize";
@@ -15,7 +17,7 @@ import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../uti
 const DEFAULT_AIRPORT = REQUIRED_AIRPORT;
 const ROSTER_ENABLED = ENABLE_ROSTER;
 const STAFF_RUNS_ENABLED = ENABLE_STAFF_RUNS;
-const STAFF_VIEW_ENABLED = false;
+const STAFF_VIEW_ENABLED = ROSTER_ENABLED || STAFF_RUNS_ENABLED;
 const STAFF_VIEW_DISABLED_REASON =
   "Staff view is disabled in this environment.";
 
@@ -1407,16 +1409,76 @@ const PlannerPage = () => {
 
   async function loadRosterForDate(dateStr, signal) {
     if (!dateStr || !ROSTER_ENABLED) return;
-    setRoster([]);
-    setStaffViewError(STAFF_VIEW_DISABLED_REASON);
+    setStaffViewError("");
+    const { signal: timeoutSignal, clear } = createTimeoutSignal(
+      signal,
+      SECONDARY_TIMEOUT_MS
+    );
+    try {
+      const resp = await fetchDailyRoster(dateStr, {
+        signal: timeoutSignal,
+        airport: DEFAULT_AIRPORT,
+      });
+      const payload = resp.data || {};
+      const shifts = Array.isArray(payload?.roster?.shifts)
+        ? payload.roster.shifts
+        : Array.isArray(payload?.shifts)
+          ? payload.shifts
+          : [];
+      if (!signal?.aborted && !timeoutSignal.aborted) {
+        setRoster(shifts);
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setRoster([]);
+        setStaffViewError(
+          err?.name === "AbortError"
+            ? "Roster request timed out."
+            : formatRequestError("Roster", err)
+        );
+      }
+    } finally {
+      clear();
+    }
   }
 
   async function loadStaffRunsForDate(dateStr, airlineCode, signal) {
     if (!dateStr || !STAFF_RUNS_ENABLED) return;
-    setStaffRuns({ runs: [], unassigned: [] });
-    setStaffViewError(STAFF_VIEW_DISABLED_REASON);
-    if (!signal?.aborted) {
-      setLoadingStaffRuns(false);
+    setLoadingStaffRuns(true);
+    setStaffViewError("");
+    const { signal: timeoutSignal, clear } = createTimeoutSignal(
+      signal,
+      SECONDARY_TIMEOUT_MS
+    );
+    try {
+      const resp = await fetchStaffRuns(dateStr, airlineCode, {
+        signal: timeoutSignal,
+        airport: DEFAULT_AIRPORT,
+      });
+      const payload = resp.data || {};
+      const runs = Array.isArray(payload?.runs) ? payload.runs : [];
+      const unassigned = Array.isArray(payload?.unassigned)
+        ? payload.unassigned
+        : Array.isArray(payload?.unassigned_flights)
+          ? payload.unassigned_flights
+          : [];
+      if (!signal?.aborted && !timeoutSignal.aborted) {
+        setStaffRuns({ runs, unassigned });
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setStaffRuns({ runs: [], unassigned: [] });
+        setStaffViewError(
+          err?.name === "AbortError"
+            ? "Staff runs request timed out."
+            : formatRequestError("Staff runs", err)
+        );
+      }
+    } finally {
+      clear();
+      if (!signal?.aborted) {
+        setLoadingStaffRuns(false);
+      }
     }
   }
 
