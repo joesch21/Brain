@@ -155,6 +155,40 @@
   border-radius: 6px;
 }
 
+.runsheet-group {
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.runsheet-group:last-child {
+  border-bottom: none;
+}
+
+.runsheet-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.runsheet-group-title {
+  font-size: 0.95rem;
+}
+
+.runsheet-group-count {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.runsheet-group-notes {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
 .runsheet-table {
   width: 100%;
   border-collapse: collapse;
@@ -174,6 +208,10 @@
   font-weight: 600;
 }
 
+.runsheet-field--strong {
+  font-weight: 600;
+}
+
 .runsheet-table__empty {
   text-align: center;
   font-style: italic;
@@ -186,6 +224,12 @@
   padding-top: 0.75rem;
   font-size: 0.8rem;
   opacity: 0.85;
+}
+
+.runsheet-run-notes {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
 }
 
 .runsheet-footer-meta {
@@ -249,6 +293,18 @@
   .runsheet-pack-card .runsheet-summary {
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+
+  .runsheet-group,
+  .runsheet-group-header,
+  .runsheet-group-notes {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .runsheet-group-header {
+    page-break-after: avoid;
+    break-after: avoid;
   }
 
   .runsheet-table thead {

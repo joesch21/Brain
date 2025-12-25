@@ -25,7 +25,7 @@ export function getRunFlights(run) {
 export function formatWindow(start, end) {
   const startLabel = displayValue(start, "");
   const endLabel = displayValue(end, "");
-  if (!startLabel && !endLabel) return "-";
+  if (!startLabel && !endLabel) return "Unknown";
   if (startLabel && endLabel) return `${startLabel} – ${endLabel}`;
   return startLabel || endLabel;
 }
@@ -40,6 +40,108 @@ export function getFlightValue(flight, runFlight, keys) {
     }
   }
   return "";
+}
+
+const SERVICE_TIME_KEYS = [
+  "planned_service_time",
+  "plannedServiceTime",
+  "service_time",
+  "serviceTime",
+  "planned_time",
+  "plannedTime",
+  "fuel_time",
+  "fuelTime",
+];
+
+const STD_STA_KEYS = [
+  "std",
+  "scheduled_time",
+  "scheduled_off",
+  "scheduled_departure",
+  "departure_time",
+  "dep_time",
+  "time_local",
+  "timeLocal",
+  "sta",
+  "scheduled_on",
+  "scheduled_arrival",
+  "arrival_time",
+  "arr_time",
+  "eta",
+];
+
+const GROUP_PRIMARY_KEYS = ["bay", "stand", "gate"];
+const GROUP_FALLBACK_KEYS = [
+  "terminal",
+  "terminal_area",
+  "terminalArea",
+  "gate_area",
+  "gateArea",
+  "area",
+];
+
+function toSortableTime(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return value;
+  if (value instanceof Date) return value.getTime();
+  const raw = String(value).trim();
+  const match = raw.match(/(\d{1,2}):(\d{2})/);
+  if (match && !raw.includes("T") && !raw.includes("-")) {
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+      return hours * 60 + minutes;
+    }
+  }
+  const parsed = Date.parse(raw);
+  if (!Number.isNaN(parsed)) return Math.floor(parsed / 60000);
+  if (match) {
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+      return hours * 60 + minutes;
+    }
+  }
+  return null;
+}
+
+function getServiceTime(flight, runFlight) {
+  const primary = getFlightValue(flight, runFlight, SERVICE_TIME_KEYS);
+  if (primary) {
+    return { label: primary, sortValue: toSortableTime(primary), source: "service" };
+  }
+  const fallback = getFlightValue(flight, runFlight, STD_STA_KEYS);
+  const std = getFlightValue(flight, runFlight, [
+    "std",
+    "scheduled_time",
+    "scheduled_off",
+    "scheduled_departure",
+    "departure_time",
+    "dep_time",
+    "time_local",
+    "timeLocal",
+  ]);
+  const sta = getFlightValue(flight, runFlight, [
+    "sta",
+    "scheduled_on",
+    "scheduled_arrival",
+    "arrival_time",
+    "arr_time",
+    "eta",
+  ]);
+  const combined = [std, sta].filter(Boolean).join(" / ");
+  return {
+    label: combined || fallback,
+    sortValue: toSortableTime(fallback || combined),
+    source: fallback ? "std" : "unknown",
+  };
+}
+
+function getGroupLabel(flight, runFlight) {
+  const primary = getFlightValue(flight, runFlight, GROUP_PRIMARY_KEYS);
+  if (primary) return primary;
+  const fallback = getFlightValue(flight, runFlight, GROUP_FALLBACK_KEYS);
+  return fallback || "Unassigned";
 }
 
 const RunSheetSection = ({
@@ -82,6 +184,93 @@ const RunSheetSection = ({
   const flights = getRunFlights(run);
   const totalFlights = flights.length;
 
+  const enrichedFlights = flights.map((flightRun, rowIndex) => {
+    const flight = flightRun?.flight || flightRun;
+    const flightNumber = getFlightValue(flight, flightRun, [
+      "flight_number",
+      "flightNumber",
+      "flight_no",
+      "ident",
+      "callsign",
+    ]);
+    const serviceTime = getServiceTime(flight, flightRun);
+    const bay = getFlightValue(flight, flightRun, GROUP_PRIMARY_KEYS);
+    const operatorCode = getFlightValue(flight, flightRun, [
+      "operator",
+      "operator_code",
+      "airline",
+      "carrier",
+    ]);
+    const origin = getFlightValue(flight, flightRun, ["origin", "orig"]);
+    const destination = getFlightValue(flight, flightRun, ["destination", "dest"]);
+    const route = [origin, destination].filter(Boolean).join(" → ");
+    const fuel = getFlightValue(flight, flightRun, [
+      "fuel",
+      "fuel_qty",
+      "fuelQty",
+      "qty",
+      "quantity",
+      "uplift",
+    ]);
+    const notes = getFlightValue(flight, flightRun, [
+      "notes",
+      "note",
+      "comment",
+      "remarks",
+    ]);
+
+    return {
+      flightRun,
+      flight,
+      rowIndex,
+      flightNumber,
+      serviceTime,
+      bay,
+      operatorCode,
+      route,
+      fuel,
+      notes,
+      groupLabel: getGroupLabel(flight, flightRun),
+    };
+  });
+
+  const sortedFlights = [...enrichedFlights].sort((a, b) => {
+    const aValue = a.serviceTime.sortValue;
+    const bValue = b.serviceTime.sortValue;
+    if (aValue == null && bValue == null) return a.rowIndex - b.rowIndex;
+    if (aValue == null) return 1;
+    if (bValue == null) return -1;
+    if (aValue === bValue) return a.rowIndex - b.rowIndex;
+    return aValue - bValue;
+  });
+
+  const groupedFlights = sortedFlights.reduce((acc, item) => {
+    if (!acc[item.groupLabel]) {
+      acc[item.groupLabel] = [];
+    }
+    acc[item.groupLabel].push(item);
+    return acc;
+  }, {});
+
+  const groupedEntries = Object.entries(groupedFlights);
+
+  const sortedTimeLabels = sortedFlights
+    .map((item) => item.serviceTime.label)
+    .filter(Boolean);
+  const runWindowStart = sortedTimeLabels[0] || "";
+  const runWindowEnd = sortedTimeLabels[sortedTimeLabels.length - 1] || "";
+  const hasServiceTime = sortedFlights.some(
+    (item) => item.serviceTime.source === "service",
+  );
+  const hasFallbackTime = sortedFlights.some(
+    (item) => item.serviceTime.source === "std",
+  );
+  const sortKeyLabel = hasServiceTime
+    ? "Sorted by Service Time"
+    : hasFallbackTime
+      ? "Sorted by STD/STA"
+      : "Sorted by Service Time (Unknown)";
+
   const sectionClassName = ["runsheet-card", className]
     .filter(Boolean)
     .join(" ");
@@ -123,99 +312,96 @@ const RunSheetSection = ({
           <span>{displayValue(volume)}</span>
         </div>
         <div>
-          <span className="runsheet-label">Window</span>
-          <span>{formatWindow(startTime, endTime)}</span>
+          <span className="runsheet-label">Run window</span>
+          <span>{formatWindow(runWindowStart || startTime, runWindowEnd || endTime)}</span>
+        </div>
+        <div>
+          <span className="runsheet-label">Sort key</span>
+          <span>{sortKeyLabel}</span>
         </div>
       </div>
 
-      <table className="runsheet-table">
-        <thead>
-          <tr>
-            <th>Flight</th>
-            <th>STD/STA</th>
-            <th>Bay/Stand</th>
-            <th>Operator</th>
-            <th>Destination/Origin</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {flights.length === 0 ? (
+      {flights.length === 0 ? (
+        <table className="runsheet-table">
+          <thead>
             <tr>
-              <td colSpan={6} className="runsheet-table__empty">
+              <th>Time</th>
+              <th>Flight</th>
+              <th>Stand/Bay</th>
+              <th>Operator</th>
+              <th>Route</th>
+              <th>Fuel/Qty</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colSpan={7} className="runsheet-table__empty">
                 No flights in run.
               </td>
             </tr>
-          ) : (
-            flights.map((flightRun, rowIndex) => {
-              const flight = flightRun?.flight || flightRun;
-              const flightNumber = getFlightValue(flight, flightRun, [
-                "flight_number",
-                "flightNumber",
-                "flight_no",
-                "ident",
-                "callsign",
-              ]);
-              const std = getFlightValue(flight, flightRun, [
-                "std",
-                "scheduled_time",
-                "scheduled_off",
-                "scheduled_departure",
-                "departure_time",
-                "dep_time",
-                "time_local",
-                "timeLocal",
-              ]);
-              const sta = getFlightValue(flight, flightRun, [
-                "sta",
-                "scheduled_on",
-                "scheduled_arrival",
-                "arrival_time",
-                "arr_time",
-                "eta",
-              ]);
-              const bay = getFlightValue(flight, flightRun, [
-                "bay",
-                "stand",
-                "gate",
-              ]);
-              const operatorCode = getFlightValue(flight, flightRun, [
-                "operator",
-                "operator_code",
-                "airline",
-                "carrier",
-              ]);
-              const destination = getFlightValue(flight, flightRun, [
-                "destination",
-                "dest",
-                "origin",
-                "orig",
-              ]);
-              const notes = getFlightValue(flight, flightRun, [
-                "notes",
-                "note",
-                "comment",
-                "remarks",
-              ]);
-              const timeLabel = [std, sta].filter(Boolean).join(" / ");
-
-              return (
-                <tr key={flightRun?.id ?? flight?.id ?? rowIndex}>
-                  <td>{displayValue(flightNumber)}</td>
-                  <td>{displayValue(timeLabel)}</td>
-                  <td>{displayValue(bay)}</td>
-                  <td>{displayValue(operatorCode)}</td>
-                  <td>{displayValue(destination)}</td>
-                  <td>{displayValue(notes)}</td>
+          </tbody>
+        </table>
+      ) : (
+        groupedEntries.map(([groupLabel, items]) => (
+          <div key={groupLabel} className="runsheet-group">
+            <div className="runsheet-group-header">
+              <span className="runsheet-group-title">
+                Stand/Bay: {displayValue(groupLabel, "Unassigned")}
+              </span>
+              <span className="runsheet-group-count">
+                {items.length} {items.length === 1 ? "flight" : "flights"}
+              </span>
+            </div>
+            <table className="runsheet-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Flight</th>
+                  <th>Stand/Bay</th>
+                  <th>Operator</th>
+                  <th>Route</th>
+                  <th>Fuel/Qty</th>
+                  <th>Notes</th>
                 </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.flightRun?.id ?? item.flight?.id ?? item.rowIndex}>
+                    <td className="runsheet-field--strong">
+                      {displayValue(item.serviceTime.label)}
+                    </td>
+                    <td className="runsheet-field--strong">
+                      {displayValue(item.flightNumber)}
+                    </td>
+                    <td className="runsheet-field--strong">
+                      {displayValue(item.bay)}
+                    </td>
+                    <td>{displayValue(item.operatorCode)}</td>
+                    <td>{displayValue(item.route)}</td>
+                    <td>{displayValue(item.fuel)}</td>
+                    <td>{displayValue(item.notes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="runsheet-group-notes">
+              <span className="runsheet-label">Group notes</span>
+              <span className="runsheet-line" />
+              <span className="runsheet-line" />
+            </div>
+          </div>
+        ))
+      )}
 
       {showFooter && (
         <footer className="runsheet-footer">
+          <div className="runsheet-run-notes">
+            <span className="runsheet-label">Run notes</span>
+            <span className="runsheet-line" />
+            <span className="runsheet-line" />
+            <span className="runsheet-line" />
+          </div>
           <div className="runsheet-footer-meta">
             Generated {new Date().toLocaleString()}
           </div>
