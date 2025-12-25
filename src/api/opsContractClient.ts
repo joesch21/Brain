@@ -15,18 +15,14 @@ export type ApiContract = {
   endpoints: ApiEndpoint[];
 };
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL;
-
-if (!API_BASE) {
-  throw new Error("VITE_API_BASE_URL is not set. Frontend cannot call API.");
-}
+const CONTRACT_PATH = "/api/contract";
 
 let cachedContract: ApiContract | null = null;
 
 export async function loadApiContract(): Promise<ApiContract> {
   if (cachedContract) return cachedContract;
 
-  const res = await fetch(`${API_BASE}/contract`);
+  const res = await fetch(CONTRACT_PATH);
   if (!res.ok) {
     throw new Error(`Failed to load API contract (${res.status})`);
   }

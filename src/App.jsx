@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import AppNav from "./components/AppNav";
@@ -17,10 +17,12 @@ import ApiBadge from "./components/ApiBadge";
 import { loadApiContract } from "./api/opsContractClient";
 
 const App = () => {
+  const [contractError, setContractError] = useState(null);
+
   useEffect(() => {
     loadApiContract().catch((err) => {
       console.error(err);
-      alert("API contract could not be loaded. Application wiring is broken.");
+      setContractError("API contract could not be loaded. Some features may be unavailable.");
     });
   }, []);
 
@@ -29,6 +31,20 @@ const App = () => {
       <AppNav />
 
       <div style={{ paddingTop: "70px" }}>
+        {contractError ? (
+          <div
+            style={{
+              background: "#fdecea",
+              border: "1px solid #f5c2c0",
+              borderRadius: "6px",
+              color: "#7a1c19",
+              margin: "0 20px 12px",
+              padding: "10px 12px",
+            }}
+          >
+            {contractError}
+          </div>
+        ) : null}
         <Routes>
           <Route path="/planner" element={<PlannerPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
