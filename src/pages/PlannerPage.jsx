@@ -10,6 +10,7 @@ import {
   fetchStaffRuns,
   pullFlights,
 } from "../lib/apiClient";
+import { extractFlightsList, normalizeFlightRow } from "../lib/flightNormalize";
 import { REQUIRED_AIRPORT } from "../lib/opsDefaults";
 import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../utils/runConflictUtils";
 
@@ -93,6 +94,23 @@ function formatLocalTimeLabel(value) {
   return value;
 }
 
+function flightRowKey(f, idx) {
+  const fa = f?.fa_flight_id || f?.faFlightId;
+  if (fa) return String(fa);
+
+  const ident = f?.ident || f?.flight_number || f?.flightNumber || "UNK";
+  const t =
+    f?.time_iso ||
+    f?.scheduled_off ||
+    f?.estimated_off ||
+    f?.time_local ||
+    f?.timeLocal ||
+    "";
+  if (ident || t) return `${ident}|${t}`;
+
+  return `row-${idx}`;
+}
+
 // --- summary computation ----------------------------------------------------
 
 function computeSummary(flights, flightToRunMap) {
@@ -105,16 +123,14 @@ function computeSummary(flights, flightToRunMap) {
 
   if (!Array.isArray(flights)) return summary;
 
-  for (const f of flights) {
+  for (const [idx, f] of flights.entries()) {
     summary.total += 1;
 
     const airline = getAirlineCode(f.flight_number || f.flightNumber);
     const timeStr = f.time_local || f.timeLocal || f.time || null;
     const band = classifyTimeBand(timeStr);
 
-    const key = `${f.flight_number || f.flightNumber || ""}|${
-      f.time_local || f.timeLocal || ""
-    }`;
+    const key = flightRowKey(f, idx);
     const isAssigned = Boolean(flightToRunMap[key]);
 
     if (!isAssigned) summary.unassigned += 1;
@@ -143,11 +159,8 @@ function formatByAirline(byAirline) {
 }
 
 function normalizeFlights(data) {
-  if (!data) return [];
-  if (Array.isArray(data.records)) return data.records;
-  if (Array.isArray(data.flights)) return data.flights;
-  if (Array.isArray(data)) return data;
-  return [];
+  const raw = extractFlightsList(data);
+  return raw.map(normalizeFlightRow);
 }
 
 function normalizeRuns(data) {
@@ -325,7 +338,7 @@ function FlightListColumn({
                   </td>
                 </tr>
               ) : (
-                safeUnassigned.map((f) => {
+                safeUnassigned.map((f, idx) => {
                   const flightNumber = f.flight_number || f.flightNumber;
                   const timeStr =
                     f.dep_time ||
@@ -341,7 +354,7 @@ function FlightListColumn({
                     f.sequenceIndex ??
                     f.sequence ??
                     null;
-                  const key = `${flightNumber}|${timeStr}`;
+                  const key = flightRowKey(f, idx);
                   const isSelected = selectedFlightKey === key;
                   const flightId = f.flight_id || f.id;
 
@@ -394,13 +407,13 @@ function FlightListColumn({
             </tr>
           </thead>
           <tbody>
-            {flights.map((f) => {
+            {flights.map((f, idx) => {
               const flightNumber = f.flight_number || f.flightNumber;
               const timeStr = f.time_local || f.timeLocal || "";
               const dest = f.destination || f.dest || "";
               const airline = getAirlineCode(flightNumber);
               const flightId = f.id || f.flight_id;
-              const key = `${flightNumber}|${timeStr}`;
+              const key = flightRowKey(f, idx);
               const assignedRun = flightToRunMap[key];
               const assignedForFlight =
                 assignmentByFlightId?.get(flightId) || [];
@@ -699,7 +712,15 @@ function RunsGridColumn({
                               fr.sequenceIndex ??
                               fr.sequence ??
                               index;
-                            const key = fr.id || `${fn}|${time}`;
+                            const key =
+                              fr.id ||
+                              flt?.fa_flight_id ||
+                              `${fn || flt?.ident || "UNK"}|${
+                                time ||
+                                flt?.scheduled_off ||
+                                flt?.estimated_off ||
+                                ""
+                              }|${index}`;
                             const isTight = fr.isTightConnection || flt.isTightConnection;
                             return (
                               <tr
@@ -872,7 +893,12 @@ function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
                 fr.planned_end_time || fr.plannedEndTime || "";
               const sequence =
                 fr.sequence_index ?? fr.sequenceIndex ?? fr.sequence ?? index;
-              const key = fr.id || `${fn}|${time}`;
+              const key =
+                fr.id ||
+                flt?.fa_flight_id ||
+                `${fn || flt?.ident || "UNK"}|${
+                  time || flt?.scheduled_off || flt?.estimated_off || ""
+                }|${index}`;
 
               return (
                 <tr key={key}>
@@ -1050,11 +1076,9 @@ const PlannerPage = () => {
       const runLabel = run.label || run.run_label || "";
       const flightsArr =
         run.flights || run.flight_runs || run.flightRuns || [];
-      for (const fr of flightsArr) {
+      for (const [index, fr] of flightsArr.entries()) {
         const flt = fr.flight || fr;
-        const fn = flt.flight_number || flt.flightNumber || "";
-        const timeStr = flt.time_local || flt.timeLocal || "";
-        const key = `${fn}|${timeStr}`;
+        const key = flightRowKey(flt, index);
         map[key] = { runId: run.id, operator: op, runLabel };
       }
     }
@@ -1394,6 +1418,11 @@ const PlannerPage = () => {
     const flightsResp = await fetchFlights(date, airlineCode, DEFAULT_AIRPORT);
     const flightsData = flightsResp.data || {};
     const normalizedFlights = normalizeFlights(flightsData);
+    normalizedFlights.sort((a, b) => {
+      const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
+      const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
+      return ta - tb;
+    });
     const nextCount = Number.isFinite(flightsData.count)
       ? flightsData.count
       : normalizedFlights.length;
@@ -1431,6 +1460,11 @@ const PlannerPage = () => {
         if (!signal?.aborted) {
           const flightsData = flightsResp.data || {};
           const normalizedFlights = normalizeFlights(flightsData);
+          normalizedFlights.sort((a, b) => {
+            const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
+            const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
+            return ta - tb;
+          });
           setFlights(normalizedFlights);
           setFlightsCount(
             Number.isFinite(flightsData.count)
@@ -1489,8 +1523,11 @@ const PlannerPage = () => {
     })();
 
     void loadAssignmentsForDate(date, signal);
-    void loadRosterForDate(date, signal);
-    void loadStaffRunsForDate(date, airlineCode, signal);
+    // Optional endpoints (currently 404): disable calls to avoid console spam.
+    // When Brain provides safe envelopes (ok:true, available:false), re-enable.
+    setRoster([]);
+    setStaffRuns({ runs: [], unassigned: [] });
+    setLoadingStaffRuns(false);
 
     await Promise.all([flightsPromise, runsPromise]);
 
@@ -1771,6 +1808,11 @@ const PlannerPage = () => {
       const flightsResp = await fetchFlights(date, "ALL", DEFAULT_AIRPORT);
       const flightsData = flightsResp.data || {};
       nextFlights = normalizeFlights(flightsData);
+      nextFlights.sort((a, b) => {
+        const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
+        const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
+        return ta - tb;
+      });
       nextFlightsCount = Number.isFinite(flightsData.count)
         ? flightsData.count
         : nextFlights.length;
@@ -1795,6 +1837,11 @@ const PlannerPage = () => {
           const refreshedResp = await fetchFlights(date, "ALL", DEFAULT_AIRPORT);
           const refreshedData = refreshedResp.data || {};
           nextFlights = normalizeFlights(refreshedData);
+          nextFlights.sort((a, b) => {
+            const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
+            const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
+            return ta - tb;
+          });
           nextFlightsCount = Number.isFinite(refreshedData.count)
             ? refreshedData.count
             : nextFlights.length;
