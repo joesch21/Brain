@@ -978,6 +978,7 @@ const PlannerPage = () => {
   const [date, setDate] = useState(todayISO());
   const [airline, setAirline] = useState(DEFAULT_AIRLINE);
   const [flights, setFlights] = useState([]);
+  const [flightsCount, setFlightsCount] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [runs, setRuns] = useState([]);
   const [unassigned, setUnassigned] = useState([]);
@@ -1009,6 +1010,7 @@ const PlannerPage = () => {
   const [isStaffPanelOpen, setIsStaffPanelOpen] = useState(false);
   const [pullLoading, setPullLoading] = useState(false);
   const [pullMessage, setPullMessage] = useState("");
+  const canPullFlights = Boolean(date && DEFAULT_AIRPORT);
 
   const decorateRunsList = useCallback((list) => decorateRuns(list), []);
 
@@ -1311,6 +1313,7 @@ const PlannerPage = () => {
     setAssignmentsError("");
     setStaffViewError("");
     setRunsDailyCount(null);
+    setFlightsCount(null);
 
     const flightsPromise = (async () => {
       try {
@@ -1319,11 +1322,19 @@ const PlannerPage = () => {
           airport: DEFAULT_AIRPORT,
         });
         if (!signal?.aborted) {
-          setFlights(normalizeFlights(flightsResp.data));
+          const flightsData = flightsResp.data || {};
+          const normalizedFlights = normalizeFlights(flightsData);
+          setFlights(normalizedFlights);
+          setFlightsCount(
+            Number.isFinite(flightsData.count)
+              ? flightsData.count
+              : normalizedFlights.length
+          );
         }
       } catch (err) {
         if (!signal?.aborted) {
           setFlights([]);
+          setFlightsCount(null);
           setError(formatRequestError("Flights", err));
         }
       }
@@ -1523,7 +1534,11 @@ const PlannerPage = () => {
       try {
         const flightsResp = await fetchFlights(date, airlineCode, { airport: DEFAULT_AIRPORT });
         const flightsData = flightsResp.data || {};
-        setFlights(normalizeFlights(flightsData));
+        const normalizedFlights = normalizeFlights(flightsData);
+        setFlights(normalizedFlights);
+        setFlightsCount(
+          Number.isFinite(flightsData.count) ? flightsData.count : normalizedFlights.length
+        );
         await loadAssignmentsForDate(date);
       } catch (flightErr) {
         console.error("Auto-assign refresh flights failed", flightErr);
@@ -1539,19 +1554,37 @@ const PlannerPage = () => {
   }
 
   async function handlePullFlights() {
-    if (!date) return;
+    if (!canPullFlights) return;
     setPullLoading(true);
     setPullMessage("");
+    let shouldRefresh = false;
     try {
       const op = airline || "ALL";
-      await pullFlights(date, op, { airport: DEFAULT_AIRPORT });
-      setPullMessage(`Pulled flights for ${date} (${op}). Refreshing…`);
-      await loadPlannerData();
+      const resp = await pullFlights(date, op, { airport: DEFAULT_AIRPORT });
+      const upstreamStatus = resp?.data?.status ?? resp?.status;
+      setPullMessage(
+        `Pulled flights for ${date} (${op})${
+          upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
+        }. Refreshing…`
+      );
+      shouldRefresh = true;
     } catch (err) {
       const statusLabel = err?.status ?? "network";
       const endpoint = err?.url || "unknown endpoint";
-      setPullMessage(`Pull flights ${statusLabel} @ ${endpoint} – ${err?.message || "failed"}`);
+      const upstreamStatus =
+        err?.data?.status ?? err?.data?.upstream_status ?? err?.status;
+      setPullMessage(
+        `Pull flights ${statusLabel} @ ${endpoint} – ${err?.message || "failed"}${
+          upstreamStatus != null ? ` (status ${upstreamStatus})` : ""
+        }`
+      );
+      if (err?.data?.ok === false) {
+        shouldRefresh = true;
+      }
     } finally {
+      if (shouldRefresh) {
+        await loadPlannerData();
+      }
       setPullLoading(false);
     }
   }
@@ -1886,7 +1919,7 @@ const PlannerPage = () => {
       {!loading &&
         !loadingRuns &&
         !error &&
-        flights.length === 0 && (
+        flightsCount === 0 && (
           <div className="planner-status planner-status--warn">
             <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
               <span>
@@ -1895,7 +1928,7 @@ const PlannerPage = () => {
               <button
                 type="button"
                 onClick={handlePullFlights}
-                disabled={pullLoading}
+                disabled={!canPullFlights || pullLoading}
                 title="Explicitly pull flights for this date (no automatic ingestion)."
               >
                 {pullLoading ? "Pulling flights…" : "Pull flights"}
