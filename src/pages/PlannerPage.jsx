@@ -95,20 +95,21 @@ function formatLocalTimeLabel(value) {
 }
 
 function flightRowKey(f, idx) {
-  const fa = f?.fa_flight_id || f?.faFlightId;
-  if (fa) return String(fa);
+  // Prefer stable IDs from backend if present
+  const id =
+    f?.id ??
+    f?.flight_id ??
+    f?.fa_flight_id ??
+    f?.faFlightId ??
+    f?.ident ??
+    f?.ident_iata ??
+    null;
 
-  const ident = f?.ident || f?.flight_number || f?.flightNumber || "UNK";
-  const t =
-    f?.time_iso ||
-    f?.scheduled_off ||
-    f?.estimated_off ||
-    f?.time_local ||
-    f?.timeLocal ||
-    "";
-  if (ident || t) return `${ident}|${t}`;
+  if (id != null) return String(id);
 
-  return `row-${idx}`;
+  const fn = f?.flight_number || f?.flightNumber || "UNK";
+  const t = f?.time_local || f?.timeLocal || f?.dep_time || "UNK";
+  return `${fn}|${t}|${idx}`;
 }
 
 // --- summary computation ----------------------------------------------------

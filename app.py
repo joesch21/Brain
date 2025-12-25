@@ -29,6 +29,51 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-not-secret")
 
+# --- CORS (local dev) -------------------------------------------------------
+# Allows the Vite dev server (5173) to call this backend (5055) without browser CORS blocks.
+CORS_ALLOW_ORIGINS = [
+    o.strip()
+    for o in (
+        os.getenv("CORS_ALLOW_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173")
+    ).split(",")
+    if o.strip()
+]
+
+
+def _cors_origin_for_request(req_origin: str) -> str:
+    if not req_origin:
+        return ""
+    # exact-match allowlist (robust + predictable)
+    return req_origin if req_origin in CORS_ALLOW_ORIGINS else ""
+
+
+@app.before_request
+def _handle_preflight():
+    # Respond to browser preflight requests
+    if request.method == "OPTIONS":
+        resp = app.make_response(("", 204))
+        origin = _cors_origin_for_request(request.headers.get("Origin", ""))
+        if origin:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Vary"] = "Origin"
+            resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = request.headers.get(
+                "Access-Control-Request-Headers", "Content-Type,Authorization"
+            )
+        return resp
+    return None
+
+
+@app.after_request
+def _add_cors_headers(resp):
+    origin = _cors_origin_for_request(request.headers.get("Origin", ""))
+    if origin:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+        resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+    return resp
+
 # ---------------------------------------------------------------------------
 # Jinja helpers required by templates/_layout.html
 # ---------------------------------------------------------------------------
@@ -1319,4 +1364,3 @@ def admin_import_index():
 if __name__ == "__main__":  # pragma: no cover
     # Local dev convenience; in production Render will run via gunicorn.
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5055")), debug=True)
-
