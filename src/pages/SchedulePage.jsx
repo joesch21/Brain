@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "../styles/schedule.css";
 import { extractFlightsList, normalizeFlightRow } from "../lib/flightNormalize";
+import {
+  buildAssignmentsByFlightKey,
+  buildPlaceholderAssignments,
+  getPlaceholderRoster,
+} from "../lib/staffMvp";
 
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
@@ -73,7 +78,7 @@ function toSortedNormalizedFlights(payload) {
 
 const SchedulePage = () => {
   const [date, setDate] = useState(todayISO());
-  const [operator, setOperator] = useState("");
+  const [airline, setAirline] = useState("");
   const [flights, setFlights] = useState([]);
   const [flightsCount, setFlightsCount] = useState(null);
   const [flightsOk, setFlightsOk] = useState(null);
@@ -112,12 +117,12 @@ const SchedulePage = () => {
     }
 
     try {
-      const flightsResp = await fetchFlights(
-        date,
-        operator || "ALL",
-        DEFAULT_AIRPORT,
-        { signal }
-      );
+    const flightsResp = await fetchFlights(
+      date,
+      airline || "ALL",
+      DEFAULT_AIRPORT,
+      { signal }
+    );
 
       if (!signal?.aborted) {
         const payload = flightsResp.data || {};
@@ -140,7 +145,7 @@ const SchedulePage = () => {
     try {
       const assignmentsResp = await fetchEmployeeAssignmentsForDate(date, {
         airport: REQUIRED_AIRPORT,
-        operator: normalizeOperator(operator || "ALL"),
+        operator: normalizeOperator(airline || "ALL"),
         shift: "ALL",
       });
       if (!signal?.aborted) setAssignments(assignmentsResp);
@@ -163,40 +168,43 @@ const SchedulePage = () => {
     loadSchedule(controller.signal);
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, operator]);
+  }, [date, airline]);
 
   useEffect(() => {
     setAutoAssignStatus(null);
   }, [date]);
 
-  const operatorOptions = useMemo(() => {
+  const airlineOptions = useMemo(() => {
     const values = new Set();
     for (const flight of flights) {
-      if (flight.operator) values.add(flight.operator);
+      if (flight.operator_code) values.add(flight.operator_code);
     }
     return Array.from(values).sort();
   }, [flights]);
 
   const visibleFlights = useMemo(() => {
-    if (!operator) return flights;
-    return flights.filter((f) => f.operator === operator);
-  }, [flights, operator]);
+    if (!airline) return flights;
+    return flights.filter((f) => f.operator_code === airline);
+  }, [flights, airline]);
 
-  const assignmentsByFlightId = useMemo(() => {
-    const map = new Map();
-    for (const a of assignments) {
-      if (a) {
-        const key =
-          a.flight_id != null ? String(a.flight_id) : a.flight_number || a.flight_no;
-        if (key != null) map.set(String(key), a);
-      }
-    }
-    return map;
-  }, [assignments]);
+  const placeholderRoster = useMemo(
+    () => getPlaceholderRoster(date, DEFAULT_AIRPORT),
+    [date]
+  );
+  const placeholderAssignments = useMemo(
+    () => buildPlaceholderAssignments(flights, placeholderRoster),
+    [flights, placeholderRoster]
+  );
+  const resolvedAssignments =
+    assignments && assignments.length ? assignments : placeholderAssignments;
+  const assignmentsByFlightKey = useMemo(
+    () => buildAssignmentsByFlightKey(resolvedAssignments, flights),
+    [resolvedAssignments, flights]
+  );
 
   async function refreshFlightsOnly() {
     if (!date) throw new Error("Flights refresh requires a date.");
-    const op = operator || "ALL";
+    const op = airline || "ALL";
 
     const flightsResp = await fetchFlights(date, op, DEFAULT_AIRPORT);
     const payload = flightsResp.data || {};
@@ -214,7 +222,7 @@ const SchedulePage = () => {
     setAutoAssignLoading(true);
     setAutoAssignStatus(null);
     try {
-      const result = await autoAssignStaff(date, operator || "ALL");
+      const result = await autoAssignStaff(date, airline || "ALL");
       if (result && result.ok === false) throw new Error(result.message || "Auto-assign staff failed.");
       setAutoAssignStatus({ ok: true, message: formatAutoAssignSummary(result.data) });
       await loadSchedule();
@@ -230,7 +238,7 @@ const SchedulePage = () => {
     setPullLoading(true);
     setPullStatus(null);
     try {
-      const op = operator ? operator : "ALL";
+    const op = airline ? airline : "ALL";
       const resp = await pullFlights(date, op, {
         airport: DEFAULT_AIRPORT,
         timeoutMs: 60000,
@@ -279,10 +287,10 @@ const SchedulePage = () => {
         </div>
         <div className="schedule-header-right">
           <label>
-            Operator:{" "}
-            <select value={operator} onChange={(e) => setOperator(e.target.value)}>
-              <option value="">All operators</option>
-              {operatorOptions.map((op) => (
+            Airline:{" "}
+            <select value={airline} onChange={(e) => setAirline(e.target.value)}>
+              <option value="">All airlines</option>
+              {airlineOptions.map((op) => (
                 <option key={op} value={op}>
                   {op}
                 </option>
@@ -357,7 +365,7 @@ const SchedulePage = () => {
       )}
 
       {!loading && !error && flightsCount !== 0 && visibleFlights.length === 0 && (
-        <div className="schedule-status schedule-status--warn">No flights match the selected operator.</div>
+        <div className="schedule-status schedule-status--warn">No flights match the selected airline.</div>
       )}
 
       <div className="schedule-table-wrapper">
@@ -367,7 +375,7 @@ const SchedulePage = () => {
               <th>Time</th>
               <th>Flight</th>
               <th>Dest</th>
-              <th>Operator</th>
+              <th>Airline</th>
               <th>Staff</th>
               <th>Notes</th>
             </tr>
@@ -375,26 +383,31 @@ const SchedulePage = () => {
           <tbody>
             {visibleFlights.map((flight, idx) => {
               // Normalized shape (from normalizeFlightRow)
-              const flightNumber = flight.ident;
-              const time = flight.time;
+              const flightNumber = flight.flight_number || flight.ident;
+              const time = flight.time_local || flight.time;
               const dest = flight.dest;
-              const op = flight.operator;
+              const op = flight.operator_code;
               const notes = flight.raw?.notes || flight.notes || "";
               const rowKey =
-                flight.key ??
-                flight.fa_flight_id ??
-                `${flight.ident || "UNK"}|${flight.time_iso || ""}`;
+                flight.flight_key ??
+                flight.flight_id ??
+                `${flight.flight_number || flight.ident || "UNK"}|${flight.time_iso || ""}`;
 
-              // Keep existing assignment key logic, but favor flightNumber
-              const assignmentKey = String(flight.raw?.id ?? flightNumber ?? idx);
-              const assignment = assignmentsByFlightId.get(assignmentKey);
+              const assignment = assignmentsByFlightKey.get(
+                flight.flight_key || flight.key
+              );
+              const primaryAssignment = Array.isArray(assignment)
+                ? assignment[0]
+                : assignment;
 
               const staffInitials =
-                assignment?.staff_initials ||
-                initialsFromName(assignment?.staff_name || assignment?.staff_code);
-              const staffLabel = assignment?.staff_label;
-              const staffDisplay = assignment
-                ? `${staffInitials || assignment.staff_name || assignment.staff_code || ""}${
+                primaryAssignment?.staff_initials ||
+                initialsFromName(
+                  primaryAssignment?.staff_name || primaryAssignment?.staff_code
+                );
+              const staffLabel = primaryAssignment?.staff_label;
+              const staffDisplay = primaryAssignment
+                ? `${staffInitials || primaryAssignment.staff_name || primaryAssignment.staff_code || ""}${
                     staffLabel ? ` (${staffLabel})` : ""
                   }`
                 : null;
