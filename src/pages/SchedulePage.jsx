@@ -89,6 +89,7 @@ const SchedulePage = () => {
   const [statusError, setStatusError] = useState("");
   const [pullLoading, setPullLoading] = useState(false);
   const [pullStatus, setPullStatus] = useState(null);
+  const canPullFlights = Boolean(date && DEFAULT_AIRPORT);
 
   async function loadSchedule(signal) {
     setLoading(true);
@@ -234,20 +235,37 @@ const SchedulePage = () => {
   }
 
   async function handlePullFlights() {
-    if (!date) return;
+    if (!canPullFlights) return;
     setPullLoading(true);
     setPullStatus(null);
+    let shouldRefresh = false;
     try {
       const op = operator ? operator : "ALL";
-      await pullFlights(date, op, { airport: DEFAULT_AIRPORT });
-      setPullStatus({ ok: true, message: `Pulled flights for ${date} (${op}).` });
-      await loadSchedule();
+      const resp = await pullFlights(date, op, { airport: DEFAULT_AIRPORT });
+      const upstreamStatus = resp?.data?.status ?? resp?.status;
+      setPullStatus({
+        ok: true,
+        message: `Pulled flights for ${date} (${op})${
+          upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
+        }.`,
+      });
+      shouldRefresh = true;
     } catch (err) {
+      const upstreamStatus =
+        err?.data?.status ?? err?.data?.upstream_status ?? err?.status;
       setPullStatus({
         ok: false,
-        message: formatRequestError("Pull flights", err),
+        message: `${formatRequestError("Pull flights", err)}${
+          upstreamStatus != null ? ` (status ${upstreamStatus})` : ""
+        }`,
       });
+      if (err?.data?.ok === false) {
+        shouldRefresh = true;
+      }
     } finally {
+      if (shouldRefresh) {
+        await loadSchedule();
+      }
       setPullLoading(false);
     }
   }
@@ -299,14 +317,6 @@ const SchedulePage = () => {
         >
           {autoAssignLoading ? "Assigning staff…" : "Auto-assign staff"}
         </button>
-        <button
-          type="button"
-          onClick={handlePullFlights}
-          disabled={pullLoading || loading}
-          title="Explicitly pull flights for this date (no automatic ingestion)."
-        >
-          {pullLoading ? "Pulling flights…" : "Pull flights"}
-        </button>
         <ApiTestButton
           date={date}
           onAfterSeed={() => loadSchedule()}
@@ -323,16 +333,6 @@ const SchedulePage = () => {
           }
         >
           {autoAssignStatus.message}
-        </div>
-      )}
-
-      {pullStatus && (
-        <div
-          className={`schedule-status ${
-            pullStatus.ok ? "schedule-status--success" : "schedule-status--error"
-          }`}
-        >
-          {pullStatus.message}
         </div>
       )}
 
@@ -356,8 +356,30 @@ const SchedulePage = () => {
 
       {!loading && !error && flightsCount === 0 && (
         <div className="schedule-status schedule-status--warn">
-          No flights returned for this date. Click <b>Pull flights</b> to ingest/store
-          them explicitly.
+          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+            <span>
+              No flights returned for this date. Use <b>Pull flights</b> to ingest/store
+              them explicitly.
+            </span>
+            <button
+              type="button"
+              onClick={handlePullFlights}
+              disabled={!canPullFlights || pullLoading || loading}
+              title="Explicitly pull flights for this date (no automatic ingestion)."
+            >
+              {pullLoading ? "Pulling flights…" : "Pull flights"}
+            </button>
+          </div>
+          {pullStatus && (
+            <div
+              className={`schedule-status ${
+                pullStatus.ok ? "schedule-status--success" : "schedule-status--error"
+              }`}
+              style={{ marginTop: "0.5rem" }}
+            >
+              {pullStatus.message}
+            </div>
+          )}
         </div>
       )}
       {!loading && !error && flightsCount !== 0 && visibleFlights.length === 0 && (

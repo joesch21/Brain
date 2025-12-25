@@ -8,6 +8,7 @@ import {
 import "../styles/apiTest.css";
 
 const ENABLE_DEV_SEED = import.meta.env.VITE_ENABLE_DEV_SEED !== "0";
+const DEFAULT_AIRPORT = "YSSY";
 
 /**
  * CWO-13: One-click API diagnostics for a given date.
@@ -36,8 +37,8 @@ const ApiTestButton = ({ date, onAfterSeed, showSeedButton = true }) => {
     try {
       const results = await Promise.allSettled([
         fetchStatus(date),
-        fetchFlights(date, "all"),
-        fetchRuns(date),
+        fetchFlights(date, "all", { airport: DEFAULT_AIRPORT }),
+        fetchRuns(date, "ALL", { airport: DEFAULT_AIRPORT }),
       ]);
 
       const [statusRes, flightsRes, runsRes] = results.map((result) => {
@@ -229,4 +230,3 @@ const ApiTestButton = ({ date, onAfterSeed, showSeedButton = true }) => {
 };
 
 export default ApiTestButton;
-

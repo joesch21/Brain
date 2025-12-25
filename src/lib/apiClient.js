@@ -203,24 +203,38 @@ export async function fetchStatus(date, options = {}) {
 }
 
 export async function fetchFlights(date, operator = "ALL", options = {}) {
+  if (!date) {
+    throw new Error("fetchFlights: date is required");
+  }
+  if (!options.airport) {
+    throw new Error("fetchFlights: airport is required");
+  }
+
   const qs = new URLSearchParams();
-  if (date) qs.set("date", date);
-  // STRICT CONTRACT: always send airport
-  qs.set("airport", options.airport || DEFAULT_AIRPORT);
+  qs.set("date", date);
+  qs.set("airport", options.airport);
   if (operator) qs.set("operator", operator);
   return request(`/api/flights?${qs.toString()}`, options);
+}
+
+export async function getFlights({ date, airport, operator = "ALL", signal } = {}) {
+  return fetchFlights(date, operator, { airport, signal });
 }
 
 export async function pullFlights(date, operator = "ALL", options = {}) {
   if (!date) {
     throw new Error("pullFlights: date is required");
   }
+  if (!options.airport) {
+    throw new Error("pullFlights: airport is required");
+  }
 
   const body = {
     date,
-    airport: options.airport || DEFAULT_AIRPORT,
+    airport: options.airport,
     operator: operator || "ALL",
     store: true,
+    timeout: 30,
   };
 
   return request("/api/flights/pull", {
@@ -236,10 +250,16 @@ export async function pullFlights(date, operator = "ALL", options = {}) {
 }
 
 export async function fetchRuns(date, airline = "JQ", options = {}) {
+  if (!date) {
+    throw new Error("fetchRuns: date is required");
+  }
+  if (!options.airport) {
+    throw new Error("fetchRuns: airport is required");
+  }
+
   const qs = new URLSearchParams();
-  if (date) qs.set("date", date);
-  // STRICT CONTRACT: always send airport
-  qs.set("airport", options.airport || DEFAULT_AIRPORT);
+  qs.set("date", date);
+  qs.set("airport", options.airport);
   if (airline) qs.set("airline", airline);
   return request(`/api/runs${qs.toString() ? `?${qs.toString()}` : ""}`, options);
 }
