@@ -57,6 +57,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
                 "operator": "ALL or operator code (optional, default ALL)",
                 "store": "bool (optional, default true)",
                 "timeout": "seconds (optional, default 30)",
+                "scope": "both|arrivals|departures (optional, default both)",
             },
             "maps_to": ["/api/flights/pull"],
             "response_shape": {"ok": "bool", "upstream": "object", "payload": "object"},

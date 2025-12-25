@@ -25,6 +25,14 @@ try {
   Write-Host "== Preconditions ==" -ForegroundColor Cyan
   Write-Host "Base=$Base Date=$Date Airport=$Airport Operator=$Op"
 
+  # A0: Contract includes flights_pull
+  $contract = Invoke-RestMethod "$Base/api/contract"
+  if ($null -eq ($contract.endpoints | Where-Object { $_.name -eq "flights_pull" })) {
+    Fail "A0 contract includes flights_pull" "Missing flights_pull endpoint in /api/contract"
+  } else {
+    Pass "A0 contract includes flights_pull"
+  }
+
   # A1: Airport required (GET flights)
   try {
     Invoke-RestMethod "$Base/api/flights?date=$Date&operator=$Op" | Out-Null
@@ -69,7 +77,7 @@ try {
 
   $pull = Invoke-RestMethod -Method POST -Uri "$Base/api/flights/pull" -ContentType "application/json" -Body $pullBody
   Assert-HasKeys $pull @("ok","airport","local_date","operator","source","upstream","payload") "POST /api/flights/pull"
-  Assert-HasKeys $pull.upstream @("status_code","path") "POST /api/flights/pull.upstream"
+  Assert-HasKeys $pull.upstream @("status_code","path","base_url") "POST /api/flights/pull.upstream"
 
   Write-Host "Pull: upstream_status=$($pull.upstream.status_code) ok=$($pull.ok)"
 
