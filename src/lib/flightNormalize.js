@@ -30,10 +30,12 @@ export function formatLocalHHmm(iso) {
 
 export function normalizeFlightRow(raw) {
   const ident = pickFirst(raw?.ident_iata, raw?.ident);
+  const flightNumber = pickFirst(raw?.flight_number, raw?.flightNumber, ident);
   const operator = pickFirst(raw?.operator, raw?.operator_code, operatorFromIdent(ident));
   const dest = pickFirst(raw?.destination, raw?.dest);
-  const timeIso = pickFirst(raw?.estimated_off, raw?.scheduled_off);
+  const timeIso = pickFirst(raw?.time_iso, raw?.estimated_off, raw?.scheduled_off);
   const time = formatLocalHHmm(timeIso);
+  const timeLocal = pickFirst(raw?.time_local, raw?.timeLocal, time);
   const key =
     raw?.key ??
     raw?.fa_flight_id ??
@@ -49,9 +51,11 @@ export function normalizeFlightRow(raw) {
     id: flightId,
     flight_id: flightId,
     ident: ident ?? "—",
+    flight_number: flightNumber ?? "—",
     operator: operator ?? "UNK",
     dest: dest ?? "—",
     time,              // "HH:mm" Sydney
+    time_local: timeLocal ?? time,
     time_iso: timeIso, // keep for sorting
 
     cancelled: !!raw?.cancelled,

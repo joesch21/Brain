@@ -3,11 +3,9 @@ import "../styles/planner.css";
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 import {
-  fetchDailyRoster,
   fetchEmployeeAssignments,
   fetchFlights,
   fetchDailyRuns,
-  fetchStaffRuns,
   pullFlights,
 } from "../lib/apiClient";
 import { extractFlightsList, normalizeFlightRow } from "../lib/flightNormalize";
@@ -17,7 +15,9 @@ import { decorateRuns, MAX_FLIGHTS_PER_RUN, MIN_GAP_MINUTES_TIGHT } from "../uti
 const DEFAULT_AIRPORT = REQUIRED_AIRPORT;
 const ROSTER_ENABLED = ENABLE_ROSTER;
 const STAFF_RUNS_ENABLED = ENABLE_STAFF_RUNS;
-const STAFF_VIEW_ENABLED = ROSTER_ENABLED && STAFF_RUNS_ENABLED;
+const STAFF_VIEW_ENABLED = false;
+const STAFF_VIEW_DISABLED_REASON =
+  "Staff view is disabled in this environment.";
 
 // --- small helpers ---------------------------------------------------------
 
@@ -97,26 +97,80 @@ function formatLocalTimeLabel(value) {
   return value;
 }
 
-function flightRowKey(f, idx) {
-  const preferred = f?.key ?? f?.fa_flight_id ?? f?.faFlightId ?? null;
+function flightStableKey(f, idx) {
+  if (!f) return `flight-null-${idx}`;
+  const preferred =
+    f?.fa_flight_id ?? f?.id ?? f?.flight_id ?? f?.key ?? f?.faFlightId ?? null;
   if (preferred != null) return String(preferred);
 
   const ident =
+    f?.flight_number ??
     f?.ident ??
     f?.ident_iata ??
-    f?.flight_number ??
     f?.flightNumber ??
     null;
-  const timeIso =
+  const timeToken =
+    f?.time_local ??
+    f?.time ??
+    f?.timeLocal ??
+    f?.dep_time ??
     f?.time_iso ??
-    f?.timeIso ??
     f?.estimated_off ??
     f?.scheduled_off ??
     null;
-  if (ident && timeIso) return `${ident}|${timeIso}`;
+  if (ident && timeToken) return `${ident}|${timeToken}`;
   if (ident) return `${ident}|${idx}`;
-  if (timeIso) return `UNK|${timeIso}`;
-  return `row-${idx}`;
+  if (timeToken) return `UNK|${timeToken}|${idx}`;
+  return `flight-${idx}`;
+}
+
+function flightRunStableKey(fr, flt, idx) {
+  const preferred = fr?.id ?? fr?.flight_id ?? null;
+  if (preferred != null) return String(preferred);
+  return flightStableKey(flt, idx);
+}
+
+function buildFlightMatchKeys(f) {
+  if (!f) return [];
+  const keys = [];
+  if (f.id != null) keys.push(`id:${f.id}`);
+  if (f.flight_id != null) keys.push(`id:${f.flight_id}`);
+  if (f.fa_flight_id != null) keys.push(`fa:${f.fa_flight_id}`);
+
+  const ident =
+    f.flight_number || f.ident || f.flightNumber || f.ident_iata || null;
+  const timeToken =
+    f.time_iso ||
+    f.time_local ||
+    f.time ||
+    f.timeLocal ||
+    f.dep_time ||
+    f.estimated_off ||
+    f.scheduled_off ||
+    null;
+  if (ident && timeToken) keys.push(`nt:${ident}|${timeToken}`);
+  return keys;
+}
+
+function buildAssignmentKeys(a) {
+  if (!a) return [];
+  const keys = [];
+  if (a.flight_id != null) keys.push(`id:${a.flight_id}`);
+  if (a.fa_flight_id != null) keys.push(`fa:${a.fa_flight_id}`);
+  const ident = a.flight_number || a.flightNumber || a.flight_no || null;
+  const timeToken =
+    a.time_iso || a.time_local || a.dep_time || a.depTime || a.etd_local || null;
+  if (ident && timeToken) keys.push(`nt:${ident}|${timeToken}`);
+  return keys;
+}
+
+function getAssignmentsForFlight(map, flight) {
+  if (!map) return [];
+  for (const key of buildFlightMatchKeys(flight)) {
+    const list = map.get(key);
+    if (list && list.length) return list;
+  }
+  return [];
 }
 
 // --- summary computation ----------------------------------------------------
@@ -134,11 +188,11 @@ function computeSummary(flights, flightToRunMap) {
   for (const [idx, f] of flights.entries()) {
     summary.total += 1;
 
-    const airline = getAirlineCode(f.ident || f.flight_number || f.flightNumber);
-    const timeStr = f.time || f.time_local || f.timeLocal || null;
+    const airline = getAirlineCode(f.flight_number || f.ident || f.flightNumber);
+    const timeStr = f.time_local || f.time || f.timeLocal || null;
     const band = classifyTimeBand(timeStr);
 
-    const key = flightRowKey(f, idx);
+    const key = flightStableKey(f, idx);
     const isAssigned = Boolean(flightToRunMap[key]);
 
     if (!isAssigned) summary.unassigned += 1;
@@ -218,20 +272,6 @@ function formatSafeRequestError(label, response) {
     response.data?.message ||
     "Request failed";
   return `${label} ${statusLabel} @ ${endpoint} – ${message}`;
-}
-
-function normalizeRoster(data) {
-  if (!data) return [];
-  if (Array.isArray(data.shifts)) return data.shifts;
-  if (Array.isArray(data?.roster?.shifts)) return data.roster.shifts;
-  return [];
-}
-
-function normalizeStaffRuns(data) {
-  if (!data) return { runs: [], unassigned: [] };
-  const runs = Array.isArray(data.runs) ? data.runs : Array.isArray(data) ? data : [];
-  const unassigned = Array.isArray(data.unassigned) ? data.unassigned : [];
-  return { runs, unassigned };
 }
 
 const SECONDARY_TIMEOUT_MS = 8000;
@@ -369,7 +409,7 @@ function FlightListColumn({
                     f.sequenceIndex ??
                     f.sequence ??
                     null;
-                  const key = flightRowKey(f, idx);
+                  const key = flightStableKey(f, idx);
                   const isSelected = selectedFlightKey === key;
                   const flightId = f.flight_id || f.id || f.raw?.flight_id || f.raw?.id;
 
@@ -424,14 +464,16 @@ function FlightListColumn({
           <tbody>
             {flights.map((f, idx) => {
               const flightNumber = f.ident || f.flight_number || f.flightNumber;
-              const timeStr = f.time || f.time_local || f.timeLocal || "";
+              const timeStr = f.time_local || f.time || f.timeLocal || "";
               const dest = f.dest || f.destination || "";
               const airline = getAirlineCode(flightNumber);
               const flightId = f.id || f.flight_id || f.raw?.flight_id || f.raw?.id;
-              const key = flightRowKey(f, idx);
+              const key = flightStableKey(f, idx);
               const assignedRun = flightToRunMap[key];
-              const assignedForFlight =
-                assignmentByFlightId?.get(flightId) || [];
+              const assignedForFlight = getAssignmentsForFlight(
+                assignmentByFlightId,
+                f
+              );
               const primaryAssignment = assignedForFlight[0];
               const isSelected = selectedFlightKey === key;
 
@@ -727,15 +769,7 @@ function RunsGridColumn({
                               fr.sequenceIndex ??
                               fr.sequence ??
                               index;
-                            const key =
-                              fr.id ||
-                              flt?.fa_flight_id ||
-                              `${fn || flt?.ident || "UNK"}|${
-                                time ||
-                                flt?.scheduled_off ||
-                                flt?.estimated_off ||
-                                ""
-                              }|${index}`;
+                            const key = flightRunStableKey(fr, flt, index);
                             const isTight = fr.isTightConnection || flt.isTightConnection;
                             return (
                               <tr
@@ -908,12 +942,7 @@ function RunSheetColumn({ runs, selectedRunId, onUpdateFlightRun }) {
                 fr.planned_end_time || fr.plannedEndTime || "";
               const sequence =
                 fr.sequence_index ?? fr.sequenceIndex ?? fr.sequence ?? index;
-              const key =
-                fr.id ||
-                flt?.fa_flight_id ||
-                `${fn || flt?.ident || "UNK"}|${
-                  time || flt?.scheduled_off || flt?.estimated_off || ""
-                }|${index}`;
+              const key = flightRunStableKey(fr, flt, index);
 
               return (
                 <tr key={key}>
@@ -1093,7 +1122,7 @@ const PlannerPage = () => {
         run.flights || run.flight_runs || run.flightRuns || [];
       for (const [index, fr] of flightsArr.entries()) {
         const flt = fr.flight || fr;
-        const key = flightRowKey(flt, index);
+        const key = flightStableKey(flt, index);
         map[key] = { runId: run.id, operator: op, runLabel };
       }
     }
@@ -1189,14 +1218,22 @@ const PlannerPage = () => {
         run.flights || run.flight_runs || run.flightRuns || [];
       for (const fr of flightsArr) {
         const flt = fr.flight || fr;
-        if (flt && flt.id != null) {
-          assignedIds.add(flt.id);
+        if (flt) {
+          const primaryId = flt.id ?? flt.flight_id ?? flt.fa_flight_id;
+          if (primaryId != null) {
+            assignedIds.add(String(primaryId));
+          }
         }
       }
     }
 
     return flights.filter(
-      (f) => f && f.id != null && !assignedIds.has(f.id)
+      (f) => {
+        if (!f) return false;
+        const primaryId = f.id ?? f.flight_id ?? f.fa_flight_id;
+        if (primaryId == null) return false;
+        return !assignedIds.has(String(primaryId));
+      }
     );
   }, [flights, runs]);
 
@@ -1213,12 +1250,14 @@ const PlannerPage = () => {
   const assignmentByFlightId = useMemo(() => {
     const map = new Map();
     (assignments || []).forEach((assignment) => {
-      const fid = assignment.flight_id || assignment.flightId;
-      if (fid == null) return;
-      if (!map.has(fid)) {
-        map.set(fid, []);
-      }
-      map.get(fid).push(assignment);
+      const keys = buildAssignmentKeys(assignment);
+      if (!keys.length) return;
+      keys.forEach((key) => {
+        if (!map.has(key)) {
+          map.set(key, []);
+        }
+        map.get(key).push(assignment);
+      });
     });
     return map;
   }, [assignments]);
@@ -1368,60 +1407,16 @@ const PlannerPage = () => {
 
   async function loadRosterForDate(dateStr, signal) {
     if (!dateStr || !ROSTER_ENABLED) return;
-
-    const { signal: timeoutSignal, clear } = createTimeoutSignal(
-      signal,
-      SECONDARY_TIMEOUT_MS
-    );
-
-    try {
-      const rosterResp = await fetchDailyRoster(dateStr, { signal: timeoutSignal });
-      if (!signal?.aborted && !timeoutSignal.aborted) {
-        setRoster(normalizeRoster(rosterResp.data));
-      }
-    } catch (err) {
-      if (!signal?.aborted) {
-        setRoster([]);
-        setStaffViewError(
-          err?.name === "AbortError"
-            ? "Roster timed out."
-            : formatRequestError("Roster", err)
-        );
-      }
-    } finally {
-      clear();
-    }
+    setRoster([]);
+    setStaffViewError(STAFF_VIEW_DISABLED_REASON);
   }
 
   async function loadStaffRunsForDate(dateStr, airlineCode, signal) {
     if (!dateStr || !STAFF_RUNS_ENABLED) return;
-
-    const { signal: timeoutSignal, clear } = createTimeoutSignal(
-      signal,
-      SECONDARY_TIMEOUT_MS
-    );
-
-    try {
-      const staffRunsResp = await fetchStaffRuns(dateStr, airlineCode, {
-        signal: timeoutSignal,
-      });
-      if (!signal?.aborted && !timeoutSignal.aborted) {
-        setStaffRuns(normalizeStaffRuns(staffRunsResp.data));
-      }
-    } catch (err) {
-      if (!signal?.aborted) {
-        setStaffRuns({ runs: [], unassigned: [] });
-        setStaffViewError(
-          err?.name === "AbortError"
-            ? "Staff runs timed out."
-            : formatRequestError("Staff runs", err)
-        );
-      }
-    } finally {
-      clear();
-      if (!signal?.aborted) {
-        setLoadingStaffRuns(false);
-      }
+    setStaffRuns({ runs: [], unassigned: [] });
+    setStaffViewError(STAFF_VIEW_DISABLED_REASON);
+    if (!signal?.aborted) {
+      setLoadingStaffRuns(false);
     }
   }
 
@@ -1522,16 +1517,19 @@ const PlannerPage = () => {
     })();
 
     void loadAssignmentsForDate(date, signal);
-    if (ROSTER_ENABLED) {
+    if (ROSTER_ENABLED && STAFF_VIEW_ENABLED) {
       void loadRosterForDate(date, signal);
     } else {
       setRoster([]);
     }
-    if (STAFF_RUNS_ENABLED) {
+    if (STAFF_RUNS_ENABLED && STAFF_VIEW_ENABLED) {
       void loadStaffRunsForDate(date, airlineCode, signal);
     } else {
       setStaffRuns({ runs: [], unassigned: [] });
       setLoadingStaffRuns(false);
+      if (!STAFF_VIEW_ENABLED) {
+        setStaffViewError(STAFF_VIEW_DISABLED_REASON);
+      }
     }
 
     await Promise.all([flightsPromise, runsPromise]);
@@ -1765,8 +1763,8 @@ const PlannerPage = () => {
 
   async function handleGenerateStaffRuns() {
     if (!date) return;
-    if (!STAFF_RUNS_ENABLED) {
-      setStaffViewError("Staff runs are disabled.");
+    if (!STAFF_VIEW_ENABLED) {
+      setStaffViewError(STAFF_VIEW_DISABLED_REASON);
       return;
     }
 
@@ -2203,11 +2201,11 @@ const PlannerPage = () => {
           <button
             type="button"
             onClick={handleGenerateStaffRuns}
-            disabled={generatingStaffRuns || loadingStaffRuns || !STAFF_RUNS_ENABLED}
+            disabled={generatingStaffRuns || loadingStaffRuns || !STAFF_VIEW_ENABLED}
             title={
-              STAFF_RUNS_ENABLED
+              STAFF_VIEW_ENABLED
                 ? "Generate staff runs"
-                : "Staff runs are disabled in this environment."
+                : STAFF_VIEW_DISABLED_REASON
             }
           >
             {generatingStaffRuns ? "Generating staff runs…" : "Generate staff runs"}
@@ -2482,16 +2480,21 @@ const PlannerPage = () => {
             >
               Runs View
             </button>
-            {STAFF_VIEW_ENABLED && (
-              <button
-                type="button"
-                className={activeTab === "staff" ? "active" : ""}
-                onClick={() => setActiveTab("staff")}
-              >
-                Staff View
-              </button>
-            )}
+            <button
+              type="button"
+              className={activeTab === "staff" ? "active" : ""}
+              onClick={() => setActiveTab("staff")}
+              disabled={!STAFF_VIEW_ENABLED}
+              title={!STAFF_VIEW_ENABLED ? STAFF_VIEW_DISABLED_REASON : "Staff view"}
+            >
+              Staff View
+            </button>
           </div>
+          {!STAFF_VIEW_ENABLED && (
+            <div className="planner-status planner-status--warn">
+              {STAFF_VIEW_DISABLED_REASON}
+            </div>
+          )}
 
           {activeTab === "runs" || !STAFF_VIEW_ENABLED ? (
             <main className="planner-main">
@@ -2677,8 +2680,8 @@ const PlannerPage = () => {
                   <p className="muted">All flights are assigned to staff.</p>
                 ) : (
                   <ul>
-                    {(staffRuns.unassigned || []).map((f) => (
-                      <li key={f.flight_id}>
+                    {(staffRuns.unassigned || []).map((f, idx) => (
+                      <li key={flightStableKey(f, idx)}>
                         <span className="planner-job-flight">{f.flight_number}</span>
                         <span className="planner-job-time">
                           {formatLocalTimeLabel(f.etd_local)}
