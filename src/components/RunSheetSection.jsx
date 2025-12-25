@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 export function displayValue(value, fallback = "-") {
   if (value === null || value === undefined || value === "") return fallback;
@@ -40,6 +40,97 @@ export function getFlightValue(flight, runFlight, keys) {
     }
   }
   return "";
+}
+
+function getAssignmentKey(entry) {
+  if (!entry) return null;
+  return (
+    entry.flight_id ??
+    entry.flightId ??
+    entry.flightID ??
+    entry.flight_number ??
+    entry.flightNumber ??
+    entry.flight_no ??
+    entry.flightNo ??
+    null
+  );
+}
+
+function getFlightKey(flight, runFlight) {
+  if (!flight && !runFlight) return null;
+  return (
+    runFlight?.flight_id ??
+    runFlight?.flightId ??
+    flight?.id ??
+    flight?.flight_id ??
+    runFlight?.flight_number ??
+    runFlight?.flightNumber ??
+    runFlight?.flight_no ??
+    flight?.flight_number ??
+    flight?.flightNumber ??
+    flight?.flight_no ??
+    null
+  );
+}
+
+function formatStaffAssignment(assignment) {
+  if (!assignment) return null;
+  const name =
+    assignment.staff_name ||
+    assignment.staffName ||
+    assignment.staff_code ||
+    assignment.staffCode ||
+    assignment.staff_initials ||
+    assignment.staffInitials ||
+    assignment.staff_label ||
+    assignment.name ||
+    "";
+  if (!name) return null;
+  const role =
+    assignment.role ||
+    assignment.role_label ||
+    assignment.staff_role ||
+    assignment.staffRole ||
+    assignment.staff_label ||
+    assignment.label ||
+    "";
+  if (role && role !== name) return `${role}: ${name}`;
+  return name;
+}
+
+function buildRunStaffList(run, assignments) {
+  const flights = getRunFlights(run);
+  if (!flights.length || !Array.isArray(assignments) || assignments.length === 0) {
+    return [];
+  }
+
+  const assignmentsByFlight = new Map();
+  for (const assignment of assignments) {
+    const key = getAssignmentKey(assignment);
+    if (key == null) continue;
+    const normalizedKey = String(key);
+    const existing = assignmentsByFlight.get(normalizedKey) || [];
+    existing.push(assignment);
+    assignmentsByFlight.set(normalizedKey, existing);
+  }
+
+  const staffSet = new Set();
+  const staffList = [];
+
+  for (const flightRun of flights) {
+    const flight = flightRun?.flight || flightRun;
+    const flightKey = getFlightKey(flight, flightRun);
+    if (flightKey == null) continue;
+    const matches = assignmentsByFlight.get(String(flightKey)) || [];
+    for (const assignment of matches) {
+      const label = formatStaffAssignment(assignment);
+      if (!label || staffSet.has(label)) continue;
+      staffSet.add(label);
+      staffList.push(label);
+    }
+  }
+
+  return staffList;
 }
 
 const SERVICE_TIME_KEYS = [
@@ -152,6 +243,8 @@ const RunSheetSection = ({
   sectionId,
   className = "",
   showFooter = true,
+  assignmentsStatus = "idle",
+  assignments = [],
 }) => {
   const runId = getRunId(run);
   const shiftLabel =
@@ -271,6 +364,24 @@ const RunSheetSection = ({
       ? "Sorted by STD/STA"
       : "Sorted by Service Time (Unknown)";
 
+  const staffList = useMemo(() => {
+    if (assignmentsStatus !== "loaded") return [];
+    return buildRunStaffList(run, assignments);
+  }, [assignments, assignmentsStatus, run]);
+
+  const staffDisplay = useMemo(() => {
+    if (assignmentsStatus === "loading") {
+      return { text: "Loading staff…", muted: true };
+    }
+    if (assignmentsStatus === "loaded") {
+      if (staffList.length === 0) {
+        return { text: "(unassigned)", muted: true };
+      }
+      return { text: staffList.join(", "), muted: false };
+    }
+    return { text: "(unavailable)", muted: true };
+  }, [assignmentsStatus, staffList]);
+
   const sectionClassName = ["runsheet-card", className]
     .filter(Boolean)
     .join(" ");
@@ -298,6 +409,12 @@ const RunSheetSection = ({
           <div>
             <span className="runsheet-label">Run #</span>
             <span>{displayValue(runId ?? index + 1)}</span>
+          </div>
+          <div className="runsheet-staff">
+            <span className="runsheet-label">Staff</span>
+            <span className={staffDisplay.muted ? "runsheet-staff--muted" : ""}>
+              {staffDisplay.text}
+            </span>
           </div>
         </div>
       </header>

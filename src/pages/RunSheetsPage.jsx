@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import SystemHealthBar from "../components/SystemHealthBar";
 import RunSheetSection, { getRunId } from "../components/RunSheetSection";
+import { getAssignmentsOptional } from "../utils/optionalAssignments";
 import { fetchJson } from "../utils/api";
 import "../styles/runSheetsPage.css";
 
@@ -50,6 +51,11 @@ const RunSheetsPage = () => {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [assignmentsState, setAssignmentsState] = useState({
+    status: "idle",
+    assignments: [],
+    error: "",
+  });
 
   const printTriggeredRef = useRef(false);
 
@@ -139,6 +145,50 @@ const RunSheetsPage = () => {
       print: autoPrintRef.current,
     });
   }, [date, airport, operator, shift, runId, runIndex, loadRuns, updateUrl]);
+
+  useEffect(() => {
+    if (!date || !airport) {
+      setAssignmentsState({ status: "idle", assignments: [], error: "" });
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+
+    setAssignmentsState((prev) => ({
+      ...prev,
+      status: "loading",
+      error: "",
+    }));
+
+    getAssignmentsOptional({
+      date,
+      airport,
+      operator,
+      shift,
+      signal: controller.signal,
+    }).then((result) => {
+      if (!active || controller.signal.aborted) return;
+      if (result.ok) {
+        setAssignmentsState({
+          status: "loaded",
+          assignments: result.assignments || [],
+          error: "",
+        });
+      } else {
+        setAssignmentsState({
+          status: "unavailable",
+          assignments: [],
+          error: result.error || "unavailable",
+        });
+      }
+    });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [date, airport, operator, shift]);
 
   const selectedRun = useMemo(() => {
     if (!runs.length) return null;
@@ -318,6 +368,8 @@ const RunSheetsPage = () => {
             date={meta?.date || date}
             airport={meta?.airport || airport}
             index={selectedRunIndex}
+            assignmentsStatus={assignmentsState.status}
+            assignments={assignmentsState.assignments}
           />
         </main>
       )}

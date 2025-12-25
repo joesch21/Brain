@@ -5,6 +5,7 @@ import RunSheetSection, {
   getRunId,
 } from "../components/RunSheetSection";
 import { fetchJson } from "../utils/api";
+import { getAssignmentsOptional } from "../utils/optionalAssignments";
 import "../styles/runSheetsPage.css";
 
 const DEFAULT_AIRPORT = "YSSY";
@@ -25,6 +26,11 @@ const RunSheetsPackPage = () => {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [assignmentsState, setAssignmentsState] = useState({
+    status: "idle",
+    assignments: [],
+    error: "",
+  });
 
   const params = useMemo(() => new URLSearchParams(location.search), [
     location.search,
@@ -93,6 +99,50 @@ const RunSheetsPackPage = () => {
   useEffect(() => {
     loadRuns();
   }, [loadRuns]);
+
+  useEffect(() => {
+    if (!date || !airport) {
+      setAssignmentsState({ status: "idle", assignments: [], error: "" });
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+
+    setAssignmentsState((prev) => ({
+      ...prev,
+      status: "loading",
+      error: "",
+    }));
+
+    getAssignmentsOptional({
+      date,
+      airport,
+      operator,
+      shift,
+      signal: controller.signal,
+    }).then((result) => {
+      if (!active || controller.signal.aborted) return;
+      if (result.ok) {
+        setAssignmentsState({
+          status: "loaded",
+          assignments: result.assignments || [],
+          error: "",
+        });
+      } else {
+        setAssignmentsState({
+          status: "unavailable",
+          assignments: [],
+          error: result.error || "unavailable",
+        });
+      }
+    });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [date, airport, operator, shift]);
 
   const totalFlights = useMemo(() => {
     return runs.reduce((sum, run) => sum + getRunFlights(run).length, 0);
@@ -187,6 +237,8 @@ const RunSheetsPackPage = () => {
               index={index}
               sectionId={`run-${index + 1}`}
               className="runsheet-pack-card"
+              assignmentsStatus={assignmentsState.status}
+              assignments={assignmentsState.assignments}
             />
           ))}
         </main>
