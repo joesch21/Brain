@@ -13,14 +13,14 @@ async function handleJson<T>(res: Response): Promise<T> {
 
 export async function fetchRunsForDate(
   date: string,
-  operator: string,
+  airline: string,
   shift: string = "ALL",
 ) {
   const ep = await getEndpoint("runs");
 
   const url = new URL(`${(import.meta as any).env.VITE_API_BASE_URL}${ep.path}`);
   url.searchParams.set("date", date);
-  url.searchParams.set("operator", operator);
+  url.searchParams.set("airline", airline);
   url.searchParams.set("airport", "YSSY");
   url.searchParams.set("shift", shift);
 
@@ -28,13 +28,13 @@ export async function fetchRunsForDate(
   return handleJson<any>(res);
 }
 
-export async function autoAssignRuns(date: string, operator: string) {
+export async function autoAssignRuns(date: string, airline: string) {
   const ep = await getEndpoint("runs_auto_assign");
 
   const res = await fetch(`${(import.meta as any).env.VITE_API_BASE_URL}${ep.path}`, {
     method: ep.method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ date, operator })
+    body: JSON.stringify({ date, airline })
   });
 
   return handleJson<any>(res);

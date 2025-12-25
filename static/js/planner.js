@@ -18,6 +18,8 @@
   const autoAssignButton = document.getElementById("planner-auto-assign");
   const printButton = document.getElementById("planner-print");
 
+  const DEFAULT_AIRPORT = "YSSY";
+
   let flights = [];
   let runs = [];
   let selectedRunId = null;
@@ -117,7 +119,8 @@
     const dateVal = dateInput.value;
     if (!dateVal) return [];
 
-    const url = `/api/flights?date=${encodeURIComponent(dateVal)}`;
+    const airline = (airlineSelect.value || "ALL").toUpperCase() || "ALL";
+    const url = `/api/flights?date=${encodeURIComponent(dateVal)}&airport=${encodeURIComponent(DEFAULT_AIRPORT)}&airline=${encodeURIComponent(airline)}`;
     const res = await fetchApiStatus(url);
     if (!res.ok) {
       return {
@@ -143,7 +146,8 @@
     const dateVal = dateInput.value;
     if (!dateVal) return [];
 
-    const url = `/api/runs?date=${encodeURIComponent(dateVal)}`;
+    const airline = (airlineSelect.value || "ALL").toUpperCase() || "ALL";
+    const url = `/api/runs?date=${encodeURIComponent(dateVal)}&airport=${encodeURIComponent(DEFAULT_AIRPORT)}&airline=${encodeURIComponent(airline)}`;
     const res = await fetchApiStatus(url);
     if (!res.ok) {
       return {
@@ -541,7 +545,7 @@
       const res = await fetch(`/api/runs/auto_assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: dateVal, operator: "ALL" }),
+        body: JSON.stringify({ date: dateVal, airline: "ALL" }),
       });
 
       const data = await res.json().catch(() => ({}));

@@ -25,6 +25,7 @@ function todayISO() {
 const AIRLINE_OPTIONS = ["JQ", "QF", "VA", "ZL"];
 const ALL_AIRLINE_OPTION = "ALL";
 const DEFAULT_AIRLINE = "JQ";
+const DEFAULT_AIRPORT = "YSSY";
 
 function formatAutoAssignStaffMessage(result) {
   if (!result) return "Auto-assigned staff.";
@@ -58,7 +59,8 @@ const WIRING_TESTS = [
     key: "flights",
     label: "Flights for date",
     method: "GET",
-    buildUrl: (date) => `/api/flights?date=${encodeURIComponent(date)}`,
+    buildUrl: (date) =>
+      `/api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`,
     expectsOkField: true,
   },
   {
@@ -82,14 +84,15 @@ const WIRING_TESTS = [
     label: "Employee assignments for date",
     method: "GET",
     buildUrl: (date) =>
-      `/api/employee_assignments/daily?date=${encodeURIComponent(date)}`,
+      `/api/employee_assignments/daily?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`,
     expectsOkField: true,
   },
   {
     key: "runs",
     label: "Runs for date",
     method: "GET",
-    buildUrl: (date) => `/api/runs?date=${encodeURIComponent(date)}`,
+    buildUrl: (date) =>
+      `/api/runs?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`,
     expectsOkField: true,
   },
 ];
@@ -261,15 +264,16 @@ const SystemStatusCard = ({ selectedAirline }) => {
       selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
         ? `&airline=${encodeURIComponent(selectedAirline)}`
         : "";
+    const airportSuffix = `&airport=${DEFAULT_AIRPORT}`;
 
     const tests = [
       {
         name: "Flights (date)",
-        url: `/api/flights?date=${encodeURIComponent(date)}${airlineSuffix}`,
+        url: `/api/flights?date=${encodeURIComponent(date)}${airportSuffix}${airlineSuffix}`,
       },
       {
         name: "Runs (date)",
-        url: `/api/runs?date=${encodeURIComponent(date)}${airlineSuffix}`,
+        url: `/api/runs?date=${encodeURIComponent(date)}${airportSuffix}${airlineSuffix}`,
       },
       {
         name: "Roster (date)",

@@ -16,12 +16,12 @@ const PROBES = [
   {
     key: "flights",
     name: "Flights (today)",
-    buildPath: (date) => `/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&operator=ALL`,
+    buildPath: (date) => `/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`,
   },
   {
     key: "runs",
     name: "Runs (today)",
-    buildPath: (date) => `/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&operator=ALL`,
+    buildPath: (date) => `/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`,
   },
 ];
 

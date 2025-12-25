@@ -40,7 +40,7 @@ const RunSheetsPackPage = () => {
   const airport = (params.get("airport") || DEFAULT_AIRPORT)
     .trim()
     .toUpperCase();
-  const operator = (params.get("operator") || DEFAULT_OPERATOR)
+  const airline = (params.get("airline") || params.get("operator") || DEFAULT_OPERATOR)
     .trim()
     .toUpperCase();
   const shift = (params.get("shift") || DEFAULT_SHIFT).trim().toUpperCase();
@@ -60,7 +60,7 @@ const RunSheetsPackPage = () => {
       const query = new URLSearchParams({
         date,
         airport,
-        operator: operator || DEFAULT_OPERATOR,
+        airline: airline || DEFAULT_OPERATOR,
         shift: shift || DEFAULT_SHIFT,
       });
       const res = await fetchJson(`/api/runs?${query.toString()}`);
@@ -83,7 +83,7 @@ const RunSheetsPackPage = () => {
       setMeta({
         date: data.local_date || data.date || date,
         airport: data.airport || airport,
-        operator,
+        airline,
         shift,
         count: data.count ?? runsList.length,
       });
@@ -94,7 +94,7 @@ const RunSheetsPackPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [airport, date, operator, shift]);
+  }, [airport, date, airline, shift]);
 
   useEffect(() => {
     loadRuns();
@@ -118,7 +118,7 @@ const RunSheetsPackPage = () => {
     getAssignmentsOptional({
       date,
       airport,
-      operator,
+      operator: airline,
       shift,
       signal: controller.signal,
     }).then((result) => {
@@ -142,7 +142,7 @@ const RunSheetsPackPage = () => {
       active = false;
       controller.abort();
     };
-  }, [date, airport, operator, shift]);
+  }, [date, airport, airline, shift]);
 
   const totalFlights = useMemo(() => {
     return runs.reduce((sum, run) => sum + getRunFlights(run).length, 0);
@@ -185,7 +185,7 @@ const RunSheetsPackPage = () => {
         </div>
         <div>
           <span className="runsheet-label">Operator</span>
-          <span>{operator || DEFAULT_OPERATOR}</span>
+          <span>{airline || DEFAULT_OPERATOR}</span>
         </div>
         <div>
           <span className="runsheet-label">Shift</span>

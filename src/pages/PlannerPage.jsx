@@ -1113,7 +1113,7 @@ const PlannerPage = () => {
       const params = new URLSearchParams({
         date,
         airport: DEFAULT_AIRPORT,
-        operator: "ALL",
+        airline: "ALL",
         shift: "ALL",
         runId: String(runId),
       });
@@ -1130,7 +1130,7 @@ const PlannerPage = () => {
       const params = new URLSearchParams({
         date,
         airport: DEFAULT_AIRPORT,
-        operator,
+        airline: operator,
         shift,
       });
       const url = `/runsheets/pack?${params.toString()}`;

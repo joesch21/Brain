@@ -89,15 +89,16 @@ export interface EmployeeAssignmentsResponse {
 }
 
 /**
- * EWOT: fetch flights for a given date and operator from the Ops API.
+ * EWOT: fetch flights for a given date and airline from the Ops API.
  */
 export async function fetchFlightsForDate(
   date: string,
-  operator: string,
+  airline: string = "ALL",
 ): Promise<Flight[]> {
   const url = new URL(`${API_BASE}/flights`);
   url.searchParams.set("date", date);
-  url.searchParams.set("operator", operator);
+  url.searchParams.set("airline", airline);
+  url.searchParams.set("airport", "YSSY");
 
   const res = await fetch(url.toString());
   const payload = await handleJson<FlightsResponse>(res);
@@ -115,11 +116,12 @@ export async function fetchFlightsForDate(
  */
 export async function fetchEmployeeAssignmentsForDate(
   date: string,
-  airline: string,
+  airline: string = "ALL",
 ): Promise<EmployeeAssignment[]> {
   const url = new URL(`${API_BASE}/employee_assignments/daily`);
   url.searchParams.set("date", date);
   url.searchParams.set("airline", airline);
+  url.searchParams.set("airport", "YSSY");
 
   const res = await fetch(url.toString());
   const payload = await handleJson<EmployeeAssignmentsResponse>(res);

@@ -66,7 +66,6 @@ async function fetchAssignments({
   });
 
   if (operator && operator !== "ALL") {
-    params.set("operator", operator);
     params.set("airline", operator);
   }
 

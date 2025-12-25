@@ -1,7 +1,8 @@
 // EWOT: Fetches the roster for a date and returns the unique operator codes on duty that day.
+const DEFAULT_AIRPORT = "YSSY";
 
 export async function fetchRosterOperators(date) {
-  const params = new URLSearchParams({ date });
+  const params = new URLSearchParams({ date, airport: DEFAULT_AIRPORT });
 
   // Adjust this path if the roster endpoint differs.
   const res = await fetch(`/api/employee_assignments/daily?${params.toString()}`, {

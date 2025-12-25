@@ -26,6 +26,8 @@
   const runSheetTitle = document.getElementById("run-sheet-title");
   const runSheetTableBody = document.querySelector("#run-sheet-table tbody");
 
+  const DEFAULT_AIRPORT = "YSSY";
+
   let currentRuns = [];
 
   let draggedItem = null;
@@ -113,7 +115,8 @@
     hideRunSheet();
 
     try {
-      const url = `${apiBase}/api/runs?date=${encodeURIComponent(dateVal)}`;
+      const airline = (operatorSelect.value || "ALL").toUpperCase() || "ALL";
+      const url = `${apiBase}/api/runs?date=${encodeURIComponent(dateVal)}&airport=${encodeURIComponent(DEFAULT_AIRPORT)}&airline=${encodeURIComponent(airline)}`;
       const res = await fetchApiStatus(url);
       if (!res.ok) {
         throw new Error(formatApiError("Runs", res));
@@ -491,7 +494,8 @@
     }
 
     try {
-      const url = `${apiBase}/api/flights?date=${encodeURIComponent(dateVal)}`;
+      const airline = (operatorSelect.value || "ALL").toUpperCase() || "ALL";
+      const url = `${apiBase}/api/flights?date=${encodeURIComponent(dateVal)}&airport=${encodeURIComponent(DEFAULT_AIRPORT)}&airline=${encodeURIComponent(airline)}`;
       const res = await fetchApiStatus(url);
       if (!res.ok) {
         throw new Error(formatApiError("Flights", res));
@@ -600,7 +604,7 @@
       const url = `${apiBase}/api/runs/auto_assign`;
       const body = {
         date: dateVal,
-        operator: (operatorSelect.value || "ALL").toUpperCase() || "ALL",
+        airline: (operatorSelect.value || "ALL").toUpperCase() || "ALL",
       };
 
       const res = await fetch(url, {

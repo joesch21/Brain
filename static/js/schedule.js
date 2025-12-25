@@ -15,6 +15,7 @@
   const diagnosticsDiv = document.getElementById("schedule-api-diagnostics");
   const summaryDiv = document.getElementById("daily-flight-summary");
   const tableBody = document.querySelector("#schedule-table tbody");
+  const DEFAULT_AIRPORT = "YSSY";
 
   function setStatus(message, isError = false) {
     statusDiv.textContent = message || "";
@@ -80,7 +81,8 @@
     setDiagnostics("Running diagnostics…", false);
     testApiButton.disabled = true;
 
-    const qs = `?date=${encodeURIComponent(dateVal)}`;
+    const airline = (operatorSelect.value || "ALL").toUpperCase() || "ALL";
+    const qs = `?date=${encodeURIComponent(dateVal)}&airport=${encodeURIComponent(DEFAULT_AIRPORT)}&airline=${encodeURIComponent(airline)}`;
 
     try {
       const [statusRes, flightsRes, runsRes] = await Promise.all([
@@ -312,7 +314,8 @@
     clearSummary();
 
     try {
-      const url = `${apiBase}/api/flights?date=${encodeURIComponent(dateVal)}`;
+      const airline = (operatorSelect.value || "ALL").toUpperCase() || "ALL";
+      const url = `${apiBase}/api/flights?date=${encodeURIComponent(dateVal)}&airport=${encodeURIComponent(DEFAULT_AIRPORT)}&airline=${encodeURIComponent(airline)}`;
       const res = await fetchApiStatus(url);
       if (!res.ok) {
         throw new Error(formatApiError("Flights", res));
