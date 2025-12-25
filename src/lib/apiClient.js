@@ -229,24 +229,45 @@ export async function pullFlights(date, operator = "ALL", options = {}) {
     throw new Error("pullFlights: airport is required");
   }
 
+  const timeoutMs = options.timeoutMs ?? 60000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const forwardAbort = () => controller.abort();
+  if (options.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener("abort", forwardAbort, { once: true });
+    }
+  }
+
   const body = {
     date,
     airport: options.airport,
     operator: operator || "ALL",
     store: true,
     timeout: 30,
+    scope: "both",
   };
 
-  return request("/api/flights/pull", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ...options.headers,
-    },
-    body: JSON.stringify(body),
-    ...options,
-  });
+  try {
+    return await request("/api/flights/pull", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...options.headers,
+      },
+      body: JSON.stringify(body),
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+    if (options.signal) {
+      options.signal.removeEventListener("abort", forwardAbort);
+    }
+  }
 }
 
 export async function fetchRuns(date, airline = "JQ", options = {}) {
