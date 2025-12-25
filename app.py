@@ -719,7 +719,22 @@ def api_flights_pull():
     button that forwards to CC3 ingestion and (optionally) stores into DB.
     """
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if data is None:
+        if request.data:
+            return json_error(
+                "Invalid JSON body.",
+                status_code=400,
+                code="invalid_json",
+            )
+        data = {}
+
+    if not isinstance(data, dict):
+        return json_error(
+            "Request body must be a JSON object.",
+            status_code=400,
+            code="bad_request",
+        )
 
     airport, airport_err = _require_airport_field(data)
     if airport_err is not None:
@@ -730,18 +745,36 @@ def api_flights_pull():
         return json_error(
             "date is required",
             status_code=400,
-            code="bad_request",
+            code="validation_error",
+        )
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return json_error(
+            "date must be in YYYY-MM-DD format",
+            status_code=400,
+            code="validation_error",
         )
 
     operator = str(data.get("operator") or "ALL").strip() or "ALL"
-    timeout = int(data.get("timeout") or 30)
+    operator = operator.upper()
+    raw_timeout = data.get("timeout", 30)
+    try:
+        timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        return json_error(
+            "timeout must be an integer >= 10",
+            status_code=400,
+            code="validation_error",
+        )
+    timeout = max(timeout, 10)
 
     # Map Brain operator -> CC3 airlines filter.
     # - ALL => no airline filter
     # - otherwise => airlines=[operator]
     airlines = None
-    if operator.upper() != "ALL":
-        airlines = [operator.upper()]
+    if operator != "ALL":
+        airlines = [operator]
 
     upstream_path = "/api/flights/ingest/aeroapi"
     upstream_body: Dict[str, Any] = {
