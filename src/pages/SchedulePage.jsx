@@ -5,14 +5,14 @@ import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 
 import {
-  fetchEmployeeAssignments,
   fetchFlights,
   fetchStatus,
   pullFlights,
 } from "../lib/apiClient";
-import { autoAssignStaff } from "../api/opsClient";
+import { REQUIRED_AIRPORT, normalizeOperator } from "../lib/opsDefaults";
+import { autoAssignStaff, fetchEmployeeAssignmentsForDate } from "../api/opsClient";
 
-const DEFAULT_AIRPORT = "YSSY";
+const DEFAULT_AIRPORT = REQUIRED_AIRPORT;
 
 function todayISO() {
   const d = new Date();
@@ -116,10 +116,12 @@ const SchedulePage = () => {
     }
 
     try {
-      const flightsResp = await fetchFlights(date, operator || "ALL", {
-        signal,
-        airport: DEFAULT_AIRPORT,
-      });
+      const flightsResp = await fetchFlights(
+        date,
+        operator || "ALL",
+        DEFAULT_AIRPORT,
+        { signal }
+      );
 
       if (!signal?.aborted) {
         const payload = flightsResp.data || {};
@@ -140,22 +142,19 @@ const SchedulePage = () => {
     }
 
     try {
-      const assignmentsResp = await fetchEmployeeAssignments(date, { signal });
+      const assignmentsResp = await fetchEmployeeAssignmentsForDate(date, {
+        airport: REQUIRED_AIRPORT,
+        operator: normalizeOperator(operator || "ALL"),
+        shift: "ALL",
+      });
       if (!signal?.aborted) {
-        const payload = assignmentsResp.data || {};
-        const list = Array.isArray(payload.assignments)
-          ? payload.assignments
-          : Array.isArray(payload)
-            ? payload
-            : [];
-        setAssignments(list);
+        setAssignments(assignmentsResp);
       }
-    } catch (err) {
+    } catch {
       if (!signal?.aborted) {
-        const message = formatRequestError("Assignments", err);
+        // Optional overlay: silently ignore.
         setAssignments([]);
-        setAssignmentsError(message);
-        setError((prev) => prev || message);
+        setAssignmentsError("");
       }
     }
 
@@ -219,9 +218,7 @@ const SchedulePage = () => {
       throw new Error("Flights refresh requires a date.");
     }
     const op = operator || "ALL";
-    const flightsResp = await fetchFlights(date, op, {
-      airport: DEFAULT_AIRPORT,
-    });
+    const flightsResp = await fetchFlights(date, op, DEFAULT_AIRPORT);
     const payload = flightsResp.data || {};
     const normalizedFlights = normalizeFlights(payload);
     const nextCount = Number.isFinite(payload.count)

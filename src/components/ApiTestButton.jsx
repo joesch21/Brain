@@ -5,10 +5,10 @@ import {
   fetchStatus,
   seedDemoDay,
 } from "../lib/apiClient";
+import { REQUIRED_AIRPORT } from "../lib/opsDefaults";
 import "../styles/apiTest.css";
 
 const ENABLE_DEV_SEED = import.meta.env.VITE_ENABLE_DEV_SEED !== "0";
-const DEFAULT_AIRPORT = "YSSY";
 
 /**
  * CWO-13: One-click API diagnostics for a given date.
@@ -37,8 +37,8 @@ const ApiTestButton = ({ date, onAfterSeed, showSeedButton = true }) => {
     try {
       const results = await Promise.allSettled([
         fetchStatus(date),
-        fetchFlights(date, "all", { airport: DEFAULT_AIRPORT }),
-        fetchRuns(date, "ALL", { airport: DEFAULT_AIRPORT }),
+        fetchFlights(date, "ALL", REQUIRED_AIRPORT),
+        fetchRuns(date, "ALL", { airport: REQUIRED_AIRPORT }),
       ]);
 
       const [statusRes, flightsRes, runsRes] = results.map((result) => {

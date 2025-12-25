@@ -1,8 +1,20 @@
+import {
+  DEFAULT_OPERATOR,
+  DEFAULT_SHIFT,
+  REQUIRED_AIRPORT,
+  normalizeOperator,
+  normalizeShift,
+} from "../lib/opsDefaults";
+
 // EWOT: Fetches the roster for a date and returns the unique operator codes on duty that day.
-const DEFAULT_AIRPORT = "YSSY";
 
 export async function fetchRosterOperators(date) {
-  const params = new URLSearchParams({ date, airport: DEFAULT_AIRPORT });
+  const params = new URLSearchParams({
+    date,
+    airport: REQUIRED_AIRPORT,
+    operator: normalizeOperator(DEFAULT_OPERATOR),
+    shift: normalizeShift(DEFAULT_SHIFT),
+  });
 
   // Adjust this path if the roster endpoint differs.
   const res = await fetch(`/api/employee_assignments/daily?${params.toString()}`, {
@@ -13,10 +25,12 @@ export async function fetchRosterOperators(date) {
   });
 
   if (!res.ok) {
-    throw new Error(`Roster HTTP ${res.status}`);
+    return [];
   }
 
   const data = await res.json();
+  if (data?.available === false) return [];
+  if (data?.ok === false) return [];
 
   // Expecting something like: { assignments: [ { operator: "QF", ... }, ... ] }
   const assignments = Array.isArray(data.assignments) ? data.assignments : [];

@@ -9,6 +9,8 @@ import {
   DEFAULT_OPERATOR,
   DEFAULT_SHIFT,
   REQUIRED_AIRPORT,
+  normalizeOperator,
+  normalizeShift,
 } from "../lib/opsDefaults";
 
 type Flight = {
@@ -48,7 +50,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
     const params = new URLSearchParams({
       date,
       airport: REQUIRED_AIRPORT,
-      airline: "JQ",
+      operator: normalizeOperator(DEFAULT_OPERATOR),
     });
     const { data } = await apiRequest(`/api/flights?${params.toString()}`);
     return data?.flights ?? [];
@@ -60,8 +62,8 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
     const params = new URLSearchParams({
       date,
       airport: REQUIRED_AIRPORT,
-      operator: DEFAULT_OPERATOR,
-      shift: DEFAULT_SHIFT,
+      operator: normalizeOperator(DEFAULT_OPERATOR),
+      shift: normalizeShift(DEFAULT_SHIFT),
     });
     try {
       const { data } = await apiRequest(
@@ -85,11 +87,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
       }
 
       return [];
-    } catch (err) {
-      console.warn(
-        "Staff assignments overlay unavailable; continuing without it.",
-        err,
-      );
+    } catch {
       return [];
     }
   }
