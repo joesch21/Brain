@@ -62,6 +62,48 @@
   margin-top: 1rem;
 }
 
+.runsheets-pack-header {
+  align-items: flex-start;
+}
+
+.runsheets-pack-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.runsheets-pack-summary {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.runsheets-pack-jumplinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.runsheets-pack-jumplinks a {
+  color: #93c5fd;
+}
+
+.runsheets-pack-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.runsheet-pack-card {
+  scroll-margin-top: 90px;
+}
+
 .runsheet-card {
   background: #11141c;
   border-radius: 8px;
@@ -165,11 +207,20 @@
 
 @media print {
   .main-nav,
-  .page-header,
   .runsheets-toolbar,
   .system-health-bar,
-  .runsheets-print-button {
+  .runsheets-print-button,
+  .runsheets-pack-actions,
+  .runsheets-pack-jumplinks {
     display: none !important;
+  }
+
+  .runsheets-header {
+    display: none;
+  }
+
+  .runsheets-pack-header {
+    display: flex !important;
   }
 
   .runsheets-page {
@@ -182,6 +233,26 @@
     padding: 0;
     background: #fff;
     color: #000;
+  }
+
+  .runsheet-pack-card {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .runsheet-pack-card:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .runsheet-pack-card .runsheet-header,
+  .runsheet-pack-card .runsheet-summary {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .runsheet-table thead {
+    display: table-header-group;
   }
 
   .runsheet-header,
