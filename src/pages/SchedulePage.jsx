@@ -1,14 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "../styles/schedule.css";
+import { extractFlightsList, normalizeFlightRow } from "../lib/flightNormalize";
 
 import SystemHealthBar from "../components/SystemHealthBar";
 import ApiTestButton from "../components/ApiTestButton";
 
-import {
-  fetchFlights,
-  fetchStatus,
-  pullFlights,
-} from "../lib/apiClient";
+import { fetchFlights, fetchStatus, pullFlights } from "../lib/apiClient";
 import { REQUIRED_AIRPORT, normalizeOperator } from "../lib/opsDefaults";
 import { autoAssignStaff, fetchEmployeeAssignmentsForDate } from "../api/opsClient";
 
@@ -20,15 +17,6 @@ function todayISO() {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
-}
-
-
-function normalizeFlights(data) {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.records)) return data.records;
-  if (Array.isArray(data.flights)) return data.flights;
-  return [];
 }
 
 function formatRequestError(label, err) {
@@ -64,13 +52,23 @@ function formatAutoAssignSummary(result) {
     return `${base} (${staffCounts}) Unassigned: ${unassigned}.${reason}`;
   }
 
-  const assignedCount = Array.isArray(result.assigned)
-    ? result.assigned.length
-    : 0;
-  const unassignedCount = Array.isArray(result.unassigned)
-    ? result.unassigned.length
-    : 0;
+  const assignedCount = Array.isArray(result.assigned) ? result.assigned.length : 0;
+  const unassignedCount = Array.isArray(result.unassigned) ? result.unassigned.length : 0;
   return `Auto-assigned staff for ${result.date || "selected date"}. Assigned: ${assignedCount}, unassigned: ${unassignedCount}.`;
+}
+
+function toSortedNormalizedFlights(payload) {
+  const rawList = extractFlightsList(payload);
+  const normalized = rawList.map(normalizeFlightRow);
+
+  // Sort by ISO time (estimated_off > scheduled_off inside normalizeFlightRow)
+  normalized.sort((a, b) => {
+    const ta = a.time_iso ? Date.parse(a.time_iso) : 0;
+    const tb = b.time_iso ? Date.parse(b.time_iso) : 0;
+    return ta - tb;
+  });
+
+  return normalized;
 }
 
 const SchedulePage = () => {
@@ -103,9 +101,7 @@ const SchedulePage = () => {
 
     try {
       const statusResp = await fetchStatus(date, { signal });
-      if (!signal?.aborted) {
-        setStatusData(statusResp.data || null);
-      }
+      if (!signal?.aborted) setStatusData(statusResp.data || null);
     } catch (err) {
       if (!signal?.aborted) {
         const message = formatRequestError("Status", err);
@@ -125,11 +121,11 @@ const SchedulePage = () => {
 
       if (!signal?.aborted) {
         const payload = flightsResp.data || {};
-        const normalizedFlights = normalizeFlights(payload);
+        const normalizedFlights = toSortedNormalizedFlights(payload);
+
         setFlights(normalizedFlights);
-        setFlightsCount(
-          Number.isFinite(payload.count) ? payload.count : normalizedFlights.length
-        );
+        // IMPORTANT: keep counters aligned with what we render
+        setFlightsCount(normalizedFlights.length);
         setFlightsOk(true);
       }
     } catch (err) {
@@ -147,9 +143,7 @@ const SchedulePage = () => {
         operator: normalizeOperator(operator || "ALL"),
         shift: "ALL",
       });
-      if (!signal?.aborted) {
-        setAssignments(assignmentsResp);
-      }
+      if (!signal?.aborted) setAssignments(assignmentsResp);
     } catch {
       if (!signal?.aborted) {
         // Optional overlay: silently ignore.
@@ -168,6 +162,7 @@ const SchedulePage = () => {
     const controller = new AbortController();
     loadSchedule(controller.signal);
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, operator]);
 
   useEffect(() => {
@@ -177,24 +172,14 @@ const SchedulePage = () => {
   const operatorOptions = useMemo(() => {
     const values = new Set();
     for (const flight of flights) {
-      const op =
-        flight.operator ||
-        flight.carrier ||
-        flight.airline ||
-        flight.flight_operator ||
-        flight.flightOperator;
-      if (op) values.add(op);
+      if (flight.operator) values.add(flight.operator);
     }
     return Array.from(values).sort();
   }, [flights]);
 
   const visibleFlights = useMemo(() => {
     if (!operator) return flights;
-    return flights.filter((f) => {
-      const op =
-        f.operator || f.carrier || f.airline || f.flight_operator || f.flightOperator;
-      return op === operator;
-    });
+    return flights.filter((f) => f.operator === operator);
   }, [flights, operator]);
 
   const assignmentsByFlightId = useMemo(() => {
@@ -202,32 +187,26 @@ const SchedulePage = () => {
     for (const a of assignments) {
       if (a) {
         const key =
-          a.flight_id != null
-            ? String(a.flight_id)
-            : a.flight_number || a.flight_no;
-        if (key != null) {
-          map.set(String(key), a);
-        }
+          a.flight_id != null ? String(a.flight_id) : a.flight_number || a.flight_no;
+        if (key != null) map.set(String(key), a);
       }
     }
     return map;
   }, [assignments]);
 
   async function refreshFlightsOnly() {
-    if (!date) {
-      throw new Error("Flights refresh requires a date.");
-    }
+    if (!date) throw new Error("Flights refresh requires a date.");
     const op = operator || "ALL";
+
     const flightsResp = await fetchFlights(date, op, DEFAULT_AIRPORT);
     const payload = flightsResp.data || {};
-    const normalizedFlights = normalizeFlights(payload);
-    const nextCount = Number.isFinite(payload.count)
-      ? payload.count
-      : normalizedFlights.length;
+    const normalizedFlights = toSortedNormalizedFlights(payload);
+
     setFlights(normalizedFlights);
-    setFlightsCount(nextCount);
+    setFlightsCount(normalizedFlights.length);
     setFlightsOk(true);
-    return { count: nextCount };
+
+    return { count: normalizedFlights.length };
   }
 
   async function handleAutoAssignStaff() {
@@ -236,19 +215,11 @@ const SchedulePage = () => {
     setAutoAssignStatus(null);
     try {
       const result = await autoAssignStaff(date, operator || "ALL");
-      if (result && result.ok === false) {
-        throw new Error(result.message || "Auto-assign staff failed.");
-      }
-      setAutoAssignStatus({
-        ok: true,
-        message: formatAutoAssignSummary(result.data),
-      });
+      if (result && result.ok === false) throw new Error(result.message || "Auto-assign staff failed.");
+      setAutoAssignStatus({ ok: true, message: formatAutoAssignSummary(result.data) });
       await loadSchedule();
     } catch (err) {
-      setAutoAssignStatus({
-        ok: false,
-        message: err?.message || "Auto-assign staff failed.",
-      });
+      setAutoAssignStatus({ ok: false, message: err?.message || "Auto-assign staff failed." });
     } finally {
       setAutoAssignLoading(false);
     }
@@ -265,6 +236,7 @@ const SchedulePage = () => {
         timeoutMs: 60000,
       });
       const upstreamStatus = resp?.data?.status ?? resp?.status;
+
       try {
         const refreshed = await refreshFlightsOnly();
         const refreshedCount = refreshed?.count ?? 0;
@@ -283,8 +255,7 @@ const SchedulePage = () => {
         });
       }
     } catch (err) {
-      const upstreamStatus =
-        err?.data?.status ?? err?.data?.upstream_status ?? err?.status;
+      const upstreamStatus = err?.data?.status ?? err?.data?.upstream_status ?? err?.status;
       setPullStatus({
         ok: false,
         message: `${formatRequestError("Pull flights", err)}${
@@ -303,20 +274,13 @@ const SchedulePage = () => {
           <h2>Daily Flight Schedule</h2>
           <label>
             Date:{" "}
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
         </div>
         <div className="schedule-header-right">
           <label>
             Operator:{" "}
-            <select
-              value={operator}
-              onChange={(e) => setOperator(e.target.value)}
-            >
+            <select value={operator} onChange={(e) => setOperator(e.target.value)}>
               <option value="">All operators</option>
               {operatorOptions.map((op) => (
                 <option key={op} value={op}>
@@ -329,40 +293,26 @@ const SchedulePage = () => {
       </header>
 
       <div className="schedule-actions">
-        <button
-          type="button"
-          onClick={() => loadSchedule()}
-          disabled={loading}
-        >
+        <button type="button" onClick={() => loadSchedule()} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>
-        <button
-          type="button"
-          onClick={handleAutoAssignStaff}
-          disabled={autoAssignLoading || loading}
-        >
+        <button type="button" onClick={handleAutoAssignStaff} disabled={autoAssignLoading || loading}>
           {autoAssignLoading ? "Assigning staff…" : "Auto-assign staff"}
         </button>
-        <ApiTestButton
-          date={date}
-          onAfterSeed={() => loadSchedule()}
-        />
+        <ApiTestButton date={date} onAfterSeed={() => loadSchedule()} />
       </div>
 
       {autoAssignStatus && (
         <div
           className={
             "schedule-status " +
-            (autoAssignStatus.ok
-              ? "schedule-status--success"
-              : "schedule-status--error")
+            (autoAssignStatus.ok ? "schedule-status--success" : "schedule-status--error")
           }
         >
           {autoAssignStatus.message}
         </div>
       )}
 
-      {/* System status + diagnostics row (CWO-13B) */}
       <div className="schedule-system-row">
         <SystemHealthBar
           date={date}
@@ -375,17 +325,14 @@ const SchedulePage = () => {
       {loading && <div className="schedule-status">Loading schedule…</div>}
       {error && <div className="schedule-status schedule-status--error">{error}</div>}
       {assignmentsError && (
-        <div className="schedule-status schedule-status--warn">
-          {assignmentsError}
-        </div>
+        <div className="schedule-status schedule-status--warn">{assignmentsError}</div>
       )}
 
       {!loading && !error && flightsOk && flightsCount === 0 && (
         <div className="schedule-status schedule-status--warn">
           <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
             <span>
-              No flights returned for this date. Use <b>Pull flights</b> to ingest/store
-              them explicitly.
+              No flights returned for this date. Use <b>Pull flights</b> to ingest/store them explicitly.
             </span>
             <button
               type="button"
@@ -408,10 +355,9 @@ const SchedulePage = () => {
           )}
         </div>
       )}
+
       {!loading && !error && flightsCount !== 0 && visibleFlights.length === 0 && (
-        <div className="schedule-status schedule-status--warn">
-          No flights match the selected operator.
-        </div>
+        <div className="schedule-status schedule-status--warn">No flights match the selected operator.</div>
       )}
 
       <div className="schedule-table-wrapper">
@@ -428,19 +374,17 @@ const SchedulePage = () => {
           </thead>
           <tbody>
             {visibleFlights.map((flight, idx) => {
-              const flightNumber = flight.flight_number || flight.flightNumber || flight.flight_no;
-              const time = flight.time_local || flight.timeLocal || flight.time || "";
-              const dest = flight.destination || flight.dest || "";
-              const op =
-                flight.operator ||
-                flight.carrier ||
-                flight.airline ||
-                flight.flight_operator ||
-                flight.flightOperator ||
-                "";
-              const notes = flight.notes || "";
-              const assignmentKey = String(flight.id ?? flightNumber ?? idx);
+              // Normalized shape (from normalizeFlightRow)
+              const flightNumber = flight.ident;
+              const time = flight.time;
+              const dest = flight.dest;
+              const op = flight.operator;
+              const notes = flight.raw?.notes || flight.notes || "";
+
+              // Keep existing assignment key logic, but favor flightNumber
+              const assignmentKey = String(flight.raw?.id ?? flightNumber ?? idx);
               const assignment = assignmentsByFlightId.get(assignmentKey);
+
               const staffInitials =
                 assignment?.staff_initials ||
                 initialsFromName(assignment?.staff_name || assignment?.staff_code);
@@ -452,22 +396,18 @@ const SchedulePage = () => {
                 : null;
 
               return (
-                <tr key={`${flightNumber || idx}-${time}`}>
-                  <td>{time}</td>
+                <tr key={`${flightNumber || idx}-${flight.time_iso || time || idx}`}>
+                  <td>{time || "—"}</td>
                   <td>{flightNumber || "—"}</td>
                   <td>{dest || "—"}</td>
                   <td>{op || "—"}</td>
                   <td>
                     {assignmentsLoading ? (
-                      <span className="schedule-staff schedule-staff--loading">
-                        Loading…
-                      </span>
+                      <span className="schedule-staff schedule-staff--loading">Loading…</span>
                     ) : staffDisplay ? (
                       <span className="schedule-staff">{staffDisplay}</span>
                     ) : (
-                      <span className="schedule-staff schedule-staff--unassigned">
-                        Unassigned
-                      </span>
+                      <span className="schedule-staff schedule-staff--unassigned">Unassigned</span>
                     )}
                   </td>
                   <td>{notes || ""}</td>
