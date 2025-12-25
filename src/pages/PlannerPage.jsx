@@ -1111,12 +1111,14 @@ const PlannerPage = () => {
     (runId, { print = false } = {}) => {
       if (!runId || !date) return;
       const params = new URLSearchParams({
-        run_id: String(runId),
         date,
         airport: DEFAULT_AIRPORT,
+        operator: "ALL",
+        shift: "ALL",
+        runId: String(runId),
       });
       if (print) params.set("print", "1");
-      const url = `/run-sheet?${params.toString()}`;
+      const url = `/runsheets?${params.toString()}`;
       window.open(url, "_blank", "noopener,noreferrer");
     },
     [date]
@@ -2276,7 +2278,7 @@ const PlannerPage = () => {
                                 onClick={() => openRunSheet(runId)}
                                 disabled={!runId}
                               >
-                                Open run sheet
+                                Open sheet
                               </button>
                               <button
                                 type="button"

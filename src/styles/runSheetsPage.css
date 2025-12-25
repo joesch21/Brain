@@ -1,21 +1,47 @@
 .runsheets-page {
-  padding: 1rem 1.5rem;
+  padding: 1.25rem 1.5rem;
 }
 
-.runsheets-header-controls {
+.runsheets-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.runsheets-header-title h1 {
+  margin: 0;
+}
+
+.runsheets-header-subtitle {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.runsheets-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   gap: 0.75rem;
-  margin-top: 0.5rem;
 }
 
-.runsheets-header-controls label {
-  font-size: 0.9rem;
+.runsheets-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.runsheets-header-controls input[type="date"] {
-  margin-left: 0.25rem;
+.runsheets-toolbar input,
+.runsheets-toolbar select {
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0f1219;
+  color: #fff;
+  min-width: 150px;
 }
 
 .runsheets-print-button {
@@ -25,7 +51,7 @@
 .runsheets-status {
   margin: 0.75rem 0;
   font-size: 0.9rem;
-  opacity: 0.8;
+  opacity: 0.75;
 }
 
 .runsheets-status--error {
@@ -33,56 +59,76 @@
 }
 
 .runsheets-main {
-  margin-top: 0.75rem;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+  margin-top: 1rem;
 }
 
-/* Cards are close to A4 ratio when printed */
 .runsheet-card {
   background: #11141c;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 0.75rem 0.9rem;
-  page-break-inside: avoid;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 1rem 1.25rem;
 }
 
-.runsheet-card__header {
+.runsheet-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 0.5rem;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
-.runsheet-card__title h2 {
-  font-size: 1rem;
-  margin: 0;
+.runsheet-title {
+  font-size: 1.4rem;
+  font-weight: 600;
 }
 
-.runsheet-card__meta {
-  margin-top: 0.25rem;
-  font-size: 0.8rem;
-  opacity: 0.7;
-  display: flex;
+.runsheet-subtitle {
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.runsheet-header-meta {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.runsheet-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
+.runsheet-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
 }
 
 .runsheet-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
 }
 
 .runsheet-table th,
 .runsheet-table td {
   border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 0.25rem 0.35rem;
+  padding: 0.4rem 0.5rem;
   text-align: left;
+  vertical-align: top;
 }
 
 .runsheet-table th {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
   font-weight: 600;
 }
 
@@ -92,16 +138,35 @@
   opacity: 0.7;
 }
 
-.runsheet-card__footer {
-  margin-top: 0.4rem;
+.runsheet-footer {
+  margin-top: 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.75rem;
   font-size: 0.8rem;
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
-/* Print tweaks: one card per page row, remove nav chrome etc. */
+.runsheet-footer-meta {
+  margin-bottom: 0.5rem;
+}
+
+.runsheet-signatures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.runsheet-line {
+  display: block;
+  height: 1px;
+  margin-top: 0.35rem;
+  background: rgba(255, 255, 255, 0.4);
+}
+
 @media print {
   .main-nav,
   .page-header,
+  .runsheets-toolbar,
   .system-health-bar,
   .runsheets-print-button {
     display: none !important;
@@ -111,14 +176,35 @@
     padding: 0;
   }
 
-  .runsheets-main {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
+  .runsheet-card {
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    background: #fff;
+    color: #000;
   }
 
-  .runsheet-card {
-    border: 1px solid #000;
-    border-radius: 0;
+  .runsheet-header,
+  .runsheet-summary,
+  .runsheet-footer {
     page-break-inside: avoid;
+  }
+
+  .runsheet-table th,
+  .runsheet-table td {
+    border: 1px solid #000;
+  }
+
+  .runsheet-table th {
+    background: #f2f2f2;
+  }
+
+  .runsheet-label {
+    color: #000;
+    opacity: 0.7;
+  }
+
+  .runsheet-line {
+    background: #000;
   }
 }
