@@ -163,6 +163,174 @@
   font-size: 0.8rem;
 }
 
+.planner-prepare-panel {
+  margin: 0.75rem 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e3e8f0;
+  border-radius: 10px;
+  background: #f9fbff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.planner-prepare-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.planner-prepare-header h3 {
+  margin: 0;
+}
+
+.planner-prepare-subtext {
+  margin: 0.2rem 0 0;
+  color: #5b6470;
+  font-size: 0.85rem;
+}
+
+.planner-prepare-button {
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #1976d2;
+  background: #1976d2;
+  color: #fff;
+  font-weight: 600;
+}
+
+.planner-prepare-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.planner-prepare-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.planner-prepare-step {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.planner-prepare-step-icon {
+  font-size: 1.1rem;
+  margin-top: 0.1rem;
+}
+
+.planner-prepare-step-label {
+  font-weight: 600;
+}
+
+.planner-prepare-step-message {
+  font-size: 0.8rem;
+  color: #5b6470;
+}
+
+.planner-prepare-warnings {
+  margin: 0.35rem 0 0 1.1rem;
+  padding: 0;
+}
+
+.planner-prepare-summary {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.planner-prepare-summary-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.planner-prepare-status-pill {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #e3f2fd;
+  color: #0d47a1;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.planner-prepare-empty {
+  font-size: 0.9rem;
+  color: #5b6470;
+}
+
+.planner-prepare-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.planner-prepare-run-group-title {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.planner-prepare-run-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.planner-prepare-run-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.planner-prepare-run-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.planner-prepare-run-title {
+  font-weight: 600;
+}
+
+.planner-prepare-run-meta {
+  font-size: 0.8rem;
+  color: #5b6470;
+}
+
+.planner-prepare-run-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.planner-prepare-run-actions button {
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5f0;
+  background: #f5f7ff;
+  color: #1f3a93;
+  font-size: 0.8rem;
+}
+
+.planner-prepare-run-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .planner-run-card-stat {
   color: #444;
 }

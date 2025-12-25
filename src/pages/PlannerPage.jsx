@@ -1011,6 +1011,17 @@ const PlannerPage = () => {
   const [isStaffPanelOpen, setIsStaffPanelOpen] = useState(false);
   const [pullLoading, setPullLoading] = useState(false);
   const [pullMessage, setPullMessage] = useState("");
+  const [prepareStatus, setPrepareStatus] = useState("idle");
+  const [prepareRunning, setPrepareRunning] = useState(false);
+  const [prepareError, setPrepareError] = useState("");
+  const [prepareWarnings, setPrepareWarnings] = useState([]);
+  const [prepareSummary, setPrepareSummary] = useState(null);
+  const [prepareSteps, setPrepareSteps] = useState({
+    flights: { status: "idle", message: "" },
+    pull: { status: "idle", message: "" },
+    runs: { status: "idle", message: "" },
+    assignments: { status: "idle", message: "" },
+  });
   const canPullFlights = Boolean(date && DEFAULT_AIRPORT);
 
   const decorateRunsList = useCallback((list) => decorateRuns(list), []);
@@ -1052,6 +1063,63 @@ const PlannerPage = () => {
   const summary = useMemo(
     () => computeSummary(flights, flightToRunMap),
     [flights, flightToRunMap]
+  );
+
+  const updatePrepareStep = useCallback((key, updates) => {
+    setPrepareSteps((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        ...updates,
+      },
+    }));
+  }, []);
+
+  const prepareStepIcon = useCallback((status) => {
+    switch (status) {
+      case "running":
+        return "⏳";
+      case "success":
+        return "✅";
+      case "warn":
+        return "⚠️";
+      case "error":
+        return "❌";
+      case "skipped":
+        return "➖";
+      default:
+        return "•";
+    }
+  }, []);
+
+  const groupedPrepareRuns = useMemo(() => {
+    const runsList = prepareSummary?.runs || [];
+    const groups = new Map();
+
+    runsList.forEach((run) => {
+      const group = classifyRunGroup(run);
+      if (!groups.has(group)) {
+        groups.set(group, []);
+      }
+      groups.get(group).push(run);
+    });
+
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [prepareSummary]);
+
+  const openRunSheet = useCallback(
+    (runId, { print = false } = {}) => {
+      if (!runId || !date) return;
+      const params = new URLSearchParams({
+        run_id: String(runId),
+        date,
+        airport: DEFAULT_AIRPORT,
+      });
+      if (print) params.set("print", "1");
+      const url = `/run-sheet?${params.toString()}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
+    [date]
   );
 
   // Flights that are NOT present in any run -> Unassigned pool
@@ -1434,6 +1502,20 @@ const PlannerPage = () => {
   }, [autoAssignSuccess]);
 
   useEffect(() => {
+    setPrepareStatus("idle");
+    setPrepareRunning(false);
+    setPrepareError("");
+    setPrepareWarnings([]);
+    setPrepareSummary(null);
+    setPrepareSteps({
+      flights: { status: "idle", message: "" },
+      pull: { status: "idle", message: "" },
+      runs: { status: "idle", message: "" },
+      assignments: { status: "idle", message: "" },
+    });
+  }, [date]);
+
+  useEffect(() => {
     if (!roster.length) {
       setSelectedStaffId(null);
       return;
@@ -1640,6 +1722,181 @@ const PlannerPage = () => {
     } finally {
       setGeneratingStaffRuns(false);
     }
+  }
+
+  async function handlePrepareDay() {
+    if (!date) {
+      setPrepareError("Select a date before preparing.");
+      return;
+    }
+
+    setPrepareRunning(true);
+    setPrepareStatus("running");
+    setPrepareError("");
+    setPrepareWarnings([]);
+    setPrepareSummary(null);
+    setPrepareSteps({
+      flights: { status: "running", message: "Checking flights…" },
+      pull: { status: "idle", message: "" },
+      runs: { status: "idle", message: "" },
+      assignments: { status: "idle", message: "" },
+    });
+
+    let nextFlights = [];
+    let nextFlightsCount = 0;
+    let nextRuns = [];
+    let nextRunsCount = 0;
+    let nextUnassigned = [];
+    const warnings = [];
+
+    try {
+      const flightsResp = await fetchFlights(date, "ALL", {
+        airport: DEFAULT_AIRPORT,
+      });
+      const flightsData = flightsResp.data || {};
+      nextFlights = normalizeFlights(flightsData);
+      nextFlightsCount = Number.isFinite(flightsData.count)
+        ? flightsData.count
+        : nextFlights.length;
+      setFlights(nextFlights);
+      setFlightsCount(nextFlightsCount);
+      setFlightsOk(true);
+      updatePrepareStep("flights", {
+        status: "success",
+        message: `${nextFlightsCount} flights found.`,
+      });
+
+      if (nextFlightsCount === 0) {
+        updatePrepareStep("pull", {
+          status: "running",
+          message: "Pulling flights from Brain…",
+        });
+        try {
+          await pullFlights(date, "ALL", {
+            airport: DEFAULT_AIRPORT,
+            timeoutMs: 30000,
+          });
+          const refreshedResp = await fetchFlights(date, "ALL", {
+            airport: DEFAULT_AIRPORT,
+          });
+          const refreshedData = refreshedResp.data || {};
+          nextFlights = normalizeFlights(refreshedData);
+          nextFlightsCount = Number.isFinite(refreshedData.count)
+            ? refreshedData.count
+            : nextFlights.length;
+          setFlights(nextFlights);
+          setFlightsCount(nextFlightsCount);
+          setFlightsOk(true);
+          updatePrepareStep("pull", {
+            status: "success",
+            message: `Pulled flights (${nextFlightsCount} total).`,
+          });
+        } catch (err) {
+          const msg = formatRequestError("Pull flights", err);
+          warnings.push(msg);
+          updatePrepareStep("pull", {
+            status: "warn",
+            message: msg,
+          });
+        }
+      } else {
+        updatePrepareStep("pull", {
+          status: "skipped",
+          message: "Flights already present.",
+        });
+      }
+    } catch (err) {
+      const msg = formatRequestError("Flights", err);
+      updatePrepareStep("flights", { status: "error", message: msg });
+      setPrepareError(msg);
+      setPrepareStatus("error");
+      setPrepareRunning(false);
+      return;
+    }
+
+    updatePrepareStep("runs", {
+      status: "running",
+      message: "Fetching runs…",
+    });
+
+    try {
+      const runsResp = await fetchDailyRuns(
+        date,
+        { operator: "ALL", airport: DEFAULT_AIRPORT, shift: "ALL" },
+        {}
+      );
+      if (runsResp && runsResp.ok) {
+        const payload = runsResp.data || {};
+        nextRuns = normalizeRuns(payload);
+        nextUnassigned = normalizeUnassigned(payload);
+        nextRunsCount = Number.isFinite(payload.count)
+          ? payload.count
+          : nextRuns.length;
+        setRunsWithConflicts(nextRuns);
+        setUnassigned(nextUnassigned);
+        setRunsDailyCount(nextRunsCount);
+        setRunsError("");
+        updatePrepareStep("runs", {
+          status: "success",
+          message: `${nextRunsCount} runs fetched.`,
+        });
+      } else {
+        const msg = formatSafeRequestError("Runs", runsResp);
+        updatePrepareStep("runs", { status: "error", message: msg });
+        setPrepareError(msg);
+        setPrepareStatus("error");
+        setPrepareRunning(false);
+        return;
+      }
+    } catch (err) {
+      const msg = formatRequestError("Runs", err);
+      updatePrepareStep("runs", { status: "error", message: msg });
+      setPrepareError(msg);
+      setPrepareStatus("error");
+      setPrepareRunning(false);
+      return;
+    }
+
+    updatePrepareStep("assignments", {
+      status: "running",
+      message: "Checking assignments (optional)…",
+    });
+
+    const { signal: assignmentsSignal, clear } = createTimeoutSignal(
+      null,
+      SECONDARY_TIMEOUT_MS
+    );
+    try {
+      await fetchEmployeeAssignments(date, {
+        airport: DEFAULT_AIRPORT,
+        signal: assignmentsSignal,
+      });
+      updatePrepareStep("assignments", {
+        status: "success",
+        message: "Assignments available.",
+      });
+    } catch (err) {
+      const msg =
+        err?.name === "AbortError"
+          ? "Assignments timed out (optional)."
+          : formatRequestError("Assignments", err);
+      warnings.push(msg);
+      updatePrepareStep("assignments", {
+        status: "warn",
+        message: msg,
+      });
+    } finally {
+      clear();
+    }
+
+    setPrepareWarnings(warnings);
+    setPrepareSummary({
+      flightsCount: nextFlightsCount,
+      runsCount: nextRunsCount,
+      runs: nextRuns,
+    });
+    setPrepareStatus(warnings.length ? "partial_success" : "success");
+    setPrepareRunning(false);
   }
 
   function handleSelectFlight(flightKey, runId) {
@@ -1899,6 +2156,147 @@ const PlannerPage = () => {
           </button>
         </div>
       </header>
+
+      <section className="planner-prepare-panel">
+        <div className="planner-prepare-header">
+          <div>
+            <h3>Prepare Day</h3>
+            <p className="planner-prepare-subtext">
+              One click to check flights, pull if needed, and fetch runs for{" "}
+              {DEFAULT_AIRPORT}.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="planner-prepare-button"
+            onClick={handlePrepareDay}
+            disabled={prepareRunning}
+          >
+            {prepareRunning ? "Preparing…" : "Prepare Day"}
+          </button>
+        </div>
+
+        <div className="planner-prepare-steps">
+          {[
+            { key: "flights", label: "Check flights" },
+            { key: "pull", label: "Pull flights (if needed)" },
+            { key: "runs", label: "Fetch runs" },
+            { key: "assignments", label: "Assignments (optional)" },
+          ].map((step) => (
+            <div key={step.key} className="planner-prepare-step">
+              <span className="planner-prepare-step-icon">
+                {prepareStepIcon(prepareSteps[step.key]?.status)}
+              </span>
+              <div className="planner-prepare-step-body">
+                <div className="planner-prepare-step-label">{step.label}</div>
+                {prepareSteps[step.key]?.message && (
+                  <div className="planner-prepare-step-message">
+                    {prepareSteps[step.key]?.message}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {prepareError && (
+          <div className="planner-status planner-status--error">
+            {prepareError}
+          </div>
+        )}
+
+        {prepareWarnings.length > 0 && (
+          <div className="planner-status planner-status--warn">
+            <strong>Warnings:</strong>
+            <ul className="planner-prepare-warnings">
+              {prepareWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {prepareSummary && (
+          <div className="planner-prepare-summary">
+            <div className="planner-prepare-summary-header">
+              <div>
+                <strong>Flights:</strong> {prepareSummary.flightsCount}
+              </div>
+              <div>
+                <strong>Runs:</strong> {prepareSummary.runsCount}
+              </div>
+              <div className="planner-prepare-status-pill">
+                {prepareStatus.replace("_", " ")}
+              </div>
+            </div>
+
+            {prepareSummary.runsCount === 0 ? (
+              <div className="planner-prepare-empty">
+                No runs available for this date.
+              </div>
+            ) : (
+              <div className="planner-prepare-runs">
+                {groupedPrepareRuns.map(([group, groupRuns]) => (
+                  <div key={group} className="planner-prepare-run-group">
+                    <div className="planner-prepare-run-group-title">
+                      {group} ({groupRuns.length})
+                    </div>
+                    <ul className="planner-prepare-run-list">
+                      {groupRuns.map((run) => {
+                        const runId = run.id ?? run.run_id ?? run.runId;
+                        const shift = run.shift || {};
+                        const label =
+                          run.label ||
+                          run.run_label ||
+                          run.runLabel ||
+                          (runId ? `Run ${runId}` : "Run");
+                        const truck =
+                          run.truck_code ||
+                          run.truck ||
+                          run.vehicle ||
+                          run.truck_id ||
+                          "—";
+                        const shiftLabel =
+                          shift.label ||
+                          shift.shift_code ||
+                          shift.code ||
+                          shift.name ||
+                          "—";
+                        return (
+                          <li key={runId || label} className="planner-prepare-run-item">
+                            <div className="planner-prepare-run-info">
+                              <div className="planner-prepare-run-title">{label}</div>
+                              <div className="planner-prepare-run-meta">
+                                Truck {truck} · Shift {shiftLabel}
+                              </div>
+                            </div>
+                            <div className="planner-prepare-run-actions">
+                              <button
+                                type="button"
+                                onClick={() => openRunSheet(runId)}
+                                disabled={!runId}
+                              >
+                                Open run sheet
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openRunSheet(runId, { print: true })}
+                                disabled={!runId}
+                              >
+                                Print
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <div className="planner-autoassign-row">
         {autoAssignLoading && (
