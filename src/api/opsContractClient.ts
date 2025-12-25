@@ -19,12 +19,12 @@ const CONTRACT_PATH = "/api/contract";
 
 let cachedContract: ApiContract | null = null;
 
-export async function loadApiContract(): Promise<ApiContract> {
-  if (cachedContract) return cachedContract;
-
-  const res = await fetch(CONTRACT_PATH);
+async function fetchContract(url: string): Promise<ApiContract> {
+  const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`Failed to load API contract (${res.status})`);
+    const error = new Error(`Failed to load API contract (${res.status})`);
+    (error as Error & { status?: number }).status = res.status;
+    throw error;
   }
 
   const contract = (await res.json()) as ApiContract;
@@ -33,8 +33,33 @@ export async function loadApiContract(): Promise<ApiContract> {
     throw new Error("Invalid API contract: endpoints missing");
   }
 
-  cachedContract = contract;
   return contract;
+}
+
+function getFallbackContractUrl(): string | null {
+  const base = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (!base) return null;
+  const trimmed = base.replace(/\/$/, "");
+  return `${trimmed}${CONTRACT_PATH}`;
+}
+
+export async function loadApiContract(): Promise<ApiContract> {
+  if (cachedContract) return cachedContract;
+
+  try {
+    const contract = await fetchContract(CONTRACT_PATH);
+    cachedContract = contract;
+    return contract;
+  } catch (primaryError) {
+    const fallbackUrl = getFallbackContractUrl();
+    if (!fallbackUrl) {
+      throw primaryError;
+    }
+
+    const contract = await fetchContract(fallbackUrl);
+    cachedContract = contract;
+    return contract;
+  }
 }
 
 export async function getEndpoint(name: string): Promise<ApiEndpoint> {
