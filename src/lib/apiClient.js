@@ -1,7 +1,12 @@
 // Centralized API client for Brain frontend
 // Uses VITE_OPS_API_BASE (or same-origin) and normalizes errors for schedule/planner flows.
 import { OPS_API_BASE } from "./opsApiBase";
-import { REQUIRED_AIRPORT, normalizeOperator } from "./opsDefaults";
+import {
+  ENABLE_ROSTER,
+  ENABLE_STAFF_RUNS,
+  REQUIRED_AIRPORT,
+  normalizeOperator,
+} from "./opsDefaults";
 import { pushBackendDebugEntry } from "./backendDebug";
 
 const DEFAULT_AIRPORT = "YSSY";
@@ -289,6 +294,12 @@ export async function fetchRuns(date, airline = "JQ", options = {}) {
 }
 
 export async function fetchStaffRuns(date, airline = "JQ", options = {}) {
+  if (!ENABLE_STAFF_RUNS) {
+    return Promise.resolve({
+      status: 200,
+      data: { ok: true, available: false, runs: [], unassigned: [] },
+    });
+  }
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
   if (airline) qs.set("airline", airline);
@@ -308,6 +319,12 @@ export async function fetchRunsStatus(date, options = {}) {
 }
 
 export async function fetchDailyRoster(date, options = {}) {
+  if (!ENABLE_ROSTER) {
+    return Promise.resolve({
+      status: 200,
+      data: { ok: true, available: false, shifts: [] },
+    });
+  }
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
   return request(

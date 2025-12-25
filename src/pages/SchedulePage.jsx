@@ -380,6 +380,10 @@ const SchedulePage = () => {
               const dest = flight.dest;
               const op = flight.operator;
               const notes = flight.raw?.notes || flight.notes || "";
+              const rowKey =
+                flight.key ??
+                flight.fa_flight_id ??
+                `${flight.ident || "UNK"}|${flight.time_iso || ""}`;
 
               // Keep existing assignment key logic, but favor flightNumber
               const assignmentKey = String(flight.raw?.id ?? flightNumber ?? idx);
@@ -396,7 +400,7 @@ const SchedulePage = () => {
                 : null;
 
               return (
-                <tr key={`${flightNumber || idx}-${flight.time_iso || time || idx}`}>
+                <tr key={rowKey}>
                   <td>{time || "—"}</td>
                   <td>{flightNumber || "—"}</td>
                   <td>{dest || "—"}</td>
