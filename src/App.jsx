@@ -21,7 +21,7 @@ const App = () => {
 
   useEffect(() => {
     loadApiContract().catch((err) => {
-      console.error(err);
+      console.error("Contract load failed", err);
       setContractError("API contract could not be loaded. Some features may be unavailable.");
     });
   }, []);
