@@ -10,6 +10,11 @@ import {
   fetchFlightsForDate,
   mergeFlightsWithAssignments,
 } from "../api/opsClient";
+import {
+  buildPlaceholderAssignments,
+  buildStaffRunsFromAssignments,
+  getPlaceholderRoster,
+} from "../lib/staffMvp";
 import { FlightsAssignmentsTable } from "../components/FlightsAssignmentsTable";
 import { JetstarFlightsAssignmentsCard } from "../components/JetstarFlightsAssignmentsCard";
 import "../styles/machineRoom.css";
@@ -62,22 +67,6 @@ const WIRING_TESTS = [
     buildUrl: (date) =>
       `/api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`,
     expectsOkField: true,
-  },
-  {
-    key: "roster",
-    label: "Roster for date",
-    method: "GET",
-    buildUrl: (date) => `/api/roster/daily?date=${encodeURIComponent(date)}`,
-    expectsOkField: true,
-    validate: (body) => {
-      const entries =
-        body?.roster?.entries ||
-        body?.entries ||
-        body?.roster?.shifts ||
-        [];
-      const ok = Array.isArray(entries) && entries.length > 0;
-      return { ok, message: ok ? "" : "No roster entries returned" };
-    },
   },
   {
     key: "assignments",
@@ -174,39 +163,12 @@ const SystemStatusCard = ({ selectedAirline }) => {
         );
       }
 
-      const rosterResp = await fetchApiStatus(
-        `/api/roster/daily?date=${encodeURIComponent(targetDate)}`
+      const placeholderRoster = getPlaceholderRoster(
+        targetDate,
+        DEFAULT_AIRPORT
       );
-      if (rosterResp.ok) {
-        const shifts =
-          rosterResp.data?.roster?.shifts || rosterResp.data?.shifts || [];
-        setRoster(Array.isArray(shifts) ? shifts : []);
-      } else {
-        setRoster([]);
-        setStaffingError(formatApiError("Roster", rosterResp));
-      }
-
-      const staffAirline =
-        selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
-          ? selectedAirline
-          : DEFAULT_AIRLINE;
-      const staffRunsResp = await fetchApiStatus(
-        `/api/staff_runs?date=${encodeURIComponent(targetDate)}&airline=${encodeURIComponent(
-          staffAirline
-        )}`
-      );
-      if (staffRunsResp.ok) {
-        const runsPayload = staffRunsResp.data || {};
-        setStaffRuns({
-          runs: Array.isArray(runsPayload.runs) ? runsPayload.runs : [],
-          unassigned: Array.isArray(runsPayload.unassigned)
-            ? runsPayload.unassigned
-            : [],
-        });
-      } else {
-        setStaffRuns({ runs: [], unassigned: [] });
-        setStaffingError(formatApiError("Staff runs", staffRunsResp));
-      }
+      setRoster(placeholderRoster);
+      setStaffRuns({ runs: [], unassigned: [] });
 
       const runsStatusResp = await fetchApiStatus(
         `/api/runs_status?date=${encodeURIComponent(targetDate)}`
@@ -259,6 +221,22 @@ const SystemStatusCard = ({ selectedAirline }) => {
     loadFlightsAndAssignments(date);
   }, [date]);
 
+  useEffect(() => {
+    const placeholderRoster = getPlaceholderRoster(date, DEFAULT_AIRPORT);
+    const placeholderAssignments = buildPlaceholderAssignments(
+      assignedFlights,
+      placeholderRoster
+    );
+    setRoster(placeholderRoster);
+    setStaffRuns({
+      runs: buildStaffRunsFromAssignments(
+        placeholderAssignments,
+        placeholderRoster
+      ),
+      unassigned: [],
+    });
+  }, [date, assignedFlights]);
+
   async function testCoreApis() {
     const airlineSuffix =
       selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
@@ -274,14 +252,6 @@ const SystemStatusCard = ({ selectedAirline }) => {
       {
         name: "Runs (date)",
         url: `/api/runs?date=${encodeURIComponent(date)}${airportSuffix}${airlineSuffix}`,
-      },
-      {
-        name: "Roster (date)",
-        url: `/api/roster/daily?date=${encodeURIComponent(date)}`,
-      },
-      {
-        name: "Staff runs (date)",
-        url: `/api/staff_runs?date=${encodeURIComponent(date)}${airlineSuffix || `&airline=${DEFAULT_AIRLINE}`}`,
       },
       {
         name: "Runs status (date)",

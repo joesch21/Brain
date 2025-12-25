@@ -30,29 +30,48 @@ export function formatLocalHHmm(iso) {
 
 export function normalizeFlightRow(raw) {
   const ident = pickFirst(raw?.ident_iata, raw?.ident);
-  const flightNumber = pickFirst(raw?.flight_number, raw?.flightNumber, ident);
-  const operator = pickFirst(raw?.operator, raw?.operator_code, operatorFromIdent(ident));
+  const flightNumber = pickFirst(
+    raw?.ident_iata,
+    raw?.ident,
+    raw?.flight_number,
+    raw?.flightNumber
+  );
+  const operatorCode = pickFirst(
+    raw?.operator_code,
+    raw?.operator,
+    raw?.carrier,
+    raw?.airline,
+    operatorFromIdent(flightNumber || ident)
+  );
   const dest = pickFirst(raw?.destination, raw?.dest);
-  const timeIso = pickFirst(raw?.time_iso, raw?.estimated_off, raw?.scheduled_off);
+  const timeIso = pickFirst(
+    raw?.estimated_off,
+    raw?.scheduled_off,
+    raw?.etd,
+    raw?.time_iso
+  );
   const time = formatLocalHHmm(timeIso);
   const timeLocal = pickFirst(raw?.time_local, raw?.timeLocal, time);
+  const flightId = raw?.id ?? raw?.fa_flight_id ?? raw?.flight_id ?? null;
   const key =
+    raw?.flight_key ??
     raw?.key ??
     raw?.fa_flight_id ??
-    (ident && timeIso ? `${ident}|${timeIso}` : null);
-  const flightId = raw?.flight_id ?? raw?.id ?? null;
+    raw?.id ??
+    (flightNumber && timeIso ? `${flightNumber}|${timeIso}` : null);
 
   return {
     // keep raw for debugging
     raw,
 
     // UI-friendly core fields
+    flight_key: key,
     key,
-    id: flightId,
     flight_id: flightId,
-    ident: ident ?? "—",
+    id: flightId,
     flight_number: flightNumber ?? "—",
-    operator: operator ?? "UNK",
+    ident: ident ?? flightNumber ?? "—",
+    operator_code: operatorCode ? String(operatorCode).toUpperCase() : "UNK",
     dest: dest ?? "—",
     time,              // "HH:mm" Sydney
     time_local: timeLocal ?? time,
@@ -67,10 +86,11 @@ export function normalizeFlightRow(raw) {
 }
 
 export function extractFlightsList(resp) {
-  // IMPORTANT: your API returns rows:[...]
+  if (Array.isArray(resp)) return resp;
   const list =
-    resp?.rows ??
     resp?.flights ??
+    resp?.records ??
+    resp?.rows ??
     resp?.items ??
     resp?.data ??
     [];
