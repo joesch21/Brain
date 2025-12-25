@@ -1,5 +1,5 @@
 // src/pages/RunSheetTable.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 function getQueryParam(name) {
   try {
@@ -40,6 +40,9 @@ export default function RunSheetTable() {
   const initialDate = useMemo(() => {
     return getQueryParam("date") || todayISO();
   }, []);
+
+  const autoPrint = useMemo(() => getQueryParam("print") === "1", []);
+  const printTriggeredRef = useRef(false);
 
   const [runId, setRunId] = useState(initialRunId || "");
   const [date, setDate] = useState(initialDate || "");
@@ -109,6 +112,13 @@ export default function RunSheetTable() {
     if (initialRunId) loadSheet(initialRunId, initialDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!autoPrint || !data || printTriggeredRef.current) return;
+    printTriggeredRef.current = true;
+    const timer = setTimeout(() => window.print(), 400);
+    return () => clearTimeout(timer);
+  }, [autoPrint, data]);
 
   const header = data?.header || data?.run || {};
   const items = Array.isArray(data?.items)
