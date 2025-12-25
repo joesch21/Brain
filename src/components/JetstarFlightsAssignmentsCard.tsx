@@ -5,6 +5,11 @@
 import React, { useEffect, useState } from "react";
 
 import { apiRequest } from "../lib/apiClient";
+import {
+  DEFAULT_OPERATOR,
+  DEFAULT_SHIFT,
+  REQUIRED_AIRPORT,
+} from "../lib/opsDefaults";
 
 type Flight = {
   id: number;
@@ -42,7 +47,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
   async function fetchFlightsForDate(date: string): Promise<Flight[]> {
     const params = new URLSearchParams({
       date,
-      airport: "YSSY",
+      airport: REQUIRED_AIRPORT,
       airline: "JQ",
     });
     const { data } = await apiRequest(`/api/flights?${params.toString()}`);
@@ -54,12 +59,39 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
   ): Promise<Assignment[]> {
     const params = new URLSearchParams({
       date,
-      airport: "YSSY",
+      airport: REQUIRED_AIRPORT,
+      operator: DEFAULT_OPERATOR,
+      shift: DEFAULT_SHIFT,
     });
-    const { data } = await apiRequest(
-      `/api/employee_assignments/daily?${params.toString()}`,
-    );
-    return data?.assignments ?? [];
+    try {
+      const { data } = await apiRequest(
+        `/api/employee_assignments/daily?${params.toString()}`,
+      );
+
+      if (data?.available === false) {
+        return [];
+      }
+
+      if (Array.isArray(data?.assignments)) {
+        return data.assignments;
+      }
+
+      if (data?.assignments && typeof data.assignments === "object") {
+        return Object.values(data.assignments).filter(Boolean) as Assignment[];
+      }
+
+      if (Array.isArray(data)) {
+        return data as Assignment[];
+      }
+
+      return [];
+    } catch (err) {
+      console.warn(
+        "Staff assignments overlay unavailable; continuing without it.",
+        err,
+      );
+      return [];
+    }
   }
 
   function mergeFlightsWithAssignments(
@@ -93,10 +125,8 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
       setLoading(true);
       setError(null);
       try {
-        const [flightsRaw, assignments] = await Promise.all([
-          fetchFlightsForDate(dateIso),
-          fetchEmployeeAssignmentsForDate(dateIso),
-        ]);
+        const flightsRaw = await fetchFlightsForDate(dateIso);
+        const assignments = await fetchEmployeeAssignmentsForDate(dateIso);
 
         // 🔸 Only keep Jetstar flights (JQ) – ignore ZL and others
         const jetstarFlights = flightsRaw.filter((f) => {
@@ -113,7 +143,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
           setFlights(merged);
         }
       } catch (err: any) {
-        console.error("Failed to load Jetstar flights/assignments", err);
+        console.error("Failed to load Jetstar flights", err);
         if (!cancelled) {
           setError(err.message || "Failed to load flights");
           setFlights([]);
