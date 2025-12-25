@@ -491,6 +491,177 @@ def _normalize_airline_param(
     return normalized, None
 
 
+def _default_airport() -> str:
+    return (os.getenv("DEFAULT_AIRPORT", "YSSY") or "YSSY").strip().upper()
+
+
+def _mock_staff_enabled() -> bool:
+    return _env_flag("BRAIN_MOCK_STAFF")
+
+
+def _pick_first(*values: Optional[Any]) -> Optional[Any]:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return value
+    return None
+
+
+def _extract_local_hhmm(value: Optional[Any]) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        raw = value.strip()
+        if len(raw) >= 5 and raw[2] == ":":
+            return raw[:5]
+        try:
+            iso_value = raw.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(iso_value)
+            return dt.strftime("%H:%M")
+        except ValueError:
+            return None
+    return None
+
+
+def _time_to_minutes(hhmm: Optional[str]) -> Optional[int]:
+    if not hhmm:
+        return None
+    try:
+        parts = hhmm.split(":")
+        return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, IndexError, TypeError):
+        return None
+
+
+def _extract_flights_list(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, list):
+        return [f for f in payload if isinstance(f, dict)]
+    if not isinstance(payload, dict):
+        return []
+    candidates = [
+        payload.get("records"),
+        payload.get("rows"),
+        payload.get("flights"),
+        payload.get("items"),
+        payload.get("data"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, list):
+            return [f for f in candidate if isinstance(f, dict)]
+    return []
+
+
+def _build_mock_roster(date_str: str, airport: str) -> List[Dict[str, Any]]:
+    shifts = []
+    for idx in range(8):
+        staff_id = 1001 + idx
+        staff_code = f"S{idx + 1:02d}"
+        staff_name = f"Staff {idx + 1:02d}"
+        is_am = idx < 4
+        shifts.append(
+            {
+                "staff_id": staff_id,
+                "staff_code": staff_code,
+                "staff_name": staff_name,
+                "employment_type": "FT" if idx < 5 else "PT",
+                "start_local": "05:00" if is_am else "12:00",
+                "end_local": "13:00" if is_am else "20:00",
+                "role": "Ramp",
+            }
+        )
+    return shifts
+
+
+def _flight_to_job(flight: Dict[str, Any]) -> Dict[str, Any]:
+    flight_id = _pick_first(
+        flight.get("flight_id"),
+        flight.get("id"),
+        flight.get("fa_flight_id"),
+    )
+    flight_number = _pick_first(
+        flight.get("flight_number"),
+        flight.get("flightNumber"),
+        flight.get("ident_iata"),
+        flight.get("ident"),
+    )
+    dest = _pick_first(
+        flight.get("dest"),
+        flight.get("destination"),
+        flight.get("destination_iata"),
+        flight.get("arrival_airport"),
+    )
+    etd = _pick_first(
+        flight.get("etd_local"),
+        flight.get("time_local"),
+        flight.get("timeLocal"),
+        flight.get("time"),
+        flight.get("dep_time"),
+        flight.get("estimated_off"),
+        flight.get("scheduled_off"),
+        flight.get("time_iso"),
+    )
+    etd_local = _extract_local_hhmm(etd) or (str(etd).strip() if etd else None)
+    return {
+        "flight_id": flight_id,
+        "flight_number": flight_number,
+        "dest": dest,
+        "etd_local": etd_local,
+    }
+
+
+def _build_mock_staff_runs(
+    flights: List[Dict[str, Any]], roster: List[Dict[str, Any]]
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    staff_ids = [shift.get("staff_id") for shift in roster if shift.get("staff_id") is not None]
+    staff_runs = []
+    run_map: Dict[int, Dict[str, Any]] = {}
+    for idx, shift in enumerate(roster):
+        staff_id = shift.get("staff_id")
+        if staff_id is None:
+            continue
+        run = {
+            "id": 5001 + idx,
+            "staff_id": staff_id,
+            "staff_code": shift.get("staff_code"),
+            "staff_name": shift.get("staff_name"),
+            "shift_start": shift.get("start_local"),
+            "shift_end": shift.get("end_local"),
+            "jobs": [],
+        }
+        run_map[staff_id] = run
+        staff_runs.append(run)
+
+    unassigned: List[Dict[str, Any]] = []
+    sorted_flights = []
+    for idx, flight in enumerate(flights):
+        job = _flight_to_job(flight)
+        sort_time = _time_to_minutes(_extract_local_hhmm(job.get("etd_local")))
+        sorted_flights.append((sort_time, idx, flight, job))
+    sorted_flights.sort(key=lambda item: (item[0] is None, item[0], item[1]))
+
+    for idx, (_, _, flight, job) in enumerate(sorted_flights):
+        if not job.get("flight_number"):
+            unassigned.append({**job, "reason": "missing flight number"})
+            continue
+        if not job.get("etd_local"):
+            unassigned.append({**job, "reason": "missing ETD"})
+            continue
+        if not staff_ids:
+            unassigned.append({**job, "reason": "no roster staff"})
+            continue
+        staff_id = staff_ids[idx % len(staff_ids)]
+        run = run_map.get(staff_id)
+        if not run:
+            unassigned.append({**job, "reason": "staff not found"})
+            continue
+        job["sequence"] = len(run["jobs"]) + 1
+        run["jobs"].append(job)
+
+    return staff_runs, unassigned
+
+
 # ---------------------------------------------------------------------------
 # Basic health + status
 # ---------------------------------------------------------------------------
@@ -714,6 +885,97 @@ def api_ops_debug_wiring():
 # ---------------------------------------------------------------------------
 # Flights + roster / employee assignments
 # ---------------------------------------------------------------------------
+
+
+@app.get("/api/roster/daily")
+def api_roster_daily():
+    """Return roster shifts for the day (mocked when enabled)."""
+
+    if (date_error := _require_date_param()) is not None:
+        return date_error
+
+    airport = (request.args.get("airport") or _default_airport()).strip().upper()
+    date_str = request.args.get("date")
+
+    if not _mock_staff_enabled():
+        return json_error(
+            "Roster daily endpoint not implemented.",
+            status_code=501,
+            code="not_implemented",
+        )
+
+    shifts = _build_mock_roster(date_str, airport)
+    return _build_ok(
+        {
+            "date": date_str,
+            "airport": airport,
+            "source": "mock",
+            "roster": {"shifts": shifts},
+        }
+    )
+
+
+@app.get("/api/staff_runs")
+def api_staff_runs():
+    """Return staff runs for the day (mocked when enabled)."""
+
+    if (date_error := _require_date_param()) is not None:
+        return date_error
+
+    airline, airline_err = _normalize_airline_param(
+        request.args.get("airline"),
+        request.args.get("operator"),
+    )
+    if airline_err is not None:
+        return airline_err
+
+    airport = (request.args.get("airport") or _default_airport()).strip().upper()
+    date_str = request.args.get("date")
+
+    if not _mock_staff_enabled():
+        return json_error(
+            "Staff runs endpoint not implemented.",
+            status_code=501,
+            code="not_implemented",
+        )
+
+    flights_paths = [
+        "/api/ops/schedule/flights",
+        "/api/ops/flights",
+        "/api/flights",
+    ]
+    params = {
+        "date": date_str,
+        "operator": airline,
+        "airport": airport,
+    }
+
+    flights: List[Dict[str, Any]] = []
+    try:
+        resp, _ = _call_upstream(flights_paths, params=params, timeout=20)
+    except requests.RequestException:
+        resp = None
+
+    if resp is not None and resp.status_code != 404:
+        try:
+            payload = resp.json()
+        except Exception:  # noqa: BLE001
+            payload = None
+        flights = _extract_flights_list(payload)
+
+    roster = _build_mock_roster(date_str, airport)
+    runs, unassigned = _build_mock_staff_runs(flights, roster)
+
+    return _build_ok(
+        {
+            "date": date_str,
+            "airport": airport,
+            "airline": airline,
+            "source": "mock",
+            "runs": runs,
+            "unassigned": unassigned,
+        }
+    )
 
 
 @app.get("/api/flights")

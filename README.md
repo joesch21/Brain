@@ -29,6 +29,10 @@ Swap stubs with your AI tooling in `services/`.
   ```
   Configure your API calls to hit `http://localhost:5000` (e.g., via `VITE_API_BASE`).
 
+Optional mock staff data (Planner Staff View):
+- Set `BRAIN_MOCK_STAFF=1` before starting the Flask backend to enable `/api/roster/daily`
+  and `/api/staff_runs` mock responses for local dev.
+
 SPA details:
 - The built assets live in `frontend_dist/` and are served by Flask.
 - `/planner` and `/machine-room` now return the React SPA entry HTML; React Router picks the page.
