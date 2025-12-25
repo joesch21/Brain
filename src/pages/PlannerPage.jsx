@@ -979,6 +979,7 @@ const PlannerPage = () => {
   const [airline, setAirline] = useState(DEFAULT_AIRLINE);
   const [flights, setFlights] = useState([]);
   const [flightsCount, setFlightsCount] = useState(null);
+  const [flightsOk, setFlightsOk] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [runs, setRuns] = useState([]);
   const [unassigned, setUnassigned] = useState([]);
@@ -1299,6 +1300,25 @@ const PlannerPage = () => {
     }
   }
 
+  async function refreshFlightsOnly() {
+    if (!date) {
+      throw new Error("Flights refresh requires a date.");
+    }
+    const airlineCode = airline || DEFAULT_AIRLINE;
+    const flightsResp = await fetchFlights(date, airlineCode, {
+      airport: DEFAULT_AIRPORT,
+    });
+    const flightsData = flightsResp.data || {};
+    const normalizedFlights = normalizeFlights(flightsData);
+    const nextCount = Number.isFinite(flightsData.count)
+      ? flightsData.count
+      : normalizedFlights.length;
+    setFlights(normalizedFlights);
+    setFlightsCount(nextCount);
+    setFlightsOk(true);
+    return { count: nextCount };
+  }
+
   async function loadPlannerData(signal) {
     if (!date) return;
 
@@ -1314,6 +1334,7 @@ const PlannerPage = () => {
     setStaffViewError("");
     setRunsDailyCount(null);
     setFlightsCount(null);
+    setFlightsOk(null);
 
     const flightsPromise = (async () => {
       try {
@@ -1330,11 +1351,13 @@ const PlannerPage = () => {
               ? flightsData.count
               : normalizedFlights.length
           );
+          setFlightsOk(true);
         }
       } catch (err) {
         if (!signal?.aborted) {
           setFlights([]);
           setFlightsCount(null);
+          setFlightsOk(false);
           setError(formatRequestError("Flights", err));
         }
       }
@@ -1557,17 +1580,28 @@ const PlannerPage = () => {
     if (!canPullFlights) return;
     setPullLoading(true);
     setPullMessage("");
-    let shouldRefresh = false;
     try {
       const op = airline || "ALL";
-      const resp = await pullFlights(date, op, { airport: DEFAULT_AIRPORT });
+      const resp = await pullFlights(date, op, {
+        airport: DEFAULT_AIRPORT,
+        timeoutMs: 60000,
+      });
       const upstreamStatus = resp?.data?.status ?? resp?.status;
-      setPullMessage(
-        `Pulled flights for ${date} (${op})${
-          upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
-        }. Refreshing…`
-      );
-      shouldRefresh = true;
+      try {
+        const refreshed = await refreshFlightsOnly();
+        const refreshedCount = refreshed?.count ?? 0;
+        setPullMessage(
+          `Pulled ${refreshedCount} flight${refreshedCount === 1 ? "" : "s"} for ${date} (${op})${
+            upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
+          }.`
+        );
+      } catch (refreshErr) {
+        setPullMessage(
+          `Pull completed for ${date} (${op})${
+            upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
+          }. ${formatRequestError("Refresh flights", refreshErr)}`
+        );
+      }
     } catch (err) {
       const statusLabel = err?.status ?? "network";
       const endpoint = err?.url || "unknown endpoint";
@@ -1578,13 +1612,7 @@ const PlannerPage = () => {
           upstreamStatus != null ? ` (status ${upstreamStatus})` : ""
         }`
       );
-      if (err?.data?.ok === false) {
-        shouldRefresh = true;
-      }
     } finally {
-      if (shouldRefresh) {
-        await loadPlannerData();
-      }
       setPullLoading(false);
     }
   }
@@ -1919,6 +1947,7 @@ const PlannerPage = () => {
       {!loading &&
         !loadingRuns &&
         !error &&
+        flightsOk &&
         flightsCount === 0 && (
           <div className="planner-status planner-status--warn">
             <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -1931,7 +1960,7 @@ const PlannerPage = () => {
                 disabled={!canPullFlights || pullLoading}
                 title="Explicitly pull flights for this date (no automatic ingestion)."
               >
-                {pullLoading ? "Pulling flights…" : "Pull flights"}
+                {pullLoading ? "Pulling…" : "Pull flights"}
               </button>
             </div>
             {pullMessage && (
