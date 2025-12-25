@@ -24,6 +24,11 @@ export interface MergedFlightAssignment extends Flight {
 }
 
 import { API_BASE } from "./apiBase";
+import {
+  DEFAULT_OPERATOR,
+  DEFAULT_SHIFT,
+  REQUIRED_AIRPORT,
+} from "../lib/opsDefaults";
 
 async function handleJson<T>(res: Response): Promise<T> {
   let text: string | null = null;
@@ -93,12 +98,12 @@ export interface EmployeeAssignmentsResponse {
  */
 export async function fetchFlightsForDate(
   date: string,
-  airline: string = "ALL",
+  airline: string = DEFAULT_OPERATOR,
 ): Promise<Flight[]> {
   const url = new URL(`${API_BASE}/flights`);
   url.searchParams.set("date", date);
   url.searchParams.set("airline", airline);
-  url.searchParams.set("airport", "YSSY");
+  url.searchParams.set("airport", REQUIRED_AIRPORT);
 
   const res = await fetch(url.toString());
   const payload = await handleJson<FlightsResponse>(res);
@@ -116,12 +121,14 @@ export async function fetchFlightsForDate(
  */
 export async function fetchEmployeeAssignmentsForDate(
   date: string,
-  airline: string = "ALL",
+  operator: string = DEFAULT_OPERATOR,
+  shift: string = DEFAULT_SHIFT,
 ): Promise<EmployeeAssignment[]> {
   const url = new URL(`${API_BASE}/employee_assignments/daily`);
   url.searchParams.set("date", date);
-  url.searchParams.set("airline", airline);
-  url.searchParams.set("airport", "YSSY");
+  url.searchParams.set("operator", operator);
+  url.searchParams.set("shift", shift);
+  url.searchParams.set("airport", REQUIRED_AIRPORT);
 
   const res = await fetch(url.toString());
   const payload = await handleJson<EmployeeAssignmentsResponse>(res);
