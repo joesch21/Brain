@@ -48,7 +48,10 @@ class TestImportFlow:
             assert len(flights) == 3
             assert all(f.etd_local is not None for f in flights)
 
-        api_resp = self.client.get("/api/flights", query_string={"date": target_date.isoformat()})
+        api_resp = self.client.get(
+            "/api/flights",
+            query_string={"date": target_date.isoformat(), "airport": "YSSY"},
+        )
         assert api_resp.status_code == 200
         data = api_resp.get_json()
         assert data["flights"][0]["etd_local"].startswith("2025-12-05T16:50:00")
@@ -82,7 +85,12 @@ class TestImportFlow:
             db.session.commit()
 
         resp = self.client.get(
-            "/api/flights", query_string={"date": target_date.isoformat(), "airline": "QF"}
+            "/api/flights",
+            query_string={
+                "date": target_date.isoformat(),
+                "airport": "YSSY",
+                "airline": "QF",
+            },
         )
 
         assert resp.status_code == 200
@@ -93,7 +101,10 @@ class TestImportFlow:
     def test_api_flights_returns_empty_payload_when_no_flights(self):
         target_date = date(2025, 12, 6)
 
-        resp = self.client.get("/api/flights", query_string={"date": target_date.isoformat()})
+        resp = self.client.get(
+            "/api/flights",
+            query_string={"date": target_date.isoformat(), "airport": "YSSY"},
+        )
 
         assert resp.status_code == 200
         data = resp.get_json()
@@ -122,7 +133,10 @@ class TestImportFlow:
             )
             db.session.commit()
 
-        resp = self.client.get("/api/flights", query_string={"date": target_date.isoformat()})
+        resp = self.client.get(
+            "/api/flights",
+            query_string={"date": target_date.isoformat(), "airport": "YSSY"},
+        )
 
         assert resp.status_code == 200
         data = resp.get_json()
@@ -150,7 +164,12 @@ class TestImportFlow:
             db.session.commit()
 
         resp = self.client.get(
-            "/api/flights", query_string={"date": target_date.isoformat(), "operator": "all"}
+            "/api/flights",
+            query_string={
+                "date": target_date.isoformat(),
+                "airport": "YSSY",
+                "operator": "all",
+            },
         )
 
         assert resp.status_code == 200
@@ -160,7 +179,12 @@ class TestImportFlow:
 
     def test_api_flights_rejects_invalid_airline(self):
         resp = self.client.get(
-            "/api/flights", query_string={"date": date(2025, 12, 6).isoformat(), "airline": "XXX"}
+            "/api/flights",
+            query_string={
+                "date": date(2025, 12, 6).isoformat(),
+                "airport": "YSSY",
+                "airline": "XXX",
+            },
         )
 
         assert resp.status_code == 400

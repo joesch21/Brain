@@ -327,12 +327,12 @@ def _compatibility_wiring_snapshot() -> Dict[str, Any]:
                 maps_to = endpoint.get("maps_to") or []
                 if isinstance(maps_to, list) and maps_to:
                     return [
-                        f"{path}?date={sample_date}&operator=ALL"
+                        f"{path}?date={sample_date}&airline=ALL"
                         f"{'&airport=' + airport if include_airport else ''}"
                         for path in maps_to
                     ]
         return [
-            f"{path}?date={sample_date}&operator=ALL"
+            f"{path}?date={sample_date}&airline=ALL"
             f"{'&airport=' + airport if include_airport else ''}"
             for path in fallback
         ]
@@ -421,6 +421,29 @@ def _require_airport_field(payload: Dict[str, Any]) -> Tuple[Optional[str], Opti
             code="validation_error",
         )
     return airport, None
+
+
+def _normalize_airline_param(
+    airline: Optional[str],
+    operator: Optional[str],
+    *,
+    default: str = "ALL",
+) -> Tuple[Optional[str], Optional[Tuple[Any, int]]]:
+    airline_raw = str(airline or "").strip()
+    operator_raw = str(operator or "").strip()
+
+    if airline_raw and operator_raw:
+        if airline_raw.upper() != operator_raw.upper():
+            return None, json_error(
+                "airline and operator differ; use airline only.",
+                status_code=400,
+                code="param_conflict",
+            )
+    elif not airline_raw and operator_raw:
+        airline_raw = operator_raw
+
+    normalized = (airline_raw or default).strip().upper() or default
+    return normalized, None
 
 
 # ---------------------------------------------------------------------------
@@ -655,7 +678,12 @@ def api_flights():
     if (date_error := _require_date_param()) is not None:
         return date_error
 
-    operator = request.args.get("operator", "ALL")
+    airline, airline_err = _normalize_airline_param(
+        request.args.get("airline"),
+        request.args.get("operator"),
+    )
+    if airline_err is not None:
+        return airline_err
     airport = (request.args.get("airport") or "").strip().upper()
 
     if not airport:
@@ -667,7 +695,7 @@ def api_flights():
 
     params = {
         "date": request.args.get("date"),
-        "operator": operator,
+        "operator": airline,
         "airport": airport,
     }
 
@@ -696,7 +724,14 @@ def api_flights():
         )
 
     if resp.status_code == 404:
-        return _build_ok({"flights": [], "source": "compatibility", "upstream_path": used_path})
+        return _build_ok(
+            {
+                "flights": [],
+                "source": "compatibility",
+                "upstream_path": used_path,
+                "airline": airline,
+            }
+        )
 
     try:
         payload = resp.json()
@@ -707,6 +742,11 @@ def api_flights():
             code="invalid_json",
             detail={"raw": resp.text[:500]},
         )
+
+    if isinstance(payload, dict):
+        payload = dict(payload)
+        payload["airline"] = airline
+        payload.pop("operator", None)
 
     return jsonify(payload), resp.status_code
 
@@ -756,8 +796,12 @@ def api_flights_pull():
             code="validation_error",
         )
 
-    operator = str(data.get("operator") or "ALL").strip() or "ALL"
-    operator = operator.upper()
+    airline, airline_err = _normalize_airline_param(
+        data.get("airline"),
+        data.get("operator"),
+    )
+    if airline_err is not None:
+        return airline_err
     raw_timeout = data.get("timeout", 30)
     try:
         timeout = int(raw_timeout)
@@ -773,8 +817,8 @@ def api_flights_pull():
     # - ALL => no airline filter
     # - otherwise => airlines=[operator]
     airlines = None
-    if operator != "ALL":
-        airlines = [operator]
+    if airline != "ALL":
+        airlines = [airline]
 
     upstream_path = "/api/flights/ingest/aeroapi"
     upstream_body: Dict[str, Any] = {
@@ -817,7 +861,7 @@ def api_flights_pull():
         "ok": bool(payload.get("ok")) if isinstance(payload, dict) else False,
         "airport": airport,
         "local_date": date_str,
-        "operator": operator,
+        "airline": airline,
         "source": "upstream",
         "upstream": {
             "base_url": _active_upstream_base(),
@@ -836,10 +880,30 @@ def api_employee_assignments_daily():
     EWOT: proxy /api/employee_assignments/daily so Brain can build
     roster-driven operator dropdowns and staff views from CC2.
     """
+    airline, airline_err = _normalize_airline_param(
+        request.args.get("airline"),
+        request.args.get("operator"),
+    )
+    if airline_err is not None:
+        return airline_err
+
+    airport = (request.args.get("airport") or "").strip().upper()
+    if not airport:
+        return json_error(
+            "Missing required 'airport' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    params = request.args.to_dict(flat=True)
+    params.pop("airline", None)
+    params["operator"] = airline
+    params["airport"] = airport
+
     try:
         resp = requests.get(
             _upstream_url("/api/employee_assignments/daily"),
-            params=request.args,
+            params=params,
             timeout=20,
         )
     except requests.RequestException as exc:
@@ -862,6 +926,11 @@ def api_employee_assignments_daily():
                 "detail": resp.text[:500],
             },
         }
+
+    if isinstance(payload, dict):
+        payload = dict(payload)
+        payload["airline"] = airline
+        payload.pop("operator", None)
 
     return jsonify(payload), resp.status_code
 
@@ -934,12 +1003,17 @@ def api_runs_cc3():
             code="validation_error",
         )
 
-    operator = request.args.get("operator", "ALL")
+    airline, airline_err = _normalize_airline_param(
+        request.args.get("airline"),
+        request.args.get("operator"),
+    )
+    if airline_err is not None:
+        return airline_err
     shift = request.args.get("shift", "ALL")
     params = {
         "date": date_str,
         "airport": airport,
-        "operator": operator,
+        "operator": airline,
         "shift": shift,
     }
 
@@ -991,6 +1065,7 @@ def api_runs_cc3():
         "source": payload.get("source") or "upstream",
         "airport": payload.get("airport") or airport,
         "local_date": payload.get("local_date") or payload.get("date") or date_str,
+        "airline": airline,
         "count": int(payload.get("count") or len(runs)),
         "runs": runs,
     }
@@ -1082,7 +1157,12 @@ def api_runs_auto_assign():
     """
     data = request.get_json(silent=True) or {}
     date_str = data.get("date")
-    operator = data.get("operator") or "ALL"
+    airline, airline_err = _normalize_airline_param(
+        data.get("airline"),
+        data.get("operator"),
+    )
+    if airline_err is not None:
+        return airline_err
 
     if not date_str:
         return json_error(
@@ -1092,7 +1172,7 @@ def api_runs_auto_assign():
             detail={"body": data},
         )
 
-    upstream_body = {"date": date_str, "operator": operator}
+    upstream_body = {"date": date_str, "operator": airline}
 
     try:
         resp = requests.post(

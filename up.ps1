@@ -211,7 +211,7 @@ try {
 
 # 3) UI -> flights smoke test
 try {
-  $flightsUrl = "$UiBaseUrl/api/flights?date=$SmokeDate&airport=$SmokeAirport&operator=ALL"
+  $flightsUrl = "$UiBaseUrl/api/flights?date=$SmokeDate&airport=$SmokeAirport&airline=ALL"
   $flights = Try-JsonGet -Url $flightsUrl -TimeoutSec 30
   Write-Host ("UI->Flights: ok={0} count={1} source={2} airport={3} local_date={4}" -f $flights.ok, $flights.count, $flights.source, $flights.airport, $flights.local_date) -ForegroundColor Green
 } catch {
@@ -221,7 +221,7 @@ try {
 
 # 4) UI -> runs smoke test
 try {
-  $runsUrl = "$UiBaseUrl/api/runs?date=$SmokeDate&airport=$SmokeAirport&operator=ALL&shift=ALL"
+  $runsUrl = "$UiBaseUrl/api/runs?date=$SmokeDate&airport=$SmokeAirport&airline=ALL&shift=ALL"
   $runs = Try-JsonGet -Url $runsUrl -TimeoutSec 30
   Write-Host ("UI->Runs: ok={0} count={1} source={2} airport={3} local_date={4}" -f $runs.ok, $runs.count, $runs.source, $runs.airport, $runs.local_date) -ForegroundColor Green
 } catch {

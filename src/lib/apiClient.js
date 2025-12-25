@@ -202,7 +202,7 @@ export async function fetchStatus(date, options = {}) {
   return request(`/api/status${qs.toString() ? `?${qs.toString()}` : ""}`, options);
 }
 
-export async function fetchFlights(date, operator = "ALL", options = {}) {
+export async function fetchFlights(date, airline = "ALL", options = {}) {
   if (!date) {
     throw new Error("fetchFlights: date is required");
   }
@@ -213,15 +213,15 @@ export async function fetchFlights(date, operator = "ALL", options = {}) {
   const qs = new URLSearchParams();
   qs.set("date", date);
   qs.set("airport", options.airport);
-  if (operator) qs.set("operator", operator);
+  if (airline) qs.set("airline", airline);
   return request(`/api/flights?${qs.toString()}`, options);
 }
 
-export async function getFlights({ date, airport, operator = "ALL", signal } = {}) {
-  return fetchFlights(date, operator, { airport, signal });
+export async function getFlights({ date, airport, airline = "ALL", signal } = {}) {
+  return fetchFlights(date, airline, { airport, signal });
 }
 
-export async function pullFlights(date, operator = "ALL", options = {}) {
+export async function pullFlights(date, airline = "ALL", options = {}) {
   if (!date) {
     throw new Error("pullFlights: date is required");
   }
@@ -244,7 +244,7 @@ export async function pullFlights(date, operator = "ALL", options = {}) {
   const body = {
     date,
     airport: options.airport,
-    operator: operator || "ALL",
+    airline: airline || "ALL",
     store: true,
     timeout: 30,
     scope: "both",
@@ -318,6 +318,8 @@ export async function fetchEmployeeAssignments(date, options = {}) {
   if (date) qs.set("date", date);
   // STRICT CONTRACT: always send airport
   qs.set("airport", options.airport || DEFAULT_AIRPORT);
+  const airline = options.airline || options.operator;
+  if (airline) qs.set("airline", airline);
   return request(
     `/api/employee_assignments/daily${qs.toString() ? `?${qs.toString()}` : ""}`,
     options
@@ -346,26 +348,26 @@ export async function fetchWiringStatus(options = {}) {
 
 export async function fetchDailyRuns(
   date,
-  operatorOrParams = "ALL",
+  airlineOrParams = "ALL",
   options = {}
 ) {
-  let operator = "ALL";
+  let airline = "ALL";
   let airport;
   let shift = "ALL";
 
-  if (operatorOrParams && typeof operatorOrParams === "object") {
-    operator = operatorOrParams.operator ?? "ALL";
-    airport = operatorOrParams.airport;
-    shift = operatorOrParams.shift ?? "ALL";
+  if (airlineOrParams && typeof airlineOrParams === "object") {
+    airline = airlineOrParams.airline ?? airlineOrParams.operator ?? "ALL";
+    airport = airlineOrParams.airport;
+    shift = airlineOrParams.shift ?? "ALL";
   } else {
-    operator = operatorOrParams;
+    airline = airlineOrParams;
   }
 
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
   // STRICT CONTRACT: always send airport
   qs.set("airport", airport || options.airport || DEFAULT_AIRPORT);
-  if (operator) qs.set("operator", operator);
+  if (airline) qs.set("airline", airline);
   if (shift) qs.set("shift", shift);
   return safeRequest(`/api/runs?${qs.toString()}`, {
     method: "GET",
@@ -377,8 +379,8 @@ export async function fetchDailyRuns(
   });
 }
 
-export async function autoAssignRuns(date, operator = "ALL", options = {}) {
-  const payload = { date, operator };
+export async function autoAssignRuns(date, airline = "ALL", options = {}) {
+  const payload = { date, airline };
   return safeRequest("/api/runs/auto_assign", {
     method: "POST",
     headers: {

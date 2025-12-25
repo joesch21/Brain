@@ -43,7 +43,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
     const params = new URLSearchParams({
       date,
       airport: "YSSY",
-      operator: "JQ",
+      airline: "JQ",
     });
     const { data } = await apiRequest(`/api/flights?${params.toString()}`);
     return data?.flights ?? [];

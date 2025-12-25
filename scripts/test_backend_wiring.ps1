@@ -42,18 +42,18 @@ Test-Endpoint -Name "Wiring status" -Url $wiringUrl -Method "GET"
 
 # 2) Daily roster: used by Runs page to populate operator dropdown from employee assignments
 $today = (Get-Date).ToString('yyyy-MM-dd')
-$rosterUrl = "$BaseUrl/api/employee_assignments/daily?date=$today"
+$rosterUrl = "$BaseUrl/api/employee_assignments/daily?date=$today&airport=YSSY&airline=ALL"
 Test-Endpoint -Name "Daily employee assignments" -Url $rosterUrl -Method "GET"
 
 # 3) Daily runs: used by Runs page to display run layout for today
-$runsUrl = "$BaseUrl/api/runs?date=$today&operator=ALL&airport=YSSY"
+$runsUrl = "$BaseUrl/api/runs?date=$today&airline=ALL&airport=YSSY"
 Test-Endpoint -Name "Runs" -Url $runsUrl -Method "GET"
 
 # 4) Auto-assign runs: used by Runs page 'Auto-assign runs for this day' button
 $autoAssignUrl = "$BaseUrl/api/runs/auto_assign"
 $autoAssignBody = @{
   date     = $today
-  operator = "ALL"
+  airline  = "ALL"
 }
 Test-Endpoint -Name "Auto-assign runs" -Url $autoAssignUrl -Method "POST" -Body $autoAssignBody
 

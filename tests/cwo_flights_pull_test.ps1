@@ -5,7 +5,7 @@
 param(
   [string]$Base    = "http://127.0.0.1:5173",
   [string]$Airport = "YSSY",
-  [string]$Op      = "ALL",
+  [string]$Airline = "ALL",
   [string]$Date    = "2025-12-24"
 )
 
@@ -23,7 +23,7 @@ $results = @()
 
 try {
   Write-Host "== Preconditions ==" -ForegroundColor Cyan
-  Write-Host "Base=$Base Date=$Date Airport=$Airport Operator=$Op"
+  Write-Host "Base=$Base Date=$Date Airport=$Airport Airline=$Airline"
 
   # A0: Contract includes flights_pull
   $contract = Invoke-RestMethod "$Base/api/contract"
@@ -35,7 +35,7 @@ try {
 
   # A1: Airport required (GET flights)
   try {
-    Invoke-RestMethod "$Base/api/flights?date=$Date&operator=$Op" | Out-Null
+    Invoke-RestMethod "$Base/api/flights?date=$Date&airline=$Airline" | Out-Null
     Fail "A1 airport required (GET /api/flights)" "Request succeeded without airport"
   } catch {
     Pass "A1 airport required (GET /api/flights)"
@@ -43,7 +43,7 @@ try {
 
   # A2: Airport required (GET runs)
   try {
-    Invoke-RestMethod "$Base/api/runs?date=$Date&operator=$Op&shift=ALL" | Out-Null
+    Invoke-RestMethod "$Base/api/runs?date=$Date&airline=$Airline&shift=ALL" | Out-Null
     Fail "A2 airport required (GET /api/runs)" "Request succeeded without airport"
   } catch {
     Pass "A2 airport required (GET /api/runs)"
@@ -51,7 +51,7 @@ try {
 
   # A3: Airport required (POST pull)
   try {
-    $bodyMissing = @{ date=$Date; operator=$Op } | ConvertTo-Json
+    $bodyMissing = @{ date=$Date; airline=$Airline } | ConvertTo-Json
     Invoke-RestMethod -Method POST -Uri "$Base/api/flights/pull" -ContentType "application/json" -Body $bodyMissing | Out-Null
     Fail "A3 airport required (POST /api/flights/pull)" "Request succeeded without airport"
   } catch {
@@ -60,7 +60,7 @@ try {
 
   # B1: Baseline
   Write-Host "== Baseline read ==" -ForegroundColor Cyan
-  $before = Invoke-RestMethod "$Base/api/flights?date=$Date&airport=$Airport&operator=$Op"
+  $before = Invoke-RestMethod "$Base/api/flights?date=$Date&airport=$Airport&airline=$Airline"
   Assert-HasKeys $before @("ok","airport","local_date","source","count","records") "GET /api/flights baseline"
   $beforeCount = [int]$before.count
   Write-Host "Before: source=$($before.source) count=$beforeCount"
@@ -70,20 +70,20 @@ try {
   $pullBody = @{
     date    = $Date
     airport = $Airport
-    operator= $Op
+    airline = $Airline
     store   = $true
     timeout = 30
   } | ConvertTo-Json
 
   $pull = Invoke-RestMethod -Method POST -Uri "$Base/api/flights/pull" -ContentType "application/json" -Body $pullBody
-  Assert-HasKeys $pull @("ok","airport","local_date","operator","source","upstream","payload") "POST /api/flights/pull"
+  Assert-HasKeys $pull @("ok","airport","local_date","airline","source","upstream","payload") "POST /api/flights/pull"
   Assert-HasKeys $pull.upstream @("status_code","path","base_url") "POST /api/flights/pull.upstream"
 
   Write-Host "Pull: upstream_status=$($pull.upstream.status_code) ok=$($pull.ok)"
 
   # B3: After
   Write-Host "== After read ==" -ForegroundColor Cyan
-  $after = Invoke-RestMethod "$Base/api/flights?date=$Date&airport=$Airport&operator=$Op"
+  $after = Invoke-RestMethod "$Base/api/flights?date=$Date&airport=$Airport&airline=$Airline"
   Assert-HasKeys $after @("ok","airport","local_date","source","count","records") "GET /api/flights after"
   $afterCount = [int]$after.count
   Write-Host "After: source=$($after.source) count=$afterCount"

@@ -9,6 +9,8 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const DEFAULT_AIRPORT = "YSSY";
+
 const StatusPill = ({ ok, label }) => (
   <span
     style={{
@@ -68,11 +70,11 @@ const MachineRoomStatusCard = () => {
     const tests = [
       {
         name: "Flights (today)",
-        url: `/api/flights?date=${encodeURIComponent(date)}`,
+        url: `/api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`,
       },
       {
         name: "Runs (today)",
-        url: `/api/runs?date=${encodeURIComponent(date)}`,
+        url: `/api/runs?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`,
       },
       {
         name: "Service profiles",

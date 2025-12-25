@@ -15,8 +15,8 @@ const DEFAULT_AIRPORT = "YSSY";
  *
  * Calls:
  *   - /api/status?date=YYYY-MM-DD
- *   - /api/flights?date=YYYY-MM-DD
- *   - /api/runs?date=YYYY-MM-DD
+ *   - /api/flights?date=YYYY-MM-DD&airport=YSSY&airline=ALL
+ *   - /api/runs?date=YYYY-MM-DD&airport=YSSY&airline=ALL
  *
  * and shows a short summary plus optional detail.
  */

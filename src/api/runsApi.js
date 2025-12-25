@@ -1,7 +1,7 @@
 import { fetchJson } from "../utils/api";
 
-export async function fetchDailyRuns(date, operator = "ALL") {
-  const params = new URLSearchParams({ date, operator, airport: "YSSY" });
+export async function fetchDailyRuns(date, airline = "ALL") {
+  const params = new URLSearchParams({ date, airline, airport: "YSSY" });
   const response = await fetchJson(`/api/runs?${params.toString()}`);
 
   if (!response.ok) {
@@ -11,8 +11,8 @@ export async function fetchDailyRuns(date, operator = "ALL") {
   return response.data;
 }
 
-export async function autoAssignRuns(date, operator = "ALL") {
-  const body = JSON.stringify({ date, operator });
+export async function autoAssignRuns(date, airline = "ALL") {
+  const body = JSON.stringify({ date, airline });
   const response = await fetchJson("/api/runs/auto_assign", {
     method: "POST",
     headers: {

@@ -31,7 +31,11 @@ const RunSheetsPage = () => {
     (initialParamsRef.current.get("airport") || DEFAULT_AIRPORT).toUpperCase()
   );
   const [operator, setOperator] = useState(
-    (initialParamsRef.current.get("operator") || DEFAULT_OPERATOR).toUpperCase()
+    (
+      initialParamsRef.current.get("airline") ||
+      initialParamsRef.current.get("operator") ||
+      DEFAULT_OPERATOR
+    ).toUpperCase()
   );
   const [shift, setShift] = useState(
     (initialParamsRef.current.get("shift") || DEFAULT_SHIFT).toUpperCase()
@@ -64,7 +68,7 @@ const RunSheetsPage = () => {
       const qs = new URLSearchParams();
       if (next.date) qs.set("date", next.date);
       if (next.airport) qs.set("airport", next.airport);
-      if (next.operator) qs.set("operator", next.operator);
+      if (next.operator) qs.set("airline", next.operator);
       if (next.shift) qs.set("shift", next.shift);
       if (next.runId) qs.set("runId", next.runId);
       if (next.runIndex) qs.set("runIndex", next.runIndex);
@@ -97,7 +101,7 @@ const RunSheetsPage = () => {
         const params = new URLSearchParams({
           date: d,
           airport: a,
-          operator: op || DEFAULT_OPERATOR,
+          airline: op || DEFAULT_OPERATOR,
           shift: sh || DEFAULT_SHIFT,
         });
         const res = await fetchJson(`/api/runs?${params.toString()}`);

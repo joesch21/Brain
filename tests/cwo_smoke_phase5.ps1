@@ -4,7 +4,7 @@
 param(
   [string]$Base          = "http://127.0.0.1:5173",
   [string]$Airport       = "YSSY",
-  [string]$Operator      = "ALL",
+  [string]$Airline       = "ALL",
   [string]$Shift         = "ALL",
   [string]$DateHasData   = "2025-12-22",
   [string]$DateMaybeEmpty= "2025-12-24"
@@ -81,7 +81,7 @@ function Run-Check($name, [scriptblock]$block){
 }
 
 Write-Host "== CWO Smoke Phase 5 ==" -ForegroundColor Cyan
-Write-Host "Base=$Base Airport=$Airport Operator=$Operator Shift=$Shift DateHasData=$DateHasData DateMaybeEmpty=$DateMaybeEmpty"
+Write-Host "Base=$Base Airport=$Airport Airline=$Airline Shift=$Shift DateHasData=$DateHasData DateMaybeEmpty=$DateMaybeEmpty"
 
 Run-Check "S1 wiring status" {
   $wiring = Invoke-JsonGet "$Base/api/wiring-status" $HttpTimeoutSec
@@ -100,21 +100,21 @@ Run-Check "S2 contract endpoint present" {
 }
 
 Run-Check "S3 airport required everywhere" {
-  $flightsError = Invoke-JsonExpectError "GET" "$Base/api/flights?date=$DateHasData&operator=$Operator" $null $HttpTimeoutSec
+  $flightsError = Invoke-JsonExpectError "GET" "$Base/api/flights?date=$DateHasData&airline=$Airline" $null $HttpTimeoutSec
   Assert-Equal $flightsError.Status 400 "GET /api/flights missing airport status"
   Assert-HasKeys $flightsError.Json @("ok","error") "GET /api/flights missing airport"
   Assert-Equal $flightsError.Json.ok $false "GET /api/flights missing airport ok"
   Assert-HasKeys $flightsError.Json.error @("code") "GET /api/flights missing airport error"
   Assert-In $flightsError.Json.error.code @("validation_error","bad_request") "GET /api/flights missing airport error.code"
 
-  $runsError = Invoke-JsonExpectError "GET" "$Base/api/runs?date=$DateHasData&operator=$Operator&shift=$Shift" $null $HttpTimeoutSec
+  $runsError = Invoke-JsonExpectError "GET" "$Base/api/runs?date=$DateHasData&airline=$Airline&shift=$Shift" $null $HttpTimeoutSec
   Assert-Equal $runsError.Status 400 "GET /api/runs missing airport status"
   Assert-HasKeys $runsError.Json @("ok","error") "GET /api/runs missing airport"
   Assert-Equal $runsError.Json.ok $false "GET /api/runs missing airport ok"
   Assert-HasKeys $runsError.Json.error @("code") "GET /api/runs missing airport error"
   Assert-In $runsError.Json.error.code @("validation_error","bad_request") "GET /api/runs missing airport error.code"
 
-  $pullError = Invoke-JsonExpectError "POST" "$Base/api/flights/pull" @{ date=$DateHasData; operator=$Operator } $HttpTimeoutSec
+  $pullError = Invoke-JsonExpectError "POST" "$Base/api/flights/pull" @{ date=$DateHasData; airline=$Airline } $HttpTimeoutSec
   Assert-Equal $pullError.Status 400 "POST /api/flights/pull missing airport status"
   Assert-HasKeys $pullError.Json @("ok","error") "POST /api/flights/pull missing airport"
   Assert-Equal $pullError.Json.ok $false "POST /api/flights/pull missing airport ok"
@@ -123,7 +123,7 @@ Run-Check "S3 airport required everywhere" {
 }
 
 Run-Check "S4 flights read" {
-  $flights = Invoke-JsonGet "$Base/api/flights?date=$DateHasData&airport=$Airport&operator=$Operator" $HttpTimeoutSec
+  $flights = Invoke-JsonGet "$Base/api/flights?date=$DateHasData&airport=$Airport&airline=$Airline" $HttpTimeoutSec
   Assert-HasKeys $flights @("ok","airport","local_date","count","records") "GET /api/flights"
   Assert-Equal $flights.ok $true "GET /api/flights ok"
   Assert-Equal $flights.airport $Airport "GET /api/flights airport"
@@ -132,7 +132,7 @@ Run-Check "S4 flights read" {
 }
 
 Run-Check "S5 runs read" {
-  $runs = Invoke-JsonGet "$Base/api/runs?date=$DateHasData&airport=$Airport&operator=$Operator&shift=$Shift" $HttpTimeoutSec
+  $runs = Invoke-JsonGet "$Base/api/runs?date=$DateHasData&airport=$Airport&airline=$Airline&shift=$Shift" $HttpTimeoutSec
   Assert-HasKeys $runs @("ok","airport","local_date","count","runs") "GET /api/runs"
   Assert-Equal $runs.ok $true "GET /api/runs ok"
   Assert-Equal $runs.airport $Airport "GET /api/runs airport"
@@ -141,30 +141,30 @@ Run-Check "S5 runs read" {
 }
 
 Run-Check "S6 pull flights" {
-  $baseline = Invoke-JsonGet "$Base/api/flights?date=$DateMaybeEmpty&airport=$Airport&operator=$Operator" $HttpTimeoutSec
+  $baseline = Invoke-JsonGet "$Base/api/flights?date=$DateMaybeEmpty&airport=$Airport&airline=$Airline" $HttpTimeoutSec
   Assert-HasKeys $baseline @("ok","count") "GET /api/flights baseline"
   $baselineCount = [int]$baseline.count
 
   $pullBody = @{
     date     = $DateMaybeEmpty
     airport  = $Airport
-    operator = $Operator
+    airline  = $Airline
     store    = $true
     timeout  = 30
   }
   $pull = Invoke-JsonPost "$Base/api/flights/pull" $pullBody $PullTimeoutSec
-  Assert-HasKeys $pull @("ok","airport","local_date","operator","source","upstream","payload") "POST /api/flights/pull"
+  Assert-HasKeys $pull @("ok","airport","local_date","airline","source","upstream","payload") "POST /api/flights/pull"
   Assert-HasKeys $pull.upstream @("status_code","path","base_url") "POST /api/flights/pull.upstream"
   Assert-Equal $pull.upstream.path "/api/flights/ingest/aeroapi" "POST /api/flights/pull upstream.path"
 
-  $after = Invoke-JsonGet "$Base/api/flights?date=$DateMaybeEmpty&airport=$Airport&operator=$Operator" $HttpTimeoutSec
+  $after = Invoke-JsonGet "$Base/api/flights?date=$DateMaybeEmpty&airport=$Airport&airline=$Airline" $HttpTimeoutSec
   Assert-HasKeys $after @("ok","count") "GET /api/flights after"
   $afterCount = [int]$after.count
   Assert ($afterCount -ge $baselineCount) "GET /api/flights count non-decreasing after pull"
 }
 
 Run-Check "S7 legacy runs/daily deprecated" {
-  $legacy = Invoke-JsonExpectError "GET" "$Base/api/runs/daily?date=$DateHasData&airport=$Airport&operator=$Operator&shift=$Shift" $null $HttpTimeoutSec
+  $legacy = Invoke-JsonExpectError "GET" "$Base/api/runs/daily?date=$DateHasData&airport=$Airport&airline=$Airline&shift=$Shift" $null $HttpTimeoutSec
   Assert-Equal $legacy.Status 410 "GET /api/runs/daily status"
   Assert-HasKeys $legacy.Json @("ok","error") "GET /api/runs/daily"
   Assert-Equal $legacy.Json.ok $false "GET /api/runs/daily ok"
