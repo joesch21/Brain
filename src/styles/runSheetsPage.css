@@ -137,6 +137,14 @@
   font-size: 0.85rem;
 }
 
+.runsheet-staff {
+  max-width: 320px;
+}
+
+.runsheet-staff--muted {
+  opacity: 0.65;
+}
+
 .runsheet-label {
   display: block;
   font-size: 0.7rem;
