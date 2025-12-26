@@ -117,12 +117,12 @@ const SchedulePage = () => {
     }
 
     try {
-    const flightsResp = await fetchFlights(
-      date,
-      airline || "ALL",
-      DEFAULT_AIRPORT,
-      { signal }
-    );
+      const flightsResp = await fetchFlights(
+        date,
+        airline || "ALL",
+        DEFAULT_AIRPORT,
+        { signal }
+      );
 
       if (!signal?.aborted) {
         const payload = flightsResp.data || {};

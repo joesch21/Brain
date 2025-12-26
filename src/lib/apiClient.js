@@ -1,12 +1,7 @@
 // Centralized API client for Brain frontend
 // Uses VITE_OPS_API_BASE (or same-origin) and normalizes errors for schedule/planner flows.
 import { OPS_API_BASE } from "./opsApiBase";
-import {
-  ENABLE_ROSTER,
-  ENABLE_STAFF_RUNS,
-  REQUIRED_AIRPORT,
-  normalizeOperator,
-} from "./opsDefaults";
+import { REQUIRED_AIRPORT, normalizeOperator } from "./opsDefaults";
 import { pushBackendDebugEntry } from "./backendDebug";
 
 const DEFAULT_AIRPORT = "YSSY";
@@ -293,60 +288,11 @@ export async function fetchRuns(date, airline = "JQ", options = {}) {
   return request(`/api/runs${qs.toString() ? `?${qs.toString()}` : ""}`, options);
 }
 
-export async function fetchStaffRuns(date, airline = "JQ", options = {}) {
-  if (!ENABLE_STAFF_RUNS) {
-    const airport = options.airport || REQUIRED_AIRPORT;
-    return Promise.resolve({
-      status: 200,
-      data: {
-        ok: true,
-        available: false,
-        date,
-        airport,
-        airline,
-        runs: [],
-        unassigned: [],
-      },
-    });
-  }
-  const qs = new URLSearchParams();
-  if (date) qs.set("date", date);
-  if (airline) qs.set("airline", airline);
-  qs.set("airport", options.airport || REQUIRED_AIRPORT);
-  return request(
-    `/api/staff_runs${qs.toString() ? `?${qs.toString()}` : ""}`,
-    options
-  );
-}
-
 export async function fetchRunsStatus(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
   return request(
     `/api/runs_status${qs.toString() ? `?${qs.toString()}` : ""}`,
-    options
-  );
-}
-
-export async function fetchDailyRoster(date, options = {}) {
-  if (!ENABLE_ROSTER) {
-    const airport = options.airport || REQUIRED_AIRPORT;
-    return Promise.resolve({
-      status: 200,
-      data: {
-        ok: true,
-        available: false,
-        date,
-        airport,
-        roster: { shifts: [] },
-      },
-    });
-  }
-  const qs = new URLSearchParams();
-  if (date) qs.set("date", date);
-  qs.set("airport", options.airport || REQUIRED_AIRPORT);
-  return request(
-    `/api/roster/daily${qs.toString() ? `?${qs.toString()}` : ""}`,
     options
   );
 }
@@ -439,36 +385,6 @@ export async function autoAssignRuns(date, airline = "ALL", options = {}) {
       ...options.headers,
     },
     body: JSON.stringify(payload),
-    ...options,
-  });
-}
-
-export async function fetchStaffRunsLatest(date, airline, options = {}) {
-  const qs = new URLSearchParams();
-  if (date) qs.set("date", date);
-  if (airline) qs.set("airline", airline);
-  return safeRequest(`/api/staff_runs${qs.toString() ? `?${qs.toString()}` : ""}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      ...options.headers,
-    },
-    ...options,
-  });
-}
-
-export async function generateStaffRuns(date, airline, options = {}) {
-  const qs = new URLSearchParams();
-  if (date) qs.set("date", date);
-  if (airline) qs.set("airline", airline);
-  return safeRequest(`/api/staff_runs/generate${qs.toString() ? `?${qs.toString()}` : ""}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ...options.headers,
-    },
-    body: JSON.stringify({ date, airline }),
     ...options,
   });
 }
