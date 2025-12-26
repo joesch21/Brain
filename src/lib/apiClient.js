@@ -1,76 +1,132 @@
-// Centralized API client for Brain frontend
-// Uses VITE_OPS_API_BASE (or same-origin) and normalizes errors for schedule/planner flows.
+// src/api/apiClient.js
+// Centralized API client for Brain frontend.
+// - Works with Vite proxy (same-origin "/api/*") OR direct backend base.
+// - Eliminates "/api/api" drift even if OPS_API_BASE includes "/api".
+// - Normalizes operator/airport usage across planner/schedule/staff flows.
+// - Provides two modes: "throw" (strict) and "safe" (non-throwing).
+
 import { OPS_API_BASE } from "./opsApiBase";
 import { REQUIRED_AIRPORT, normalizeOperator } from "./opsDefaults";
 import { pushBackendDebugEntry } from "./backendDebug";
 
-const DEFAULT_AIRPORT = "YSSY";
+const DEFAULT_TIMEOUT_MS = 60_000;
 
+/**
+ * Normalize base + path so we never generate .../api/api/...
+ * Rules:
+ * - base can be "" (same-origin), "http://host:5055", or "http://host:5055/api"
+ * - path can be "/api/contract" or "api/contract" etc
+ * - Output should contain exactly one "/api" segment when path begins with /api
+ */
 function buildUrl(path) {
-  const base = OPS_API_BASE;
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  const baseRaw = (OPS_API_BASE ?? "").toString().trim();
+
+  // Already absolute?
+  if (/^https?:\/\//i.test(path)) return path;
+
+  const base = baseRaw.replace(/\/+$/, ""); // trim trailing slash
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  // If base is empty, keep same-origin relative path (Vite proxy will handle /api/*)
+  if (!base) return normalizedPath;
+
+  // If base ends with "/api" and path begins with "/api/", drop one of them
+  const baseEndsWithApi = /\/api$/i.test(base);
+  const pathStartsWithApi = /^\/api\//i.test(normalizedPath);
+
+  if (baseEndsWithApi && pathStartsWithApi) {
+    return `${base}${normalizedPath.replace(/^\/api/i, "")}`;
+  }
+
   return `${base}${normalizedPath}`;
 }
 
-function normalizeResult({
-  ok,
-  status,
-  body,
-  statusText,
-  url,
-  method,
-  errorType,
-  networkError,
-}) {
-  const typeFromBody = body?.type;
+function parseErrorMessage(body, statusText, networkError) {
+  // prefer structured backend errors
+  if (body && typeof body === "object") {
+    if (typeof body.error === "string") return body.error;
+    if (body.error && typeof body.error === "object" && body.error.message)
+      return body.error.message;
+    if (body.message) return body.message;
+  }
+
+  // fall back to plain text body
+  if (typeof body === "string" && body.trim()) return body;
+
+  // network errors / status text
+  return networkError || statusText || "Request failed";
+}
+
+function normalizeResult({ ok, status, statusText, url, method, body, errorType, networkError }) {
+  const typeFromBody = body && typeof body === "object" ? body.type : null;
   const type = errorType || typeFromBody || null;
-  const errorMessage =
-    (body?.error && typeof body.error === "object"
-      ? body.error.message
-      : body?.error) ||
-    (typeof body === "string" ? body : null) ||
-    networkError ||
-    statusText;
 
   return {
-    ok,
-    status,
+    ok: Boolean(ok),
+    status: status ?? null,
     type,
-    error: errorMessage || null,
-    data: body,
-    raw: { url, method },
+    error: ok ? null : parseErrorMessage(body, statusText, networkError),
+    data: body ?? null,
+    raw: { url, method, statusText: statusText ?? null },
   };
 }
 
-async function safeRequest(path, options = {}) {
+async function readBody(response) {
+  const contentType = response.headers?.get("content-type") || "";
+  try {
+    if (contentType.includes("application/json")) return await response.json();
+    return await response.text();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Core fetch wrapper.
+ * mode:
+ *  - "throw": throws Error on non-ok
+ *  - "safe" : never throws; returns normalized result
+ */
+async function brainFetch(path, options = {}, mode = "throw") {
   const url = buildUrl(path);
-  const method = options.method || "GET";
+  const method = (options.method || "GET").toUpperCase();
+
   const headers = {
-    "Content-Type": "application/json",
+    Accept: "application/json",
+    ...(options.body ? { "Content-Type": "application/json" } : {}),
     ...options.headers,
   };
+
   const credentials = options.credentials ?? "include";
 
+  // Optional timeout
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Link external abort
+  const externalSignal = options.signal;
+  const forwardAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener("abort", forwardAbort, { once: true });
+  }
+
   try {
-    const response = await fetch(url, { ...options, headers, credentials });
+    const response = await fetch(url, {
+      ...options,
+      method,
+      headers,
+      credentials,
+      signal: controller.signal,
+    });
+
     const status = response.status;
     const statusText = response.statusText;
-    const contentType = response.headers?.get("content-type") || "";
-    let body;
+    const body = await readBody(response);
 
-    try {
-      if (contentType.includes("application/json")) {
-        body = await response.json();
-      } else {
-        body = await response.text();
-      }
-    } catch (parseErr) {
-      body = undefined;
-    }
-
-    const ok = response.ok && (body?.ok !== false);
-    const type = body?.type;
+    // Some endpoints may return 200 with { ok:false }
+    const ok = response.ok && !(body && typeof body === "object" && body.ok === false);
 
     if (!ok) {
       const debugEntry = pushBackendDebugEntry({
@@ -81,312 +137,199 @@ async function safeRequest(path, options = {}) {
         statusText,
         body,
       });
-      console.error("[Backend HTTP Error]", debugEntry);
-    }
 
-    return normalizeResult({
-      ok,
-      status,
-      body,
-      statusText,
-      url,
-      method,
-      errorType: type,
-    });
-  } catch (err) {
-    if (err?.name === "AbortError") {
-      return normalizeResult({
-        ok: false,
-        status: null,
-        body: null,
-        statusText: null,
-        url,
-        method,
-        errorType: "aborted",
-        networkError: "aborted",
-      });
-    }
-    const debugEntry = pushBackendDebugEntry({
-      type: "network-error",
-      url,
-      method,
-      error: err?.message || String(err),
-    });
-    console.error("[Backend Network Error]", debugEntry);
-
-    return normalizeResult({
-      ok: false,
-      status: null,
-      body: null,
-      statusText: null,
-      url,
-      method,
-      errorType: "network_error",
-      networkError: err?.message || "Network error",
-    });
-  }
-}
-
-async function request(path, options = {}) {
-  const url = buildUrl(path);
-  const method = options.method || "GET";
-  const headers = {
-    "Content-Type": "application/json",
-    ...options.headers,
-  };
-  const credentials = options.credentials ?? "include";
-
-  try {
-    const response = await fetch(url, { ...options, headers, credentials });
-    const status = response.status;
-    const contentType = response.headers?.get("content-type") || "";
-    let body;
-
-    try {
-      if (contentType.includes("application/json")) {
-        body = await response.json();
-      } else {
-        body = await response.text();
-      }
-    } catch (parseErr) {
-      body = undefined;
-    }
-
-    const ok = response.ok && (body?.ok !== false);
-
-    if (!ok) {
-      const errorMessage =
-        (body && body.error) ||
-        (typeof body === "string" && body) ||
-        response.statusText ||
-        "Request failed";
-
-      const debugEntry = pushBackendDebugEntry({
-        type: "http-error",
+      // Log something actionable (not just "Object")
+      console.error("[Backend HTTP Error]", {
         url,
         method,
         status,
-        statusText: response.statusText,
+        statusText,
         body,
+        debugId: debugEntry?.id || debugEntry?.key || null,
       });
-      console.error("[Backend HTTP Error]", debugEntry);
 
-      const err = new Error(errorMessage);
+      const result = normalizeResult({ ok, status, statusText, url, method, body });
+
+      if (mode === "safe") return result;
+
+      const err = new Error(result.error || `HTTP ${status} ${statusText}`);
       err.status = status;
       err.data = body;
       err.url = url;
-      err.type = body?.type || null;
+      err.type = result.type;
       throw err;
+    }
+
+    if (mode === "safe") {
+      return normalizeResult({ ok: true, status, statusText, url, method, body });
     }
 
     return { status, data: body };
   } catch (err) {
-    if (err?.name === "AbortError") {
-      throw err;
-    }
-    if (!err.status) {
-      const debugEntry = pushBackendDebugEntry({
-        type: "network-error",
-        url,
-        method,
-        error: err?.message || String(err),
-      });
-      console.error("[Backend Network Error]", debugEntry);
-    }
+    const aborted = err?.name === "AbortError";
+    const debugEntry = pushBackendDebugEntry({
+      type: aborted ? "aborted" : "network-error",
+      url,
+      method,
+      error: err?.message || String(err),
+    });
+
+    console.error(aborted ? "[Backend Abort]" : "[Backend Network Error]", {
+      url,
+      method,
+      error: err?.message || String(err),
+      debugId: debugEntry?.id || debugEntry?.key || null,
+    });
+
+    const result = normalizeResult({
+      ok: false,
+      status: null,
+      statusText: null,
+      url,
+      method,
+      body: null,
+      errorType: aborted ? "aborted" : "network_error",
+      networkError: aborted ? "aborted" : (err?.message || "Network error"),
+    });
+
+    if (mode === "safe") return result;
     throw err;
+  } finally {
+    clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener("abort", forwardAbort);
   }
 }
+
+/** Convenience wrappers */
+function request(path, options = {}) {
+  return brainFetch(path, options, "throw");
+}
+function safeRequest(path, options = {}) {
+  return brainFetch(path, options, "safe");
+}
+
+/* ===========================
+   API functions
+   =========================== */
 
 export async function fetchStatus(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
-  return request(`/api/status${qs.toString() ? `?${qs.toString()}` : ""}`, options);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/api/status${suffix}`, options);
 }
 
-export async function fetchFlights(
-  date,
-  operator = "ALL",
-  airport = REQUIRED_AIRPORT,
-  options = {}
-) {
-  if (!date) {
-    throw new Error("fetchFlights: date is required");
-  }
+export async function fetchFlights(date, operator = "ALL", airport = REQUIRED_AIRPORT, options = {}) {
+  if (!date) throw new Error("fetchFlights: date is required");
 
   const qs = new URLSearchParams();
   qs.set("date", date);
-  qs.set("airport", String(airport).toUpperCase());
+  qs.set("airport", String(airport || REQUIRED_AIRPORT).toUpperCase());
   qs.set("operator", normalizeOperator(operator));
   return request(`/api/flights?${qs.toString()}`, options);
 }
 
-export async function getFlights({ date, airport, airline = "ALL", signal } = {}) {
-  return fetchFlights(date, airline, airport, { signal });
+// Friendly alias used by some components
+export async function getFlights({ date, airport, operator = "ALL", signal } = {}) {
+  return fetchFlights(date, operator, airport, { signal });
 }
 
-export async function pullFlights(date, airline = "ALL", options = {}) {
-  if (!date) {
-    throw new Error("pullFlights: date is required");
-  }
-  if (!options.airport) {
-    throw new Error("pullFlights: airport is required");
-  }
-
-  const timeoutMs = options.timeoutMs ?? 60000;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const forwardAbort = () => controller.abort();
-  if (options.signal) {
-    if (options.signal.aborted) {
-      controller.abort();
-    } else {
-      options.signal.addEventListener("abort", forwardAbort, { once: true });
-    }
-  }
+export async function pullFlights(date, operator = "ALL", options = {}) {
+  if (!date) throw new Error("pullFlights: date is required");
+  if (!options.airport) throw new Error("pullFlights: airport is required");
 
   const body = {
     date,
     airport: options.airport,
-    airline: airline || "ALL",
+    operator: normalizeOperator(operator), // contract-friendly
     store: true,
     timeout: 30,
     scope: "both",
   };
 
-  try {
-    return await request("/api/flights/pull", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...options.headers,
-      },
-      body: JSON.stringify(body),
-      ...options,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-    if (options.signal) {
-      options.signal.removeEventListener("abort", forwardAbort);
-    }
-  }
+  return request("/api/flights/pull", {
+    method: "POST",
+    body: JSON.stringify(body),
+    timeoutMs: options.timeoutMs ?? 60_000,
+    ...options,
+  });
 }
 
-export async function fetchRuns(date, airline = "JQ", options = {}) {
-  if (!date) {
-    throw new Error("fetchRuns: date is required");
-  }
-  if (!options.airport) {
-    throw new Error("fetchRuns: airport is required");
-  }
+export async function fetchRuns(date, operator = "ALL", options = {}) {
+  if (!date) throw new Error("fetchRuns: date is required");
+
+  const airport = options.airport || REQUIRED_AIRPORT;
+  if (!airport) throw new Error("fetchRuns: airport is required");
 
   const qs = new URLSearchParams();
   qs.set("date", date);
-  qs.set("airport", options.airport);
-  if (airline) qs.set("airline", airline);
-  return request(`/api/runs${qs.toString() ? `?${qs.toString()}` : ""}`, options);
+  qs.set("airport", String(airport).toUpperCase());
+
+  // Canonical: operator
+  qs.set("operator", normalizeOperator(operator));
+
+  // OPTIONAL COMPAT: if backend still expects airline, uncomment next line:
+  // qs.set("airline", normalizeOperator(operator));
+
+  if (options.shift) qs.set("shift", options.shift);
+
+  return safeRequest(`/api/runs?${qs.toString()}`, { method: "GET", ...options });
 }
 
 export async function fetchRunsStatus(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
-  return request(
-    `/api/runs_status${qs.toString() ? `?${qs.toString()}` : ""}`,
-    options
-  );
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/api/runs_status${suffix}`, options);
 }
 
 export async function fetchStaff(options = {}) {
   const qs = new URLSearchParams();
-  qs.set("airport", options.airport || REQUIRED_AIRPORT);
+  const airport = options.airport || REQUIRED_AIRPORT;
+  qs.set("airport", String(airport).toUpperCase());
   if (options.date) qs.set("date", options.date);
+
   const operator = options.operator || options.airline;
-  if (operator) qs.set("operator", operator);
-  return safeRequest(`/api/staff${qs.toString() ? `?${qs.toString()}` : ""}`, {
-    ...options,
-    method: "GET",
-  });
+  if (operator) qs.set("operator", normalizeOperator(operator));
+
+  return safeRequest(`/api/staff?${qs.toString()}`, { method: "GET", ...options });
 }
 
 export async function fetchEmployeeAssignments(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
-  // STRICT CONTRACT: always send airport
-  qs.set("airport", options.airport || DEFAULT_AIRPORT);
-  const airline = options.airline || options.operator;
-  if (airline) qs.set("airline", airline);
-  return request(
-    `/api/employee_assignments/daily${qs.toString() ? `?${qs.toString()}` : ""}`,
-    options
-  );
+
+  const airport = options.airport || REQUIRED_AIRPORT;
+  qs.set("airport", String(airport).toUpperCase());
+
+  const operator = options.operator || options.airline;
+  if (operator) qs.set("operator", normalizeOperator(operator));
+
+  return request(`/api/employee_assignments/daily?${qs.toString()}`, options);
 }
 
 export async function seedDemoDay(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
-  return request(`/api/dev/seed_demo_day${qs.toString() ? `?${qs.toString()}` : ""}`, {
-    method: "POST",
-    ...options,
-  });
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request(`/api/dev/seed_demo_day${suffix}`, { method: "POST", ...options });
 }
 
 export async function fetchWiringStatus(options = {}) {
-  return safeRequest("/api/wiring-status", {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      ...options.headers,
-    },
-    ...options,
-  });
+  return safeRequest("/api/wiring-status", { method: "GET", ...options });
 }
 
-export async function fetchDailyRuns(
-  date,
-  airlineOrParams = "ALL",
-  options = {}
-) {
-  let airline = "ALL";
-  let airport;
-  let shift = "ALL";
-
-  if (airlineOrParams && typeof airlineOrParams === "object") {
-    airline = airlineOrParams.airline ?? airlineOrParams.operator ?? "ALL";
-    airport = airlineOrParams.airport;
-    shift = airlineOrParams.shift ?? "ALL";
-  } else {
-    airline = airlineOrParams;
-  }
-
-  const qs = new URLSearchParams();
-  if (date) qs.set("date", date);
-  // STRICT CONTRACT: always send airport
-  qs.set("airport", airport || options.airport || DEFAULT_AIRPORT);
-  if (airline) qs.set("airline", airline);
-  if (shift) qs.set("shift", shift);
-  return safeRequest(`/api/runs?${qs.toString()}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      ...options.headers,
-    },
-    ...options,
-  });
-}
-
-export async function autoAssignRuns(date, airline = "ALL", options = {}) {
-  const payload = { date, airline };
+export async function autoAssignRuns(date, operator = "ALL", options = {}) {
+  const payload = {
+    date,
+    operator: normalizeOperator(operator),
+  };
   return safeRequest("/api/runs/auto_assign", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ...options.headers,
-    },
     body: JSON.stringify(payload),
     ...options,
   });
 }
 
+// Backward compatible export if anything imports apiRequest
 export { request as apiRequest };
