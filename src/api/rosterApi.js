@@ -1,8 +1,8 @@
 import {
-  DEFAULT_OPERATOR,
+  DEFAULT_AIRLINE,
   DEFAULT_SHIFT,
   REQUIRED_AIRPORT,
-  normalizeOperator,
+  normalizeAirline,
   normalizeShift,
 } from "../lib/opsDefaults";
 
@@ -12,7 +12,7 @@ export async function fetchRosterOperators(date) {
   const params = new URLSearchParams({
     date,
     airport: REQUIRED_AIRPORT,
-    operator: normalizeOperator(DEFAULT_OPERATOR),
+    airline: normalizeAirline(DEFAULT_AIRLINE),
     shift: normalizeShift(DEFAULT_SHIFT),
   });
 

@@ -6,10 +6,10 @@ import React, { useEffect, useState } from "react";
 
 import { apiRequest } from "../lib/apiClient";
 import {
-  DEFAULT_OPERATOR,
+  DEFAULT_AIRLINE,
   DEFAULT_SHIFT,
   REQUIRED_AIRPORT,
-  normalizeOperator,
+  normalizeAirline,
   normalizeShift,
 } from "../lib/opsDefaults";
 
@@ -50,7 +50,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
     const params = new URLSearchParams({
       date,
       airport: REQUIRED_AIRPORT,
-      operator: normalizeOperator(DEFAULT_OPERATOR),
+      airline: normalizeAirline(DEFAULT_AIRLINE),
     });
     const { data } = await apiRequest(`/api/flights?${params.toString()}`);
     return data?.flights ?? [];
@@ -62,7 +62,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
     const params = new URLSearchParams({
       date,
       airport: REQUIRED_AIRPORT,
-      operator: normalizeOperator(DEFAULT_OPERATOR),
+      airline: normalizeAirline(DEFAULT_AIRLINE),
       shift: normalizeShift(DEFAULT_SHIFT),
     });
     try {

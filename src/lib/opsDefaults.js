@@ -1,5 +1,5 @@
 // src/lib/opsDefaults.js
-// EWOT: Centralizes explicit ops defaults (airport/operator/shift) so UI requests are always contract-safe.
+// EWOT: Centralizes explicit ops defaults (airport/airline/shift) so UI requests are always contract-safe.
 
 function envUpper(name, fallback) {
   try {
@@ -24,17 +24,25 @@ function envFlag(name, fallback = false) {
 // Airport is required everywhere. Keep it explicit, never inferred.
 export const REQUIRED_AIRPORT = envUpper("VITE_REQUIRED_AIRPORT", "YSSY");
 
-// Operator + shift default to ALL unless explicitly overridden.
-export const DEFAULT_OPERATOR = envUpper("VITE_DEFAULT_OPERATOR", "ALL");
+// Airline + shift default to ALL unless explicitly overridden.
+export const DEFAULT_AIRLINE = envUpper(
+  "VITE_DEFAULT_AIRLINE",
+  envUpper("VITE_DEFAULT_OPERATOR", "ALL")
+);
+export const DEFAULT_OPERATOR = DEFAULT_AIRLINE;
 export const DEFAULT_SHIFT = envUpper("VITE_DEFAULT_SHIFT", "ALL");
 
 // Feature flags (set to "1"/"true" to enable optional endpoints).
 export const ENABLE_ROSTER = envFlag("VITE_ENABLE_ROSTER", false);
 export const ENABLE_STAFF_RUNS = envFlag("VITE_ENABLE_STAFF_RUNS", false);
 
-export function normalizeOperator(op) {
-  const v = String(op ?? DEFAULT_OPERATOR).trim().toUpperCase();
+export function normalizeAirline(airline) {
+  const v = String(airline ?? DEFAULT_AIRLINE).trim().toUpperCase();
   return v === "ALL" || v === "ALL " ? "ALL" : v;
+}
+
+export function normalizeOperator(op) {
+  return normalizeAirline(op);
 }
 
 export function normalizeShift(shift) {

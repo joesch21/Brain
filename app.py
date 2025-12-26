@@ -19,6 +19,7 @@ from flask import (
 from dotenv import load_dotenv
 
 from services import api_contract
+from services.query_params import normalize_airline_query
 
 # EWOT: This app is a thin proxy between The Brain frontend and the
 # CodeCrafter2 Ops API. It exposes /api/* endpoints that forward to CC2
@@ -1078,10 +1079,7 @@ def api_staff_runs():
     if (date_error := _require_date_param()) is not None:
         return date_error
 
-    airline, airline_err = _normalize_airline_param(
-        request.args.get("airline"),
-        request.args.get("operator"),
-    )
+    airline, airline_err = normalize_airline_query(request.args)
     if airline_err is not None:
         return airline_err
 
@@ -1141,10 +1139,7 @@ def api_flights():
     if (date_error := _require_date_param()) is not None:
         return date_error
 
-    airline, airline_err = _normalize_airline_param(
-        request.args.get("airline"),
-        request.args.get("operator"),
-    )
+    airline, airline_err = normalize_airline_query(request.args)
     if airline_err is not None:
         return airline_err
     airport = (request.args.get("airport") or "").strip().upper()

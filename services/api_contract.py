@@ -38,7 +38,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "query": {
                 "date": "YYYY-MM-DD (required)",
                 "airport": "YSSY (required, explicit)",
-                "airline": "ALL or airline IATA code (optional, default ALL; operator accepted as legacy alias)",
+                "airline": "ALL or airline IATA code (optional, default ALL)",
             },
             "maps_to": [
                 "/api/flights",
@@ -54,7 +54,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "body": {
                 "date": "YYYY-MM-DD (required)",
                 "airport": "YSSY (required, explicit)",
-                "airline": "ALL or airline IATA code (optional, default ALL; operator accepted as legacy alias)",
+                "airline": "ALL or airline IATA code (optional, default ALL)",
                 "store": "bool (optional, default true)",
                 "timeout": "seconds (optional, default 30)",
                 "scope": "both|arrivals|departures (optional, default both)",
@@ -76,7 +76,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "query": {
                 "date": "YYYY-MM-DD (required)",
                 "airport": "YSSY (required)",
-                "airline": "ALL or airline IATA code (optional, default ALL; operator accepted as legacy alias)",
+                "airline": "ALL or airline IATA code (optional, default ALL)",
                 "shift": "ALL or shift code (optional, default ALL)",
             },
             "maps_to": ["/api/assignments"],
@@ -89,7 +89,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "query": {
                 "date": "YYYY-MM-DD (required)",
                 "airport": "YSSY (required)",
-                "airline": "ALL or airline IATA code (optional, default ALL; operator accepted as legacy alias)",
+                "airline": "ALL or airline IATA code (optional, default ALL)",
                 "shift": "ALL or shift code (optional, default ALL)",
             },
             "maps_to": [
@@ -107,7 +107,7 @@ def _minimum_endpoints() -> List[Dict[str, Any]]:
             "path": "/runs/auto_assign",
             "body": {
                 "date": "YYYY-MM-DD (required)",
-                "airline": "ALL or airline IATA code (optional, default ALL; operator accepted as legacy alias)",
+                "airline": "ALL or airline IATA code (optional, default ALL)",
             },
             "maps_to": ["/api/runs/auto_assign"],
             "response_shape": {"ok": "bool"},

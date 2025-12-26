@@ -6,7 +6,7 @@
 // - Provides two modes: "throw" (strict) and "safe" (non-throwing).
 
 import { OPS_API_BASE } from "./opsApiBase";
-import { REQUIRED_AIRPORT, normalizeOperator } from "./opsDefaults";
+import { REQUIRED_AIRPORT, normalizeAirline } from "./opsDefaults";
 import { pushBackendDebugEntry } from "./backendDebug";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -219,29 +219,32 @@ export async function fetchStatus(date, options = {}) {
   return request(`/api/status${suffix}`, options);
 }
 
-export async function fetchFlights(date, operator = "ALL", airport = REQUIRED_AIRPORT, options = {}) {
+export async function fetchFlights(date, airline = "ALL", airport = REQUIRED_AIRPORT, options = {}) {
   if (!date) throw new Error("fetchFlights: date is required");
 
   const qs = new URLSearchParams();
   qs.set("date", date);
   qs.set("airport", String(airport || REQUIRED_AIRPORT).toUpperCase());
-  qs.set("operator", normalizeOperator(operator));
+  const resolvedAirline = normalizeAirline(options.airline ?? options.operator ?? airline);
+  qs.set("airline", resolvedAirline);
   return request(`/api/flights?${qs.toString()}`, options);
 }
 
 // Friendly alias used by some components
-export async function getFlights({ date, airport, operator = "ALL", signal } = {}) {
-  return fetchFlights(date, operator, airport, { signal });
+export async function getFlights({ date, airport, airline = "ALL", operator, signal } = {}) {
+  const resolvedAirline = operator ?? airline;
+  return fetchFlights(date, resolvedAirline, airport, { signal });
 }
 
-export async function pullFlights(date, operator = "ALL", options = {}) {
+export async function pullFlights(date, airline = "ALL", options = {}) {
   if (!date) throw new Error("pullFlights: date is required");
   if (!options.airport) throw new Error("pullFlights: airport is required");
 
+  const resolvedAirline = normalizeAirline(options.airline ?? options.operator ?? airline);
   const body = {
     date,
     airport: options.airport,
-    operator: normalizeOperator(operator), // contract-friendly
+    airline: resolvedAirline,
     store: true,
     timeout: 30,
     scope: "both",
@@ -255,21 +258,18 @@ export async function pullFlights(date, operator = "ALL", options = {}) {
   });
 }
 
-export async function fetchRuns(date, operator = "ALL", options = {}) {
+export async function fetchRuns(date, airline = "ALL", options = {}) {
   if (!date) throw new Error("fetchRuns: date is required");
 
   const airport = options.airport || REQUIRED_AIRPORT;
   if (!airport) throw new Error("fetchRuns: airport is required");
 
+  const resolvedAirline = normalizeAirline(options.airline ?? options.operator ?? airline);
   const qs = new URLSearchParams();
   qs.set("date", date);
   qs.set("airport", String(airport).toUpperCase());
 
-  // Canonical: operator
-  qs.set("operator", normalizeOperator(operator));
-
-  // OPTIONAL COMPAT: if backend still expects airline, uncomment next line:
-  // qs.set("airline", normalizeOperator(operator));
+  qs.set("airline", resolvedAirline);
 
   if (options.shift) qs.set("shift", options.shift);
 
@@ -289,8 +289,8 @@ export async function fetchStaff(options = {}) {
   qs.set("airport", String(airport).toUpperCase());
   if (options.date) qs.set("date", options.date);
 
-  const operator = options.operator || options.airline;
-  if (operator) qs.set("operator", normalizeOperator(operator));
+  const airline = options.airline ?? options.operator;
+  if (airline) qs.set("airline", normalizeAirline(airline));
 
   return safeRequest(`/api/staff?${qs.toString()}`, { method: "GET", ...options });
 }
@@ -302,8 +302,8 @@ export async function fetchEmployeeAssignments(date, options = {}) {
   const airport = options.airport || REQUIRED_AIRPORT;
   qs.set("airport", String(airport).toUpperCase());
 
-  const operator = options.operator || options.airline;
-  if (operator) qs.set("operator", normalizeOperator(operator));
+  const airline = options.airline ?? options.operator;
+  if (airline) qs.set("airline", normalizeAirline(airline));
 
   return request(`/api/employee_assignments/daily?${qs.toString()}`, options);
 }
@@ -319,10 +319,10 @@ export async function fetchWiringStatus(options = {}) {
   return safeRequest("/api/wiring-status", { method: "GET", ...options });
 }
 
-export async function autoAssignRuns(date, operator = "ALL", options = {}) {
+export async function autoAssignRuns(date, airline = "ALL", options = {}) {
   const payload = {
     date,
-    operator: normalizeOperator(operator),
+    airline: normalizeAirline(options.airline ?? options.operator ?? airline),
   };
   return safeRequest("/api/runs/auto_assign", {
     method: "POST",

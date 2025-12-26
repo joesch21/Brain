@@ -25,10 +25,10 @@ export interface MergedFlightAssignment extends Flight {
 
 import { API_BASE } from "./apiBase";
 import {
-  DEFAULT_OPERATOR,
+  DEFAULT_AIRLINE,
   DEFAULT_SHIFT,
   REQUIRED_AIRPORT,
-  normalizeOperator,
+  normalizeAirline,
   normalizeShift,
 } from "../lib/opsDefaults";
 
@@ -119,13 +119,13 @@ function normalizeAssignmentsToList(assignments: any): EmployeeAssignment[] {
  */
 export async function fetchFlightsForDate(
   date: string,
-  operator: string = DEFAULT_OPERATOR,
+  airline: string = DEFAULT_AIRLINE,
   airport: string = REQUIRED_AIRPORT,
 ): Promise<Flight[]> {
   const url = new URL(`${API_BASE}/flights`);
   url.searchParams.set("date", date);
   url.searchParams.set("airport", String(airport).toUpperCase());
-  url.searchParams.set("operator", normalizeOperator(operator));
+  url.searchParams.set("airline", normalizeAirline(airline));
 
   const res = await fetch(url.toString());
   const payload = await handleJson<FlightsResponse>(res);
@@ -143,24 +143,24 @@ export async function fetchFlightsForDate(
  */
 export async function fetchEmployeeAssignmentsForDate(
   date: string,
-  opts?: { airport?: string; operator?: string; shift?: string } | string,
+  opts?: { airport?: string; airline?: string; operator?: string; shift?: string } | string,
 ): Promise<EmployeeAssignment[]> {
   // Staff assignments are OPTIONAL overlay: never throw, never block renders.
   try {
     const legacyOperator = typeof opts === "string" ? opts : null;
     const airport =
       typeof opts === "object" && opts?.airport ? opts.airport : REQUIRED_AIRPORT;
-    const operator =
-      typeof opts === "object" && opts?.operator
-        ? opts.operator
-        : legacyOperator || DEFAULT_OPERATOR;
+    const airline =
+      typeof opts === "object" && (opts?.airline || opts?.operator)
+        ? (opts?.airline ?? opts?.operator)
+        : legacyOperator || DEFAULT_AIRLINE;
     const shift =
       typeof opts === "object" && opts?.shift ? opts.shift : DEFAULT_SHIFT;
 
     const url = new URL(`${API_BASE}/assignments`);
     url.searchParams.set("date", date);
     url.searchParams.set("airport", String(airport).toUpperCase());
-    url.searchParams.set("operator", normalizeOperator(operator));
+    url.searchParams.set("airline", normalizeAirline(airline));
     url.searchParams.set("shift", normalizeShift(shift));
 
     const res = await fetch(url.toString(), {
