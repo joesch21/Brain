@@ -1240,7 +1240,7 @@ const PlannerPage = () => {
       const params = new URLSearchParams({
         date,
         airport: DEFAULT_AIRPORT,
-        operator: "ALL",
+        airline: "ALL",
         shift: "ALL",
         runId: String(runId),
       });
@@ -1252,12 +1252,13 @@ const PlannerPage = () => {
   );
 
   const openRunPack = useCallback(
-    ({ shift = "ALL", operator = "ALL" } = {}) => {
+    ({ shift = "ALL", airline = "ALL", operator } = {}) => {
       if (!date) return;
+      const resolvedAirline = operator ?? airline;
       const params = new URLSearchParams({
         date,
         airport: DEFAULT_AIRPORT,
-        operator: operator,
+        airline: resolvedAirline,
         shift,
       });
       const url = `/runsheets/pack?${params.toString()}`;
