@@ -481,10 +481,15 @@ def _normalize_airline_param(
 
     if airline_raw and operator_raw:
         if airline_raw.upper() != operator_raw.upper():
-            return None, json_error(
-                "airline and operator differ; use airline only.",
-                status_code=400,
-                code="param_conflict",
+            return None, (
+                jsonify(
+                    {
+                        "ok": False,
+                        "type": "bad_request",
+                        "error": "airline and operator differ; use airline only.",
+                    }
+                ),
+                400,
             )
     elif not airline_raw and operator_raw:
         airline_raw = operator_raw
@@ -1153,7 +1158,7 @@ def api_flights():
 
     params = {
         "date": request.args.get("date"),
-        "operator": airline,
+        "airline": airline,
         "airport": airport,
     }
 
@@ -1470,7 +1475,7 @@ def api_assignments_daily():
 @app.get("/api/runs")
 def api_runs_cc3():
     """
-    EWOT: Proxy CC3-style runs endpoint (GET /api/runs?date&airport&operator&shift)
+    EWOT: Proxy CC3-style runs endpoint (GET /api/runs?date&airport&airline&shift)
     so Brain can talk to CC3 without the frontend doing direct cross-origin calls.
     """
     date_str = (request.args.get("date") or "").strip()
@@ -1498,7 +1503,7 @@ def api_runs_cc3():
     params = {
         "date": date_str,
         "airport": airport,
-        "operator": airline,
+        "airline": airline,
         "shift": shift,
     }
 
