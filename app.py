@@ -19,6 +19,7 @@ from flask import (
 from dotenv import load_dotenv
 
 from services import api_contract
+from services.assignments_mvp import build_assignments
 from services.query_params import normalize_airline_query
 
 # EWOT: This app is a thin proxy between The Brain frontend and the
@@ -1372,14 +1373,70 @@ def api_employee_assignments_daily():
     return jsonify(payload), 200
 @app.get("/api/staff")
 def api_staff():
-    """Local staff directory for deterministic dev assignments."""
+    """Minimal staff directory for optional staff overlay."""
 
-    staff = _load_staff_seed()
+    if (date_error := _require_date_param()) is not None:
+        return date_error
+
+    airline, airline_err = normalize_airline_query(request.args)
+    if airline_err is not None:
+        return airline_err
+
+    airport = (request.args.get("airport") or "").strip().upper()
+    if not airport:
+        return json_error(
+            "Missing required 'airport' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    date_str = request.args.get("date")
+    staff_seed = _load_staff_seed()
+    if not staff_seed:
+        staff_seed = [
+            {
+                "staff_id": 1,
+                "staff_code": "A1",
+                "staff_name": "Alex",
+                "role": "Refueller",
+                "shift": "AM",
+            },
+            {
+                "staff_id": 2,
+                "staff_code": "B2",
+                "staff_name": "Blake",
+                "role": "Ramp",
+                "shift": "PM",
+            },
+            {
+                "staff_id": 3,
+                "staff_code": "C3",
+                "staff_name": "Casey",
+                "role": "Driver",
+                "shift": "AM",
+            },
+        ]
+
+    staff = sorted(staff_seed, key=lambda entry: str(entry.get("staff_code") or ""))
+    staff_payload = [
+        {
+            "staff_id": entry.get("staff_id"),
+            "staff_code": entry.get("staff_code"),
+            "staff_name": entry.get("staff_name"),
+            "role": entry.get("role"),
+            "shift": entry.get("shift"),
+        }
+        for entry in staff
+    ]
+
     return _build_ok(
         {
-            "source": "local",
-            "count": len(staff),
-            "records": staff,
+            "available": True,
+            "airport": airport,
+            "date": date_str,
+            "airline": airline,
+            "count": len(staff_payload),
+            "staff": staff_payload,
         }
     )
 
@@ -1400,12 +1457,9 @@ def api_assignments_daily():
             code="validation_error",
         )
 
-    operator, operator_err = _normalize_airline_param(
-        request.args.get("airline"),
-        request.args.get("operator"),
-    )
-    if operator_err is not None:
-        return operator_err
+    airline, airline_err = normalize_airline_query(request.args)
+    if airline_err is not None:
+        return airline_err
 
     shift_requested = _normalize_shift_param(request.args.get("shift"))
 
@@ -1413,19 +1467,20 @@ def api_assignments_daily():
     flights = _fetch_flights_for_assignment(
         date_str=date_str,
         airport=airport,
-        operator=operator,
+        operator=airline,
     )
 
-    assignments = _build_assignments_for_flights(flights, staff)
+    assignments = build_assignments(flights, staff, shift_requested)
 
     return _build_ok(
         {
-            "date": date_str,
+            "available": True,
             "airport": airport,
-            "operator": operator,
-            "shift_requested": shift_requested,
+            "date": date_str,
+            "airline": airline,
+            "shift": shift_requested,
             "count": len(assignments),
-            "records": assignments,
+            "assignments": assignments,
         }
     )
 

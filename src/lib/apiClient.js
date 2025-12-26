@@ -295,17 +295,23 @@ export async function fetchStaff(options = {}) {
   return safeRequest(`/api/staff?${qs.toString()}`, { method: "GET", ...options });
 }
 
-export async function fetchEmployeeAssignments(date, options = {}) {
+export async function fetchAssignments(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
 
   const airport = options.airport || REQUIRED_AIRPORT;
-  qs.set("airport", String(airport).toUpperCase());
+  if (airport) qs.set("airport", String(airport).toUpperCase());
 
-  const airline = options.airline ?? options.operator;
-  if (airline) qs.set("airline", normalizeAirline(airline));
+  const airline = normalizeAirline(options.airline ?? options.operator ?? "ALL");
+  if (airline) qs.set("airline", airline);
 
-  return request(`/api/employee_assignments/daily?${qs.toString()}`, options);
+  if (options.shift) qs.set("shift", options.shift);
+
+  return safeRequest(`/api/assignments?${qs.toString()}`, { method: "GET", ...options });
+}
+
+export async function fetchEmployeeAssignments(date, options = {}) {
+  return fetchAssignments(date, options);
 }
 
 export async function seedDemoDay(date, options = {}) {
