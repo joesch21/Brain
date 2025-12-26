@@ -1,7 +1,55 @@
+/* =========================================================
+   RunSheets / RunSheet UI
+   Refactor: token-based, light-by-default, dark optional
+   - Screen: light theme (readable)
+   - Optional dark: add .runsheets--dark on a parent
+   - Print: always white
+   ========================================================= */
+
+/* ---------- Theme tokens (default = light) ---------- */
 .runsheets-page {
+  --rs-bg: #ffffff;
+  --rs-surface: #ffffff;
+  --rs-surface-2: rgba(0, 0, 0, 0.03);
+  --rs-text: #111111;
+  --rs-muted: rgba(0, 0, 0, 0.72);
+  --rs-border: rgba(0, 0, 0, 0.14);
+  --rs-border-strong: rgba(0, 0, 0, 0.22);
+  --rs-link: #1d4ed8;
+  --rs-danger: #b91c1c;
+
+  --rs-input-bg: #ffffff;
+  --rs-input-text: #111111;
+  --rs-input-border: rgba(0, 0, 0, 0.22);
+
+  --rs-table-head: rgba(0, 0, 0, 0.06);
+
   padding: 1.25rem 1.5rem;
+  color: var(--rs-text);
+  background: var(--rs-bg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
+/* Optional dark mode: wrap page with .runsheets--dark */
+.runsheets--dark .runsheets-page {
+  --rs-bg: #0b0d12;
+  --rs-surface: #11141c;
+  --rs-surface-2: rgba(255, 255, 255, 0.03);
+  --rs-text: #ffffff;
+  --rs-muted: rgba(255, 255, 255, 0.72);
+  --rs-border: rgba(255, 255, 255, 0.10);
+  --rs-border-strong: rgba(255, 255, 255, 0.14);
+  --rs-link: #93c5fd;
+  --rs-danger: #ff6961;
+
+  --rs-input-bg: #0f1219;
+  --rs-input-text: #ffffff;
+  --rs-input-border: rgba(255, 255, 255, 0.12);
+
+  --rs-table-head: rgba(255, 255, 255, 0.06);
+}
+
+/* ---------- Header ---------- */
 .runsheets-header {
   display: flex;
   flex-direction: column;
@@ -15,9 +63,10 @@
 .runsheets-header-subtitle {
   margin: 0.35rem 0 0;
   font-size: 0.9rem;
-  opacity: 0.7;
+  color: var(--rs-muted);
 }
 
+/* ---------- Toolbar ---------- */
 .runsheets-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -32,15 +81,16 @@
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  color: var(--rs-muted);
 }
 
 .runsheets-toolbar input,
 .runsheets-toolbar select {
   padding: 0.35rem 0.5rem;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #0f1219;
-  color: #fff;
+  border-radius: 6px;
+  border: 1px solid var(--rs-input-border);
+  background: var(--rs-input-bg);
+  color: var(--rs-input-text);
   min-width: 150px;
 }
 
@@ -48,16 +98,18 @@
   margin-left: auto;
 }
 
+/* ---------- Status ---------- */
 .runsheets-status {
   margin: 0.75rem 0;
   font-size: 0.9rem;
-  opacity: 0.75;
+  color: var(--rs-muted);
 }
 
 .runsheets-status--error {
-  color: #ff6961;
+  color: var(--rs-danger);
 }
 
+/* ---------- Main ---------- */
 .runsheets-main {
   margin-top: 1rem;
 }
@@ -71,15 +123,16 @@
   gap: 0.5rem;
 }
 
+/* Summary box */
 .runsheets-pack-summary {
   margin: 1rem 0;
   padding: 0.75rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  border: 1px solid var(--rs-border);
+  border-radius: 10px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.75rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--rs-surface-2);
 }
 
 .runsheets-pack-jumplinks {
@@ -91,7 +144,7 @@
 }
 
 .runsheets-pack-jumplinks a {
-  color: #93c5fd;
+  color: var(--rs-link);
 }
 
 .runsheets-pack-main {
@@ -100,15 +153,17 @@
   gap: 1.5rem;
 }
 
+/* ---------- Cards ---------- */
 .runsheet-pack-card {
   scroll-margin-top: 90px;
 }
 
 .runsheet-card {
-  background: #11141c;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--rs-surface);
+  border-radius: 10px;
+  border: 1px solid var(--rs-border);
   padding: 1rem 1.25rem;
+  color: var(--rs-text);
 }
 
 .runsheet-header {
@@ -116,25 +171,26 @@
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--rs-border);
   padding-bottom: 0.75rem;
   margin-bottom: 0.75rem;
 }
 
 .runsheet-title {
   font-size: 1.4rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .runsheet-subtitle {
   font-size: 0.9rem;
-  opacity: 0.75;
+  color: var(--rs-muted);
 }
 
 .runsheet-header-meta {
   display: grid;
   gap: 0.4rem;
   font-size: 0.85rem;
+  color: var(--rs-text);
 }
 
 .runsheet-staff {
@@ -142,31 +198,34 @@
 }
 
 .runsheet-staff--muted {
-  opacity: 0.65;
+  color: var(--rs-muted);
 }
 
+/* Labels */
 .runsheet-label {
   display: block;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  opacity: 0.6;
+  color: var(--rs-muted);
 }
 
+/* Summary area */
 .runsheet-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.75rem;
   margin-bottom: 0.75rem;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
+  background: var(--rs-surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--rs-border);
 }
 
 .runsheet-group {
   margin-bottom: 1rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--rs-border);
 }
 
 .runsheet-group:last-child {
@@ -179,7 +238,7 @@
   align-items: baseline;
   gap: 1rem;
   margin-bottom: 0.4rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .runsheet-group-title {
@@ -188,7 +247,7 @@
 
 .runsheet-group-count {
   font-size: 0.8rem;
-  opacity: 0.7;
+  color: var(--rs-muted);
 }
 
 .runsheet-group-notes {
@@ -197,6 +256,7 @@
   gap: 0.35rem;
 }
 
+/* ---------- Table ---------- */
 .runsheet-table {
   width: 100%;
   border-collapse: collapse;
@@ -205,33 +265,35 @@
 
 .runsheet-table th,
 .runsheet-table td {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--rs-border-strong);
   padding: 0.4rem 0.5rem;
   text-align: left;
   vertical-align: top;
+  color: var(--rs-text);
 }
 
 .runsheet-table th {
-  background: rgba(255, 255, 255, 0.06);
-  font-weight: 600;
+  background: var(--rs-table-head);
+  font-weight: 700;
 }
 
 .runsheet-field--strong {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .runsheet-table__empty {
   text-align: center;
   font-style: italic;
-  opacity: 0.7;
+  color: var(--rs-muted);
 }
 
+/* ---------- Footer ---------- */
 .runsheet-footer {
   margin-top: 0.9rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--rs-border);
   padding-top: 0.75rem;
   font-size: 0.8rem;
-  opacity: 0.85;
+  color: var(--rs-muted);
 }
 
 .runsheet-run-notes {
@@ -254,9 +316,12 @@
   display: block;
   height: 1px;
   margin-top: 0.35rem;
-  background: rgba(255, 255, 255, 0.4);
+  background: var(--rs-border-strong);
 }
 
+/* =========================================================
+   PRINT: force white (independent of theme)
+   ========================================================= */
 @media print {
   .main-nav,
   .runsheets-toolbar,
@@ -276,15 +341,27 @@
   }
 
   .runsheets-page {
-    padding: 0;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+
+    /* override theme tokens for print */
+    --rs-bg: #fff;
+    --rs-surface: #fff;
+    --rs-surface-2: #fff;
+    --rs-text: #000;
+    --rs-muted: rgba(0, 0, 0, 0.75);
+    --rs-border: rgba(0, 0, 0, 0.25);
+    --rs-border-strong: rgba(0, 0, 0, 0.45);
+    --rs-table-head: #f2f2f2;
   }
 
   .runsheet-card {
-    border: none;
-    border-radius: 0;
-    padding: 0;
-    background: #fff;
-    color: #000;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
   }
 
   .runsheet-pack-card {
@@ -323,23 +400,5 @@
   .runsheet-summary,
   .runsheet-footer {
     page-break-inside: avoid;
-  }
-
-  .runsheet-table th,
-  .runsheet-table td {
-    border: 1px solid #000;
-  }
-
-  .runsheet-table th {
-    background: #f2f2f2;
-  }
-
-  .runsheet-label {
-    color: #000;
-    opacity: 0.7;
-  }
-
-  .runsheet-line {
-    background: #000;
   }
 }
