@@ -1,0 +1,47 @@
+/* =========================
+   Run Sheet readability
+   Scope: .runsheet only
+   ========================= */
+
+.runsheet {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #111;
+  background: #fff;
+}
+
+/* Prevent washed-out appearance caused by inherited opacity/filters */
+.runsheet,
+.runsheet * {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* Headings */
+.runsheet h1,
+.runsheet h2,
+.runsheet h3 {
+  font-family: inherit;
+  color: #111;
+}
+
+/* Form controls */
+.runsheet input,
+.runsheet select,
+.runsheet button {
+  color: #111;
+  background: #fff;
+  border: 1px solid #cfcfcf;
+}
+
+/* Print stays clean */
+@media print {
+  .runsheet {
+    color: #000 !important;
+    background: #fff !important;
+  }
+  .runsheet,
+  .runsheet * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}

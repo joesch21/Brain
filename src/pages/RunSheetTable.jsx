@@ -1,5 +1,6 @@
 // src/pages/RunSheetTable.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import "../index.css";
 
 function getQueryParam(name) {
   try {
@@ -129,7 +130,10 @@ export default function RunSheetTable() {
   const counts = data?.counts || {};
 
   return (
-    <div style={{ padding: 16, maxWidth: 1100, margin: "0 auto" }}>
+    <div
+      className="runsheet"
+      style={{ padding: 16, maxWidth: 1100, margin: "0 auto" }}
+    >
       <h2 style={{ marginBottom: 8 }}>Run Sheet</h2>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
