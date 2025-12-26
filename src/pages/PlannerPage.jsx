@@ -101,18 +101,20 @@ function formatLocalTimeLabel(value) {
 
 function flightStableKey(f, idx) {
   if (!f) return `flight-null-${idx}`;
-  const primaryId = f?.id ?? f?.flight_id ?? null;
+  const primaryId = f?.id ?? null;
   if (primaryId != null) return `fid:${primaryId}`;
   if (f?.fa_flight_id != null) return `fa:${f.fa_flight_id}`;
 
   const ident =
-    f?.ident ??
     f?.flight_number ??
+    f?.ident ??
     f?.ident_iata ??
     f?.flightNumber ??
     null;
   const timeIso =
     f?.time_iso ??
+    f?.time_local ??
+    f?.timeLocal ??
     f?.estimated_off ??
     f?.scheduled_off ??
     null;
