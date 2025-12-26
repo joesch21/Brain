@@ -1,9 +1,6 @@
-// src/api/apiClient.js
-// Centralized API client for Brain frontend.
-// - Works with Vite proxy (same-origin "/api/*") OR direct backend base.
-// - Eliminates "/api/api" drift even if OPS_API_BASE includes "/api".
-// - Normalizes operator/airport usage across planner/schedule/staff flows.
-// - Provides two modes: "throw" (strict) and "safe" (non-throwing).
+// src/lib/apiClient.js
+// EWOT: Centralized API client for Brain frontend that always speaks `airline`,
+// avoids /api/api duplication, and provides safe + strict request modes.
 
 import { OPS_API_BASE } from "./opsApiBase";
 import { REQUIRED_AIRPORT, normalizeAirline } from "./opsDefaults";
@@ -11,49 +8,57 @@ import { pushBackendDebugEntry } from "./backendDebug";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
+/* ===========================
+   URL helpers
+   =========================== */
+
 /**
- * Normalize base + path so we never generate .../api/api/...
- * Rules:
- * - base can be "" (same-origin), "http://host:5055", or "http://host:5055/api"
- * - path can be "/api/contract" or "api/contract" etc
- * - Output should contain exactly one "/api" segment when path begins with /api
+ * EWOT: Join a base URL and a path without generating "/api/api/...".
+ *
+ * base examples:
+ *  - "" (same-origin; Vite proxy handles /api/*)
+ *  - "http://127.0.0.1:5055"
+ *  - "http://127.0.0.1:5055/api"
+ *
+ * path examples:
+ *  - "/api/flights?..."
+ *  - "api/flights?..."
  */
 function buildUrl(path) {
   const baseRaw = (OPS_API_BASE ?? "").toString().trim();
 
-  // Already absolute?
+  // Absolute URL passed in
   if (/^https?:\/\//i.test(path)) return path;
 
-  const base = baseRaw.replace(/\/+$/, ""); // trim trailing slash
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const base = baseRaw.replace(/\/+$/, ""); // trim trailing slashes
+  const p = path.startsWith("/") ? path : `/${path}`;
 
-  // If base is empty, keep same-origin relative path (Vite proxy will handle /api/*)
-  if (!base) return normalizedPath;
+  // Same-origin relative (preferred in dev with Vite proxy)
+  if (!base) return p;
 
-  // If base ends with "/api" and path begins with "/api/", drop one of them
   const baseEndsWithApi = /\/api$/i.test(base);
-  const pathStartsWithApi = /^\/api\//i.test(normalizedPath);
+  const pathStartsWithApi = /^\/api(\/|$)/i.test(p);
 
+  // base ".../api" + path "/api/..." => drop one "/api"
   if (baseEndsWithApi && pathStartsWithApi) {
-    return `${base}${normalizedPath.replace(/^\/api/i, "")}`;
+    return `${base}${p.replace(/^\/api/i, "")}`;
   }
 
-  return `${base}${normalizedPath}`;
+  return `${base}${p}`;
 }
 
+/* ===========================
+   Fetch helpers
+   =========================== */
+
 function parseErrorMessage(body, statusText, networkError) {
-  // prefer structured backend errors
   if (body && typeof body === "object") {
     if (typeof body.error === "string") return body.error;
     if (body.error && typeof body.error === "object" && body.error.message)
       return body.error.message;
-    if (body.message) return body.message;
+    if (typeof body.message === "string") return body.message;
   }
-
-  // fall back to plain text body
   if (typeof body === "string" && body.trim()) return body;
-
-  // network errors / status text
   return networkError || statusText || "Request failed";
 }
 
@@ -82,14 +87,14 @@ async function readBody(response) {
 }
 
 /**
- * Core fetch wrapper.
+ * EWOT: core request runner.
  * mode:
- *  - "throw": throws Error on non-ok
- *  - "safe" : never throws; returns normalized result
+ *  - "throw": throws on non-ok
+ *  - "safe" : never throws; always returns normalized result
  */
 async function brainFetch(path, options = {}, mode = "throw") {
   const url = buildUrl(path);
-  const method = (options.method || "GET").toUpperCase();
+  const method = String(options.method || "GET").toUpperCase();
 
   const headers = {
     Accept: "application/json",
@@ -99,12 +104,12 @@ async function brainFetch(path, options = {}, mode = "throw") {
 
   const credentials = options.credentials ?? "include";
 
-  // Optional timeout
+  // Timeout
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  // Link external abort
+  // Forward external abort
   const externalSignal = options.signal;
   const forwardAbort = () => controller.abort();
   if (externalSignal) {
@@ -138,7 +143,6 @@ async function brainFetch(path, options = {}, mode = "throw") {
         body,
       });
 
-      // Log something actionable (not just "Object")
       console.error("[Backend HTTP Error]", {
         url,
         method,
@@ -160,9 +164,7 @@ async function brainFetch(path, options = {}, mode = "throw") {
       throw err;
     }
 
-    if (mode === "safe") {
-      return normalizeResult({ ok: true, status, statusText, url, method, body });
-    }
+    if (mode === "safe") return normalizeResult({ ok: true, status, statusText, url, method, body });
 
     return { status, data: body };
   } catch (err) {
@@ -200,12 +202,28 @@ async function brainFetch(path, options = {}, mode = "throw") {
   }
 }
 
-/** Convenience wrappers */
 function request(path, options = {}) {
   return brainFetch(path, options, "throw");
 }
 function safeRequest(path, options = {}) {
   return brainFetch(path, options, "safe");
+}
+
+/* ===========================
+   Param helpers (airline canonical)
+   =========================== */
+
+function resolveAirport(airport) {
+  return String(airport || REQUIRED_AIRPORT || "").toUpperCase();
+}
+
+/**
+ * EWOT: Canonical airline chooser.
+ * Accepts explicit airline OR legacy operator (read-only compatibility).
+ * Always returns a normalized airline code (defaults to "ALL").
+ */
+function resolveAirline({ airline, operator } = {}, fallback = "ALL") {
+  return normalizeAirline(airline ?? operator ?? fallback);
 }
 
 /* ===========================
@@ -219,61 +237,8 @@ export async function fetchStatus(date, options = {}) {
   return request(`/api/status${suffix}`, options);
 }
 
-export async function fetchFlights(date, airline = "ALL", airport = REQUIRED_AIRPORT, options = {}) {
-  if (!date) throw new Error("fetchFlights: date is required");
-
-  const qs = new URLSearchParams();
-  qs.set("date", date);
-  qs.set("airport", String(airport || REQUIRED_AIRPORT).toUpperCase());
-  const resolvedAirline = normalizeAirline(options.airline ?? options.operator ?? airline);
-  qs.set("airline", resolvedAirline);
-  return request(`/api/flights?${qs.toString()}`, options);
-}
-
-// Friendly alias used by some components
-export async function getFlights({ date, airport, airline = "ALL", operator, signal } = {}) {
-  const resolvedAirline = operator ?? airline;
-  return fetchFlights(date, resolvedAirline, airport, { signal });
-}
-
-export async function pullFlights(date, airline = "ALL", options = {}) {
-  if (!date) throw new Error("pullFlights: date is required");
-  if (!options.airport) throw new Error("pullFlights: airport is required");
-
-  const resolvedAirline = normalizeAirline(options.airline ?? options.operator ?? airline);
-  const body = {
-    date,
-    airport: options.airport,
-    airline: resolvedAirline,
-    store: true,
-    timeout: 30,
-    scope: "both",
-  };
-
-  return request("/api/flights/pull", {
-    method: "POST",
-    body: JSON.stringify(body),
-    timeoutMs: options.timeoutMs ?? 60_000,
-    ...options,
-  });
-}
-
-export async function fetchRuns(date, airline = "ALL", options = {}) {
-  if (!date) throw new Error("fetchRuns: date is required");
-
-  const airport = options.airport || REQUIRED_AIRPORT;
-  if (!airport) throw new Error("fetchRuns: airport is required");
-
-  const resolvedAirline = normalizeAirline(options.airline ?? options.operator ?? airline);
-  const qs = new URLSearchParams();
-  qs.set("date", date);
-  qs.set("airport", String(airport).toUpperCase());
-
-  qs.set("airline", resolvedAirline);
-
-  if (options.shift) qs.set("shift", options.shift);
-
-  return safeRequest(`/api/runs?${qs.toString()}`, { method: "GET", ...options });
+export async function fetchWiringStatus(options = {}) {
+  return safeRequest("/api/wiring-status", { method: "GET", ...options });
 }
 
 export async function fetchRunsStatus(date, options = {}) {
@@ -283,33 +248,97 @@ export async function fetchRunsStatus(date, options = {}) {
   return request(`/api/runs_status${suffix}`, options);
 }
 
+/** Flights */
+export async function fetchFlights(date, airline = "ALL", airport = REQUIRED_AIRPORT, options = {}) {
+  if (!date) throw new Error("fetchFlights: date is required");
+
+  const qs = new URLSearchParams();
+  qs.set("date", date);
+  qs.set("airport", resolveAirport(airport));
+  qs.set("airline", resolveAirline(options, airline));
+  return request(`/api/flights?${qs.toString()}`, options);
+}
+
+// Friendly alias used by some components
+export async function getFlights({ date, airport, airline = "ALL", operator, signal, ...rest } = {}) {
+  return fetchFlights(date, operator ?? airline, airport, { signal, ...rest });
+}
+
+/** Pull flights (POST) */
+export async function pullFlights(date, airline = "ALL", options = {}) {
+  if (!date) throw new Error("pullFlights: date is required");
+  if (!options.airport) throw new Error("pullFlights: airport is required");
+
+  const body = {
+    date,
+    airport: resolveAirport(options.airport),
+    airline: resolveAirline(options, airline),
+    store: true,
+    timeout: 30,
+    scope: "both",
+  };
+
+  return request("/api/flights/pull", {
+    method: "POST",
+    body: JSON.stringify(body),
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    ...options,
+  });
+}
+
+/** Runs */
+export async function fetchRuns(date, airline = "ALL", options = {}) {
+  if (!date) throw new Error("fetchRuns: date is required");
+
+  const airport = resolveAirport(options.airport);
+  if (!airport) throw new Error("fetchRuns: airport is required");
+
+  const qs = new URLSearchParams();
+  qs.set("date", date);
+  qs.set("airport", airport);
+  qs.set("airline", resolveAirline(options, airline));
+  if (options.shift) qs.set("shift", String(options.shift).toUpperCase());
+
+  // Runs should not crash pages; return safe result
+  return safeRequest(`/api/runs?${qs.toString()}`, { method: "GET", ...options });
+}
+
+/** Back-compat: older pages import fetchDailyRuns */
+export async function fetchDailyRuns(date, airline = "ALL", options = {}) {
+  return fetchRuns(date, airline, options);
+}
+
+/** Staff list (optional) */
 export async function fetchStaff(options = {}) {
   const qs = new URLSearchParams();
-  const airport = options.airport || REQUIRED_AIRPORT;
-  qs.set("airport", String(airport).toUpperCase());
+  const airport = resolveAirport(options.airport);
+  if (airport) qs.set("airport", airport);
   if (options.date) qs.set("date", options.date);
+  if (options.shift) qs.set("shift", String(options.shift).toUpperCase());
 
-  const airline = options.airline ?? options.operator;
-  if (airline) qs.set("airline", normalizeAirline(airline));
+  const airline = resolveAirline(options, "ALL");
+  if (airline) qs.set("airline", airline);
 
   return safeRequest(`/api/staff?${qs.toString()}`, { method: "GET", ...options });
 }
 
+/** Assignments overlay (optional) */
 export async function fetchAssignments(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
 
-  const airport = options.airport || REQUIRED_AIRPORT;
-  if (airport) qs.set("airport", String(airport).toUpperCase());
+  const airport = resolveAirport(options.airport);
+  if (airport) qs.set("airport", airport);
 
-  const airline = normalizeAirline(options.airline ?? options.operator ?? "ALL");
+  const airline = resolveAirline(options, "ALL");
   if (airline) qs.set("airline", airline);
 
-  if (options.shift) qs.set("shift", options.shift);
+  if (options.shift) qs.set("shift", String(options.shift).toUpperCase());
 
   return safeRequest(`/api/assignments?${qs.toString()}`, { method: "GET", ...options });
 }
 
+// Back-compat alias (some components still call this)
 export async function fetchEmployeeAssignments(date, options = {}) {
   return fetchAssignments(date, options);
 }
@@ -321,15 +350,13 @@ export async function seedDemoDay(date, options = {}) {
   return request(`/api/dev/seed_demo_day${suffix}`, { method: "POST", ...options });
 }
 
-export async function fetchWiringStatus(options = {}) {
-  return safeRequest("/api/wiring-status", { method: "GET", ...options });
-}
-
+/** Runs auto-assign (optional) */
 export async function autoAssignRuns(date, airline = "ALL", options = {}) {
   const payload = {
     date,
-    airline: normalizeAirline(options.airline ?? options.operator ?? airline),
+    airline: resolveAirline(options, airline),
   };
+
   return safeRequest("/api/runs/auto_assign", {
     method: "POST",
     body: JSON.stringify(payload),
