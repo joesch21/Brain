@@ -19,7 +19,7 @@ from flask import (
 from dotenv import load_dotenv
 
 from services import api_contract
-from services.query_params import normalize_airline_query
+from services.query_params import normalize_airline_query, parse_airlines_set
 
 # EWOT: This app is a thin proxy between The Brain frontend and the
 # CodeCrafter2 Ops API. It exposes /api/* endpoints that forward to CC2
@@ -558,6 +558,35 @@ def _extract_flights_list(payload: Any) -> List[Dict[str, Any]]:
         if isinstance(candidate, list):
             return [f for f in candidate if isinstance(f, dict)]
     return []
+
+
+def _extract_airline_code(flight: Dict[str, Any]) -> str:
+    if not isinstance(flight, dict):
+        return ""
+    for key in (
+        "airline",
+        "airline_iata",
+        "airline_code",
+        "operator",
+        "operator_iata",
+        "operator_code",
+    ):
+        value = flight.get(key)
+        if value:
+            return str(value).strip().upper()
+    return ""
+
+
+def _canonicalize_flight(flight: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(flight, dict):
+        return flight
+    airline = _extract_airline_code(flight)
+    normalized = dict(flight)
+    if airline:
+        normalized["airline"] = airline
+    for key in ("operator", "operator_iata", "operator_code"):
+        normalized.pop(key, None)
+    return normalized
 
 
 def _build_mock_roster(date_str: str, airport: str) -> List[Dict[str, Any]]:
@@ -1147,6 +1176,7 @@ def api_flights():
     airline, airline_err = normalize_airline_query(request.args)
     if airline_err is not None:
         return airline_err
+    mode_all, airline_set = parse_airlines_set(airline)
     airport = (request.args.get("airport") or "").strip().upper()
 
     if not airport:
@@ -1158,7 +1188,6 @@ def api_flights():
 
     params = {
         "date": request.args.get("date"),
-        "airline": airline,
         "airport": airport,
     }
 
@@ -1192,7 +1221,8 @@ def api_flights():
                 "flights": [],
                 "source": "compatibility",
                 "upstream_path": used_path,
-                "airline": airline,
+                "airline": "ALL" if mode_all else ",".join(sorted(airline_set)),
+                "count": 0,
             }
         )
 
@@ -1206,10 +1236,25 @@ def api_flights():
             detail={"raw": resp.text[:500]},
         )
 
-    if isinstance(payload, dict):
+    flights_raw = _extract_flights_list(payload)
+    canonical = [_canonicalize_flight(flight) for flight in flights_raw]
+    if mode_all:
+        flights = canonical
+    else:
+        flights = []
+        for flight in canonical:
+            if _extract_airline_code(flight) in airline_set:
+                flights.append(flight)
+
+    if not isinstance(payload, dict):
+        payload = {"ok": True}
+    else:
         payload = dict(payload)
-        payload["airline"] = airline
-        payload.pop("operator", None)
+
+    payload["airline"] = "ALL" if mode_all else ",".join(sorted(airline_set))
+    payload["flights"] = flights
+    payload["count"] = len(flights)
+    payload.pop("operator", None)
 
     return jsonify(payload), resp.status_code
 

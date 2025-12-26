@@ -219,11 +219,11 @@ function resolveAirport(airport) {
 
 /**
  * EWOT: Canonical airline chooser.
- * Accepts explicit airline OR legacy operator (read-only compatibility).
+ * Accepts explicit airline only.
  * Always returns a normalized airline code (defaults to "ALL").
  */
-function resolveAirline({ airline, operator } = {}, fallback = "ALL") {
-  return normalizeAirline(airline ?? operator ?? fallback);
+function resolveAirline({ airline } = {}, fallback = "ALL") {
+  return normalizeAirline(airline ?? fallback);
 }
 
 /* ===========================
@@ -260,8 +260,8 @@ export async function fetchFlights(date, airline = "ALL", airport = REQUIRED_AIR
 }
 
 // Friendly alias used by some components
-export async function getFlights({ date, airport, airline = "ALL", operator, signal, ...rest } = {}) {
-  return fetchFlights(date, operator ?? airline, airport, { signal, ...rest });
+export async function getFlights({ date, airport, airline = "ALL", signal, ...rest } = {}) {
+  return fetchFlights(date, airline, airport, { signal, ...rest });
 }
 
 /** Pull flights (POST) */
