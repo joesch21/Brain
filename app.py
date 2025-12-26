@@ -19,7 +19,7 @@ from flask import (
 from dotenv import load_dotenv
 
 from services import api_contract
-from services.query_params import normalize_airline_query, parse_airlines_set
+from services.query_params import normalize_airline_query
 
 # EWOT: This app is a thin proxy between The Brain frontend and the
 # CodeCrafter2 Ops API. It exposes /api/* endpoints that forward to CC2
@@ -181,15 +181,15 @@ class UpstreamSelector:
             payload: Dict[str, Any] = {}
 
             try:
-                resp = requests.get(
-                    probe_url,
-                    params={
-                        "date": today,
-                        "operator": "ALL",
-                        "airport": os.getenv("DEFAULT_AIRPORT", "YSSY"),
-                    },
-                    timeout=self._probe_timeout_sec,
-                )
+                    resp = requests.get(
+                        probe_url,
+                        params={
+                            "date": today,
+                            "airline": "ALL",
+                            "airport": os.getenv("DEFAULT_AIRPORT", "YSSY"),
+                        },
+                        timeout=self._probe_timeout_sec,
+                    )
                 attempt["status"] = resp.status_code
                 try:
                     payload = resp.json() if resp is not None else {}
@@ -496,6 +496,103 @@ def _normalize_airline_param(
 
     normalized = (airline_raw or default).strip().upper() or default
     return normalized, None
+
+
+def _parse_airlines_toggle(args) -> Tuple[List[str], Optional[Tuple[Any, int]]]:
+    """
+    EWOT: Parse airline toggle filter from query params.
+    Supports:
+      - airlines=JQ,QF,VA  (toggle list)
+      - airline=JQ         (single)
+      - airline=ALL        (no filter)
+    Also accepts legacy operator=... as input alias, but we never emit operator outward.
+    """
+    # First: normalise airline/operator into a single airline value (or ALL)
+    airline, airline_err = _normalize_airline_param(
+        args.get("airline"),
+        args.get("operator"),
+    )
+    if airline_err is not None:
+        return [], airline_err
+
+    # Second: toggle list wins if provided
+    raw_list = str(args.get("airlines") or "").strip()
+    if raw_list:
+        parts = []
+        for token in raw_list.split(","):
+            code = token.strip().upper()
+            if code:
+                parts.append(code)
+        # de-dupe, preserve order
+        seen = set()
+        out = []
+        for c in parts:
+            if c not in seen:
+                out.append(c)
+                seen.add(c)
+        return out, None
+
+    # Third: single airline filter (unless ALL)
+    airline = (airline or "ALL").strip().upper()
+    if airline and airline != "ALL":
+        return [airline], None
+
+    return [], None
+
+
+def _flight_airline_code(f: Dict[str, Any]) -> Optional[str]:
+    """
+    EWOT: Extract an airline code from various upstream schemas.
+    """
+    code = _pick_first(
+        f.get("airline_code"),
+        f.get("airline"),
+        f.get("operator_code"),
+        f.get("operator"),
+    )
+    if code is None:
+        # last-ditch: infer from flight number prefix (e.g., JQ503 -> JQ)
+        fn = str(_pick_first(f.get("flight_number"), f.get("ident_iata"), f.get("ident")) or "").strip().upper()
+        if len(fn) >= 2 and fn[:2].isalpha():
+            code = fn[:2]
+    try:
+        text = str(code or "").strip().upper()
+        return text or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _normalize_flight_for_ui(f: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    EWOT: Convert upstream flight record into the Brain UI Flight shape.
+    """
+    flight_number = str(_pick_first(f.get("flight_number"), f.get("ident_iata"), f.get("ident")) or "").strip().upper()
+    origin = str(_pick_first(f.get("origin"), f.get("origin_iata")) or "").strip().upper()
+    destination = str(_pick_first(f.get("destination"), f.get("dest"), f.get("destination_iata")) or "").strip().upper()
+
+    # time_local (HH:MM) is what the UI uses in tables
+    time_local = _pick_first(
+        f.get("time_local"),
+        f.get("etd_local"),
+        f.get("dep_time"),
+        _extract_local_hhmm(_pick_first(f.get("scheduled_off"), f.get("estimated_off"), f.get("time_iso"), f.get("time"))),
+    )
+    # if we got an ISO string, try to keep HH:MM
+    hhmm = _extract_local_hhmm(time_local) if isinstance(time_local, str) else None
+
+    airline_code = _flight_airline_code(f)
+
+    return {
+        "id": _pick_first(f.get("id"), f.get("fa_flight_id")),
+        "flight_number": flight_number or None,
+        "destination": destination or None,
+        "origin": origin or None,
+        "time_local": hhmm,
+        # Canonical field going forward:
+        "airline_code": airline_code,
+        # Back-compat for any older UI bits that still read operator_code:
+        "operator_code": airline_code,
+    }
 
 
 def _default_airport() -> str:
@@ -825,8 +922,9 @@ def _fetch_flights_for_assignment(
     *,
     date_str: str,
     airport: str,
-    operator: str,
+    airline: str,
 ) -> List[Dict[str, Any]]:
+    # Fetch wide (no airline filter), then filter locally.
     flights_paths = [
         "/api/ops/schedule/flights",
         "/api/ops/flights",
@@ -834,7 +932,7 @@ def _fetch_flights_for_assignment(
     ]
     params = {
         "date": date_str,
-        "operator": operator,
+        "airline": "ALL",
         "airport": airport,
     }
 
@@ -851,7 +949,19 @@ def _fetch_flights_for_assignment(
     except Exception:  # noqa: BLE001
         return []
 
-    return _extract_flights_list(payload)
+    flights = _extract_flights_list(payload)
+    wanted = []
+    a = (airline or "ALL").strip().upper()
+    if a and a != "ALL":
+        wanted = [a]
+    if not wanted:
+        return flights
+    out = []
+    for f in flights:
+        code = _flight_airline_code(f)
+        if code and code in wanted:
+            out.append(f)
+    return out
 
 # ---------------------------------------------------------------------------
 # Basic health + status
@@ -987,7 +1097,7 @@ def api_wiring_snapshot():
             "/api/flights",
             "/api/ops/flights",
             "/api/ops/schedule/flights",
-        ], params={"date": sample_date, "operator": "ALL"}),
+        ], params={"date": sample_date, "airline": "ALL"}),
         "staff": _probe_route([
             "/api/staff",
             "/api/ops/staff",
@@ -996,10 +1106,10 @@ def api_wiring_snapshot():
             "/api/runs",
             "/api/ops/runs/daily",
             "/api/ops/schedule/runs/daily",
-        ], params={"date": sample_date, "operator": "ALL", "airport": os.getenv("DEFAULT_AIRPORT", "YSSY")}),
+        ], params={"date": sample_date, "airline": "ALL", "airport": os.getenv("DEFAULT_AIRPORT", "YSSY")}),
         "autoAssign": _probe_route([
             "/api/runs/auto_assign",
-        ], method="post", json={"date": sample_date, "operator": "ALL"}),
+        ], method="post", json={"date": sample_date, "airline": "ALL"}),
     }
 
     try:
@@ -1134,7 +1244,7 @@ def api_staff_runs():
     ]
     params = {
         "date": date_str,
-        "operator": airline,
+        "airline": airline,
         "airport": airport,
     }
 
@@ -1173,10 +1283,9 @@ def api_flights():
     if (date_error := _require_date_param()) is not None:
         return date_error
 
-    airline, airline_err = normalize_airline_query(request.args)
+    airline_filters, airline_err = _parse_airlines_toggle(request.args)
     if airline_err is not None:
         return airline_err
-    mode_all, airline_set = parse_airlines_set(airline)
     airport = (request.args.get("airport") or "").strip().upper()
 
     if not airport:
@@ -1186,10 +1295,9 @@ def api_flights():
             code="validation_error",
         )
 
-    params = {
-        "date": request.args.get("date"),
-        "airport": airport,
-    }
+    # Option 1: Fetch wide, filter in Brain.
+    # Upstream CC3 DB read is once per request (date+airport), then we filter locally.
+    params = {"date": request.args.get("date"), "airport": airport}
 
     flights_paths = [
         "/api/ops/schedule/flights",
@@ -1216,15 +1324,7 @@ def api_flights():
         )
 
     if resp.status_code == 404:
-        return _build_ok(
-            {
-                "flights": [],
-                "source": "compatibility",
-                "upstream_path": used_path,
-                "airline": "ALL" if mode_all else ",".join(sorted(airline_set)),
-                "count": 0,
-            }
-        )
+        return _build_ok({"flights": [], "source": "compatibility", "upstream_path": used_path, "count": 0})
 
     try:
         payload = resp.json()
@@ -1236,27 +1336,29 @@ def api_flights():
             detail={"raw": resp.text[:500]},
         )
 
-    flights_raw = _extract_flights_list(payload)
-    canonical = [_canonicalize_flight(flight) for flight in flights_raw]
-    if mode_all:
-        flights = canonical
-    else:
-        flights = []
-        for flight in canonical:
-            if _extract_airline_code(flight) in airline_set:
-                flights.append(flight)
+    raw_flights = _extract_flights_list(payload)
+    ui_flights = [_normalize_flight_for_ui(f) for f in raw_flights]
 
-    if not isinstance(payload, dict):
-        payload = {"ok": True}
-    else:
-        payload = dict(payload)
+    if airline_filters:
+        wanted = set([c.strip().upper() for c in airline_filters if c.strip()])
+        ui_flights = [f for f in ui_flights if (f.get("airline_code") in wanted)]
 
-    payload["airline"] = "ALL" if mode_all else ",".join(sorted(airline_set))
-    payload["flights"] = flights
-    payload["count"] = len(flights)
-    payload.pop("operator", None)
+    source = "upstream"
+    if isinstance(payload, dict) and payload.get("source"):
+        source = str(payload.get("source"))
 
-    return jsonify(payload), resp.status_code
+    return jsonify(
+        {
+            "ok": True,
+            "date": str(request.args.get("date") or "").strip(),
+            "airport": airport,
+            "source": source,
+            "upstream_path": used_path,
+            "count": len(ui_flights),
+            "airlines_selected": airline_filters if airline_filters else ["ALL"],
+            "flights": ui_flights,
+        }
+    ), 200
 
 
 @app.post("/api/flights/pull")
@@ -1405,7 +1507,7 @@ def api_employee_assignments_daily():
     flights = _fetch_flights_for_assignment(
         date_str=date_str,
         airport=airport,
-        operator=operator,
+        airline=operator,
     )
     assignments = _build_assignments_for_flights(flights, staff)
 
@@ -1435,7 +1537,7 @@ def api_staff():
             code="validation_error",
         )
 
-    _, airline_err = _normalize_airline_param(
+    airline, airline_err = _normalize_airline_param(
         request.args.get("airline"),
         request.args.get("operator"),
     )
@@ -1443,6 +1545,9 @@ def api_staff():
         return airline_err
 
     params = request.args.to_dict(flat=True)
+    params.pop("operator", None)
+    if airline:
+        params["airline"] = airline
     fallback = {
         "ok": True,
         "available": False,
@@ -1482,7 +1587,7 @@ def api_assignments_daily():
             code="validation_error",
         )
 
-    _, airline_err = _normalize_airline_param(
+    airline, airline_err = _normalize_airline_param(
         request.args.get("airline"),
         request.args.get("operator"),
     )
@@ -1490,6 +1595,9 @@ def api_assignments_daily():
         return airline_err
 
     params = request.args.to_dict(flat=True)
+    params.pop("operator", None)
+    if airline:
+        params["airline"] = airline
     fallback = {
         "ok": True,
         "available": False,
@@ -1592,7 +1700,7 @@ def api_runs_cc3():
         flights = _fetch_flights_for_assignment(
             date_str=date_str,
             airport=airport,
-            operator=airline,
+            airline=airline,
         )
         assignments = _build_assignments_for_flights(flights, staff)
         runs = _build_runs_from_assignments(
@@ -1720,7 +1828,7 @@ def api_runs_auto_assign():
             detail={"body": data},
         )
 
-    upstream_body = {"date": date_str, "operator": airline}
+    upstream_body = {"date": date_str, "airline": airline}
 
     try:
         resp = requests.post(

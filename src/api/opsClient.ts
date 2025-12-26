@@ -7,7 +7,9 @@ export interface Flight {
   destination: string;
   origin: string;
   time_local: string | null;
-  operator_code: string | null;
+  airline_code: string | null;
+  // Back-compat: some older UI bits may still read operator_code
+  operator_code?: string | null;
 }
 
 export interface EmployeeAssignment {
@@ -125,6 +127,8 @@ export async function fetchFlightsForDate(
   const url = new URL(`${API_BASE}/flights`);
   url.searchParams.set("date", date);
   url.searchParams.set("airport", String(airport).toUpperCase());
+  // Default behaviour remains: airline=ALL or airline=JQ.
+  // (If UI later uses airline toggles, it should pass airlines=JQ,QF,... instead.)
   url.searchParams.set("airline", normalizeAirline(airline));
 
   const res = await fetch(url.toString());
@@ -135,7 +139,13 @@ export async function fetchFlightsForDate(
     throw new Error(payload.error || "Failed to load flights from Ops API");
   }
 
-  return payload.flights ?? [];
+  const flights = (payload.flights ?? []) as any[];
+  // Ensure airline_code exists even if backend temporarily returns operator_code.
+  return flights.map(f => ({
+    ...f,
+    airline_code: f.airline_code ?? f.operator_code ?? null,
+    operator_code: f.operator_code ?? f.airline_code ?? null,
+  })) as Flight[];
 }
 
 /**
