@@ -4,6 +4,7 @@ import SystemHealthBar from "../components/SystemHealthBar";
 import RunSheetSection, { getRunId } from "../components/RunSheetSection";
 import { getAssignmentsOptional } from "../utils/optionalAssignments";
 import { fetchJson } from "../utils/api";
+import "../index.css";
 import "../styles/runSheetsPage.css";
 
 const DEFAULT_AIRPORT = "YSSY";
@@ -261,7 +262,7 @@ const RunSheetsPage = () => {
   }, [meta]);
 
   return (
-    <div className="runsheets-page">
+    <div className="runsheets-page runsheet">
       <header className="page-header runsheets-header">
         <div className="runsheets-header-title">
           <h1>{runsTitle}</h1>
