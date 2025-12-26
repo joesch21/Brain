@@ -1,4 +1,5 @@
-﻿import os
+﻿import json
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -574,6 +575,129 @@ def _build_mock_roster(date_str: str, airport: str) -> List[Dict[str, Any]]:
     return shifts
 
 
+def _staff_seed_path() -> str:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "data", "staff_seed.json")
+
+
+def _load_staff_seed() -> List[Dict[str, Any]]:
+    try:
+        with open(_staff_seed_path(), "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return []
+    except Exception:  # noqa: BLE001
+        return []
+
+    if isinstance(payload, list):
+        return [entry for entry in payload if isinstance(entry, dict)]
+    return []
+
+
+def _normalize_shift_param(value: Optional[str]) -> str:
+    text = (value or "ALL").strip().upper()
+    return text or "ALL"
+
+
+def _staff_for_shift(staff: List[Dict[str, Any]], shift: str) -> List[Dict[str, Any]]:
+    if shift == "ALL":
+        return staff
+    filtered = []
+    for entry in staff:
+        entry_shift = str(entry.get("shift") or "").strip().upper()
+        if entry_shift == shift:
+            filtered.append(entry)
+    return filtered
+
+
+def _flight_sort_key(flight: Dict[str, Any]) -> Tuple[int, str]:
+    time_value = _pick_first(
+        flight.get("scheduled_off"),
+        flight.get("estimated_off"),
+        flight.get("time_iso"),
+        flight.get("time"),
+        flight.get("dep_time"),
+        flight.get("time_local"),
+        flight.get("timeLocal"),
+    )
+    minutes = _time_to_minutes(_extract_local_hhmm(time_value))
+    sortable_minutes = minutes if minutes is not None else 24 * 60 + 1
+    ident = str(
+        _pick_first(
+            flight.get("ident"),
+            flight.get("ident_iata"),
+            flight.get("flight_number"),
+            flight.get("flightNumber"),
+            flight.get("id"),
+        )
+        or ""
+    )
+    return sortable_minutes, ident
+
+
+def _build_assignments_for_flights(
+    flights: List[Dict[str, Any]],
+    staff: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not flights:
+        return []
+    if not staff:
+        return []
+
+    sorted_flights = sorted(flights, key=_flight_sort_key)
+    assignments = []
+    for idx, flight in enumerate(sorted_flights):
+        staff_entry = staff[idx % len(staff)]
+        assignments.append(
+            {
+                **flight,
+                "staff_id": staff_entry.get("staff_id"),
+                "staff_name": staff_entry.get("staff_name"),
+                "staff_code": staff_entry.get("staff_code"),
+                "assigned_staff_id": staff_entry.get("staff_id"),
+                "assigned_staff_name": staff_entry.get("staff_name"),
+                "assigned_staff_code": staff_entry.get("staff_code"),
+                "assigned_staff_role": staff_entry.get("role"),
+            }
+        )
+    return assignments
+
+
+def _build_runs_from_assignments(
+    assignments: List[Dict[str, Any]],
+    staff: List[Dict[str, Any]],
+    *,
+    shift_requested: str,
+) -> List[Dict[str, Any]]:
+    if not assignments:
+        return []
+
+    staff_index = {entry.get("staff_id"): entry for entry in staff}
+    runs_by_staff: Dict[Any, Dict[str, Any]] = {}
+
+    for assignment in assignments:
+        staff_id = assignment.get("assigned_staff_id")
+        if staff_id is None:
+            continue
+        if staff_id not in runs_by_staff:
+            staff_entry = staff_index.get(staff_id, {})
+            runs_by_staff[staff_id] = {
+                "run_id": staff_id,
+                "run_no": staff_id,
+                "staff_id": staff_id,
+                "staff_name": staff_entry.get("staff_name"),
+                "staff_code": staff_entry.get("staff_code"),
+                "staff_role": staff_entry.get("role"),
+                "shift": shift_requested,
+                "shift_start": staff_entry.get("shift_start"),
+                "shift_end": staff_entry.get("shift_end"),
+                "flights": [],
+            }
+        runs_by_staff[staff_id]["flights"].append(assignment)
+
+    return list(runs_by_staff.values())
+
+
 def _flight_to_job(flight: Dict[str, Any]) -> Dict[str, Any]:
     flight_id = _pick_first(
         flight.get("flight_id"),
@@ -661,6 +785,38 @@ def _build_mock_staff_runs(
 
     return staff_runs, unassigned
 
+
+def _fetch_flights_for_assignment(
+    *,
+    date_str: str,
+    airport: str,
+    operator: str,
+) -> List[Dict[str, Any]]:
+    flights_paths = [
+        "/api/ops/schedule/flights",
+        "/api/ops/flights",
+        "/api/flights",
+    ]
+    params = {
+        "date": date_str,
+        "operator": operator,
+        "airport": airport,
+    }
+
+    try:
+        resp, _ = _call_upstream(flights_paths, params=params, timeout=20)
+    except requests.RequestException:
+        return []
+
+    if resp is None or resp.status_code == 404:
+        return []
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return []
+
+    return _extract_flights_list(payload)
 
 # ---------------------------------------------------------------------------
 # Basic health + status
@@ -1199,104 +1355,84 @@ def api_employee_assignments_daily():
     if not airport:
         return jsonify({"ok": False, "error": {"code": "validation_error", "message": "Missing required 'airport' query parameter."}}), 400
 
-    def optional(reason: str):
-        return jsonify({
-            "ok": True,
-            "available": False,
-            "reason": reason,
-            "airport": airport,
-            "local_date": date_str,
-            "operator": operator,
-            "shift": shift,
-            "assignments": {}
-        }), 200
+    shift_requested = _normalize_shift_param(shift)
+    staff = _staff_for_shift(_load_staff_seed(), shift_requested)
+    flights = _fetch_flights_for_assignment(
+        date_str=date_str,
+        airport=airport,
+        operator=operator,
+    )
+    assignments = _build_assignments_for_flights(flights, staff)
 
-    params = {
-        "date": date_str,
+    payload = {
+        "ok": True,
+        "available": True,
         "airport": airport,
+        "local_date": date_str,
         "operator": operator,
-        "shift": shift,
+        "shift": shift_requested,
+        "assignments": assignments,
     }
-
-    try:
-        resp = requests.get(
-            _upstream_url("/api/employee_assignments/daily"),
-            params=params,
-            timeout=8,
-        )
-    except requests.Timeout:
-        return optional("timeout")
-    except requests.RequestException:
-        return optional("upstream_error")
-
-    if resp.status_code == 404:
-        return optional("upstream_404")
-
-    if resp.status_code != 200:
-        return optional("upstream_error")
-
-    try:
-        payload = resp.json()
-    except Exception:
-        return optional("upstream_error")
-
-    if not isinstance(payload, dict):
-        return optional("upstream_error")
-
-    if payload.get("ok") is False:
-        return optional("upstream_error")
-
-    payload.setdefault("ok", True)
-    payload.setdefault("available", True)
-    payload.setdefault("airport", airport)
-    payload.setdefault("local_date", date_str)
-    payload.setdefault("operator", operator)
-    payload.setdefault("shift", shift)
-    payload.setdefault("assignments", payload.get("assignments") or {})
 
     return jsonify(payload), 200
 @app.get("/api/staff")
 def api_staff():
-    """Compatibility endpoint for staff directory."""
+    """Local staff directory for deterministic dev assignments."""
 
-    staff_paths = [
-        "/api/staff",
-        "/api/ops/staff",
-        "/api/ops/people",
-    ]
+    staff = _load_staff_seed()
+    return _build_ok(
+        {
+            "source": "local",
+            "count": len(staff),
+            "records": staff,
+        }
+    )
 
-    try:
-        resp, used_path = _call_upstream(staff_paths, timeout=15)
-    except requests.RequestException as exc:
-        app.logger.exception("Failed to call CC2 staff endpoint")
+
+@app.get("/api/assignments")
+def api_assignments_daily():
+    """Daily staff assignments (deterministic round-robin over flights)."""
+
+    if (date_error := _require_date_param()) is not None:
+        return date_error
+
+    date_str = request.args.get("date")
+    airport = (request.args.get("airport") or "").strip().upper()
+    if not airport:
         return json_error(
-            "Upstream staff endpoint unavailable",
-            status_code=502,
-            code="upstream_error",
-            detail={"detail": str(exc)},
+            "Missing required 'airport' query parameter.",
+            status_code=400,
+            code="validation_error",
         )
 
-    if resp is None:
-        return json_error(
-            "Staff endpoint not reachable upstream.",
-            status_code=502,
-            code="upstream_unavailable",
-        )
+    operator, operator_err = _normalize_airline_param(
+        request.args.get("airline"),
+        request.args.get("operator"),
+    )
+    if operator_err is not None:
+        return operator_err
 
-    if resp.status_code == 404:
-        return _build_ok({"staff": [], "source": "compatibility", "upstream_path": used_path})
+    shift_requested = _normalize_shift_param(request.args.get("shift"))
 
-    try:
-        payload = resp.json()
-    except Exception:  # noqa: BLE001
-        return json_error(
-            "Invalid JSON from staff backend.",
-            status_code=502,
-            code="invalid_json",
-            detail={"raw": resp.text[:500]},
-        )
+    staff = _staff_for_shift(_load_staff_seed(), shift_requested)
+    flights = _fetch_flights_for_assignment(
+        date_str=date_str,
+        airport=airport,
+        operator=operator,
+    )
 
-    return jsonify(payload), resp.status_code
+    assignments = _build_assignments_for_flights(flights, staff)
+
+    return _build_ok(
+        {
+            "date": date_str,
+            "airport": airport,
+            "operator": operator,
+            "shift_requested": shift_requested,
+            "count": len(assignments),
+            "records": assignments,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1361,32 +1497,45 @@ def api_runs_cc3():
             last_error = str(exc)
             continue
 
-    if resp is None:
-        return json_error(
-            f"Upstream runs request failed. Last error: {last_error}",
-            status_code=502,
-            code="upstream_error",
-        )
-
     try:
-        payload = resp.json()
+        payload = resp.json() if resp is not None else {}
     except Exception:  # noqa: BLE001
-        return json_error(
-            "Invalid JSON from upstream /api/runs.",
-            status_code=502,
-            code="invalid_json",
-            detail={"raw": resp.text[:500]},
-        )
+        payload = {}
 
     # ---- Normalize to Brain envelope ----
     runs = payload.get("runs") or []
+    needs_placeholder = not runs
+    if payload.get("count") in (0, "0"):
+        needs_placeholder = True
+
+    if resp is None or needs_placeholder:
+        staff = _staff_for_shift(_load_staff_seed(), _normalize_shift_param(shift))
+        flights = _fetch_flights_for_assignment(
+            date_str=date_str,
+            airport=airport,
+            operator=airline,
+        )
+        assignments = _build_assignments_for_flights(flights, staff)
+        runs = _build_runs_from_assignments(
+            assignments,
+            staff,
+            shift_requested=_normalize_shift_param(shift),
+        )
+        payload = {
+            "ok": True,
+            "source": "placeholder",
+            "runs": runs,
+            "count": len(runs),
+        }
+
     out = {
         "ok": bool(payload.get("ok", True)),
-        "source": payload.get("source") or "upstream",
+        "source": payload.get("source") or ("upstream" if resp is not None else "placeholder"),
         "airport": payload.get("airport") or airport,
         "local_date": payload.get("local_date") or payload.get("date") or date_str,
         "airline": airline,
         "count": int(payload.get("count") or len(runs)),
+        "shift_requested": _normalize_shift_param(shift),
         "runs": runs,
     }
 
