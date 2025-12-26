@@ -19,7 +19,6 @@ from flask import (
 from dotenv import load_dotenv
 
 from services import api_contract
-from services.assignments_mvp import build_assignments
 from services.query_params import normalize_airline_query
 
 # EWOT: This app is a thin proxy between The Brain frontend and the
@@ -1373,14 +1372,10 @@ def api_employee_assignments_daily():
     return jsonify(payload), 200
 @app.get("/api/staff")
 def api_staff():
-    """Minimal staff directory for optional staff overlay."""
+    """Proxy staff directory overlay to CC3 (non-blocking)."""
 
     if (date_error := _require_date_param()) is not None:
         return date_error
-
-    airline, airline_err = normalize_airline_query(request.args)
-    if airline_err is not None:
-        return airline_err
 
     airport = (request.args.get("airport") or "").strip().upper()
     if not airport:
@@ -1390,65 +1385,45 @@ def api_staff():
             code="validation_error",
         )
 
-    date_str = request.args.get("date")
-    staff_seed = _load_staff_seed()
-    if not staff_seed:
-        staff_seed = [
-            {
-                "staff_id": 1,
-                "staff_code": "A1",
-                "staff_name": "Alex",
-                "role": "Refueller",
-                "shift": "AM",
-            },
-            {
-                "staff_id": 2,
-                "staff_code": "B2",
-                "staff_name": "Blake",
-                "role": "Ramp",
-                "shift": "PM",
-            },
-            {
-                "staff_id": 3,
-                "staff_code": "C3",
-                "staff_name": "Casey",
-                "role": "Driver",
-                "shift": "AM",
-            },
-        ]
-
-    staff = sorted(staff_seed, key=lambda entry: str(entry.get("staff_code") or ""))
-    staff_payload = [
-        {
-            "staff_id": entry.get("staff_id"),
-            "staff_code": entry.get("staff_code"),
-            "staff_name": entry.get("staff_name"),
-            "role": entry.get("role"),
-            "shift": entry.get("shift"),
-        }
-        for entry in staff
-    ]
-
-    return _build_ok(
-        {
-            "available": True,
-            "airport": airport,
-            "date": date_str,
-            "airline": airline,
-            "count": len(staff_payload),
-            "staff": staff_payload,
-        }
+    _, airline_err = _normalize_airline_param(
+        request.args.get("airline"),
+        request.args.get("operator"),
     )
+    if airline_err is not None:
+        return airline_err
+
+    params = request.args.to_dict(flat=True)
+    fallback = {
+        "ok": True,
+        "available": False,
+        "reason": "upstream_unavailable",
+        "count": 0,
+        "staff": [],
+    }
+
+    try:
+        resp = requests.get(_upstream_url("/api/staff"), params=params, timeout=8)
+    except requests.RequestException:
+        return jsonify(fallback), 200
+
+    if resp.status_code != 200:
+        return jsonify(fallback), 200
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return jsonify(fallback), 200
+
+    return jsonify(payload), 200
 
 
 @app.get("/api/assignments")
 def api_assignments_daily():
-    """Daily staff assignments (deterministic round-robin over flights)."""
+    """Proxy daily staff assignments overlay to CC3 (non-blocking)."""
 
     if (date_error := _require_date_param()) is not None:
         return date_error
 
-    date_str = request.args.get("date")
     airport = (request.args.get("airport") or "").strip().upper()
     if not airport:
         return json_error(
@@ -1457,32 +1432,36 @@ def api_assignments_daily():
             code="validation_error",
         )
 
-    airline, airline_err = normalize_airline_query(request.args)
+    _, airline_err = _normalize_airline_param(
+        request.args.get("airline"),
+        request.args.get("operator"),
+    )
     if airline_err is not None:
         return airline_err
 
-    shift_requested = _normalize_shift_param(request.args.get("shift"))
+    params = request.args.to_dict(flat=True)
+    fallback = {
+        "ok": True,
+        "available": False,
+        "reason": "upstream_unavailable",
+        "count": 0,
+        "assignments": [],
+    }
 
-    staff = _staff_for_shift(_load_staff_seed(), shift_requested)
-    flights = _fetch_flights_for_assignment(
-        date_str=date_str,
-        airport=airport,
-        operator=airline,
-    )
+    try:
+        resp = requests.get(_upstream_url("/api/assignments"), params=params, timeout=8)
+    except requests.RequestException:
+        return jsonify(fallback), 200
 
-    assignments = build_assignments(flights, staff, shift_requested)
+    if resp.status_code != 200:
+        return jsonify(fallback), 200
 
-    return _build_ok(
-        {
-            "available": True,
-            "airport": airport,
-            "date": date_str,
-            "airline": airline,
-            "shift": shift_requested,
-            "count": len(assignments),
-            "assignments": assignments,
-        }
-    )
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return jsonify(fallback), 200
+
+    return jsonify(payload), 200
 
 
 # ---------------------------------------------------------------------------
