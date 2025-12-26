@@ -168,35 +168,49 @@ class UpstreamSelector:
         return (time.monotonic() - self._last_probe_at) > self.ttl_seconds
 
     def _probe_candidates(self) -> str:
+        """
+        EWOT: Probe upstream base URLs quickly and select the first that returns ok=True
+        for /api/runs (using airline=ALL, airport=DEFAULT_AIRPORT).
+        """
         self._last_probe_at = time.monotonic()
         today = datetime.now(timezone.utc).date().isoformat()
+
         attempts: List[Dict[str, Any]] = []
         chosen_base = self._active_base or self.configured_base or (self.candidates[0] if self.candidates else "")
         found_working = False
 
         for base_url in self.candidates:
+            base_url = (base_url or "").rstrip("/")
             probe_url = f"{base_url}/api/runs"
+
             attempt: Dict[str, Any] = {"base_url": base_url}
             ok = False
             payload: Dict[str, Any] = {}
 
             try:
-                    resp = requests.get(
-                        probe_url,
-                        params={
-                            "date": today,
-                            "airline": "ALL",
-                            "airport": os.getenv("DEFAULT_AIRPORT", "YSSY"),
-                        },
-                        timeout=self._probe_timeout_sec,
-                    )
+                resp = requests.get(
+                    probe_url,
+                    params={
+                        "date": today,
+                        "airline": "ALL",
+                        "airport": os.getenv("DEFAULT_AIRPORT", "YSSY"),
+                        "shift": "ALL",
+                    },
+                    timeout=self._probe_timeout_sec,
+                )
                 attempt["status"] = resp.status_code
+
                 try:
                     payload = resp.json() if resp is not None else {}
                 except Exception:
                     payload = {}
+
                 attempt["response_ok"] = isinstance(payload, dict)
-                ok = resp.status_code == 200 and isinstance(payload, dict) and payload.get("ok") is True
+                ok = (
+                    resp.status_code == 200
+                    and isinstance(payload, dict)
+                    and payload.get("ok") is True
+                )
 
             except requests.RequestException as exc:
                 attempt["error"] = str(exc)
@@ -207,7 +221,7 @@ class UpstreamSelector:
             attempts.append(attempt)
 
             if ok:
-                chosen_base = base_url.rstrip("/")
+                chosen_base = base_url
                 found_working = True
                 break
 
