@@ -91,7 +91,8 @@ export interface FlightsResponse {
 export interface EmployeeAssignmentsResponse {
   ok: boolean;
   date: string;
-  assignments: EmployeeAssignment[];
+  assignments?: EmployeeAssignment[];
+  records?: EmployeeAssignment[];
   error?: string;
   available?: boolean;
   reason?: string;
@@ -156,7 +157,7 @@ export async function fetchEmployeeAssignmentsForDate(
     const shift =
       typeof opts === "object" && opts?.shift ? opts.shift : DEFAULT_SHIFT;
 
-    const url = new URL(`${API_BASE}/employee_assignments/daily`);
+    const url = new URL(`${API_BASE}/assignments`);
     url.searchParams.set("date", date);
     url.searchParams.set("airport", String(airport).toUpperCase());
     url.searchParams.set("operator", normalizeOperator(operator));
@@ -176,6 +177,10 @@ export async function fetchEmployeeAssignmentsForDate(
 
     if (payload?.available === false) return [];
     if (payload?.ok === false) return [];
+
+    if (payload?.records) {
+      return normalizeAssignmentsToList(payload.records);
+    }
 
     return normalizeAssignmentsToList((payload as any)?.assignments);
   } catch {

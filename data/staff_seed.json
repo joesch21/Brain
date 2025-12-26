@@ -1,0 +1,74 @@
+[
+  {
+    "staff_id": 2001,
+    "staff_code": "STAFF01",
+    "staff_name": "Avery Banks",
+    "role": "Ramp",
+    "shift": "AM",
+    "shift_start": "05:00",
+    "shift_end": "13:00"
+  },
+  {
+    "staff_id": 2002,
+    "staff_code": "STAFF02",
+    "staff_name": "Blair Chen",
+    "role": "Ramp",
+    "shift": "AM",
+    "shift_start": "05:30",
+    "shift_end": "13:30"
+  },
+  {
+    "staff_id": 2003,
+    "staff_code": "STAFF03",
+    "staff_name": "Casey Diaz",
+    "role": "Driver",
+    "shift": "AM",
+    "shift_start": "06:00",
+    "shift_end": "14:00"
+  },
+  {
+    "staff_id": 2004,
+    "staff_code": "STAFF04",
+    "staff_name": "Devon Ellis",
+    "role": "Fueler",
+    "shift": "AM",
+    "shift_start": "06:30",
+    "shift_end": "14:30"
+  },
+  {
+    "staff_id": 2005,
+    "staff_code": "STAFF05",
+    "staff_name": "Emery Fox",
+    "role": "Ramp",
+    "shift": "PM",
+    "shift_start": "12:00",
+    "shift_end": "20:00"
+  },
+  {
+    "staff_id": 2006,
+    "staff_code": "STAFF06",
+    "staff_name": "Finley Grant",
+    "role": "Driver",
+    "shift": "PM",
+    "shift_start": "12:30",
+    "shift_end": "20:30"
+  },
+  {
+    "staff_id": 2007,
+    "staff_code": "STAFF07",
+    "staff_name": "Harper Jones",
+    "role": "Fueler",
+    "shift": "PM",
+    "shift_start": "13:00",
+    "shift_end": "21:00"
+  },
+  {
+    "staff_id": 2008,
+    "staff_code": "STAFF08",
+    "staff_name": "Indigo Kim",
+    "role": "Ramp",
+    "shift": "PM",
+    "shift_start": "14:00",
+    "shift_end": "22:00"
+  }
+]
