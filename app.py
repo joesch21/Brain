@@ -21,6 +21,11 @@ from dotenv import load_dotenv
 from services import api_contract
 from services.query_params import normalize_airline_query
 
+# SCHEMA RULE:
+# - 'airline' is canonical
+# - new query param names require a CWO
+# - Brain rejects unknown params to prevent drift
+
 # EWOT: This app is a thin proxy between The Brain frontend and the
 # CodeCrafter2 Ops API. It exposes /api/* endpoints that forward to CC2
 # and returns JSON, so the React frontend never sees HTML 404s.
@@ -510,48 +515,6 @@ def _normalize_airline_param(
 
     normalized = (airline_raw or default).strip().upper() or default
     return normalized, None
-
-
-def _parse_airlines_toggle(args) -> Tuple[List[str], Optional[Tuple[Any, int]]]:
-    """
-    EWOT: Parse airline toggle filter from query params.
-    Supports:
-      - airlines=JQ,QF,VA  (toggle list)
-      - airline=JQ         (single)
-      - airline=ALL        (no filter)
-    Also accepts legacy operator=... as input alias, but we never emit operator outward.
-    """
-    # First: normalise airline/operator into a single airline value (or ALL)
-    airline, airline_err = _normalize_airline_param(
-        args.get("airline"),
-        args.get("operator"),
-    )
-    if airline_err is not None:
-        return [], airline_err
-
-    # Second: toggle list wins if provided
-    raw_list = str(args.get("airlines") or "").strip()
-    if raw_list:
-        parts = []
-        for token in raw_list.split(","):
-            code = token.strip().upper()
-            if code:
-                parts.append(code)
-        # de-dupe, preserve order
-        seen = set()
-        out = []
-        for c in parts:
-            if c not in seen:
-                out.append(c)
-                seen.add(c)
-        return out, None
-
-    # Third: single airline filter (unless ALL)
-    airline = (airline or "ALL").strip().upper()
-    if airline and airline != "ALL":
-        return [airline], None
-
-    return [], None
 
 
 def _flight_airline_code(f: Dict[str, Any]) -> Optional[str]:
@@ -1294,10 +1257,20 @@ def api_staff_runs():
 def api_flights():
     """Proxy GET /api/flights with legacy compatibility fallbacks."""
 
+    if request.args.get("airlines") is not None:
+        return json_error(
+            "Invalid parameter 'airlines'. Use canonical 'airline'.",
+            status_code=400,
+            code="schema_drift",
+        )
+
     if (date_error := _require_date_param()) is not None:
         return date_error
 
-    airline_filters, airline_err = _parse_airlines_toggle(request.args)
+    airline, airline_err = _normalize_airline_param(
+        request.args.get("airline"),
+        request.args.get("operator"),
+    )
     if airline_err is not None:
         return airline_err
     airport = (request.args.get("airport") or "").strip().upper()
@@ -1311,7 +1284,7 @@ def api_flights():
 
     # Option 1: Fetch wide, filter in Brain.
     # Upstream CC3 DB read is once per request (date+airport), then we filter locally.
-    params = {"date": request.args.get("date"), "airport": airport}
+    params = {"date": request.args.get("date"), "airport": airport, "airline": airline}
 
     flights_paths = [
         "/api/ops/schedule/flights",
@@ -1353,9 +1326,8 @@ def api_flights():
     raw_flights = _extract_flights_list(payload)
     ui_flights = [_normalize_flight_for_ui(f) for f in raw_flights]
 
-    if airline_filters:
-        wanted = set([c.strip().upper() for c in airline_filters if c.strip()])
-        ui_flights = [f for f in ui_flights if (f.get("airline_code") in wanted)]
+    if airline and airline != "ALL":
+        ui_flights = [f for f in ui_flights if (f.get("airline_code") == airline)]
 
     source = "upstream"
     if isinstance(payload, dict) and payload.get("source"):
@@ -1366,10 +1338,10 @@ def api_flights():
             "ok": True,
             "date": str(request.args.get("date") or "").strip(),
             "airport": airport,
+            "airline": airline,
             "source": source,
             "upstream_path": used_path,
             "count": len(ui_flights),
-            "airlines_selected": airline_filters if airline_filters else ["ALL"],
             "flights": ui_flights,
         }
     ), 200
@@ -1665,42 +1637,6 @@ def _parse_airlines_csv(value: str) -> List[str]:
     return out
 
 
-def _flight_airline_code_from_ident(f: Dict[str, Any]) -> Optional[str]:
-    """
-    EWOT: Get airline-ish code from a flight record, falling back to ident prefix.
-    """
-    code = _pick_first(
-        f.get("airline_code"),
-        f.get("airline"),
-        f.get("operator_code"),
-        f.get("operator"),
-    )
-    if code:
-        s = str(code).strip().upper()
-        return s or None
-    ident = str(_pick_first(f.get("ident_iata"), f.get("ident"), f.get("flight_number")) or "").strip().upper()
-    if len(ident) >= 2 and ident[:2].isalpha():
-        return ident[:2]
-    return None
-
-
-def _filter_flights_by_airlines(flights: List[Dict[str, Any]], airlines: List[str]) -> List[Dict[str, Any]]:
-    """
-    EWOT: Filter flights by airline codes list. If airlines empty -> no filtering.
-    """
-    if not airlines:
-        return flights
-    wanted = set([a.strip().upper() for a in airlines if a.strip()])
-    if not wanted:
-        return flights
-    out: List[Dict[str, Any]] = []
-    for f in flights:
-        code = _flight_airline_code_from_ident(f)
-        if code and code in wanted:
-            out.append(f)
-    return out
-
-
 # ---------------------------------------------------------------------------
 # Runs daily + auto-assign (core of the Runs page)
 # ---------------------------------------------------------------------------
@@ -1710,6 +1646,13 @@ def api_runs_cc3():
     EWOT: Proxy CC3-style runs endpoint (GET /api/runs?date&airport&airline&shift)
     so Brain can talk to CC3 without the frontend doing direct cross-origin calls.
     """
+    if request.args.get("airlines") is not None:
+        return json_error(
+            "Invalid parameter 'airlines'. Use canonical 'airline'.",
+            status_code=400,
+            code="schema_drift",
+        )
+
     date_str = (request.args.get("date") or "").strip()
     airport = (request.args.get("airport") or "").strip().upper()
     if not date_str:
@@ -1732,10 +1675,7 @@ def api_runs_cc3():
     if airline_err is not None:
         return airline_err
     shift = request.args.get("shift", "ALL")
-    # Upstream: fetch wide if we have airlines_list, then we filter locally in placeholder mode.
     params = {"date": date_str, "airport": airport, "shift": shift, "airline": airline}
-    if airlines_list:
-        params["airline"] = "ALL"
 
     active_base = _active_upstream_base().rstrip("/")
 
@@ -1777,10 +1717,8 @@ def api_runs_cc3():
         flights = _fetch_flights_for_assignment(
             date_str=date_str,
             airport=airport,
-            airline="ALL" if airlines_list else airline,
+            airline=airline,
         )
-        # Filter locally for placeholder when airlines_list is provided
-        flights = _filter_flights_by_airlines(flights, airlines_list)
         assignments = _build_assignments_for_flights(flights, staff)
         runs = _build_runs_from_assignments(
             assignments,
@@ -1794,15 +1732,12 @@ def api_runs_cc3():
             "count": len(runs),
         }
 
-    selected = airlines_list if airlines_list else [airline]
-
     out = {
         "ok": bool(payload.get("ok", True)),
         "source": payload.get("source") or ("upstream" if resp is not None else "placeholder"),
         "airport": payload.get("airport") or airport,
         "local_date": payload.get("local_date") or payload.get("date") or date_str,
         "airline": airline,
-        "airlines_selected": selected,
         "count": int(payload.get("count") or len(runs)),
         "shift_requested": _normalize_shift_param(shift),
         "runs": runs,
