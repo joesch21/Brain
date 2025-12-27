@@ -1707,11 +1707,14 @@ def _filter_flights_by_airlines(flights: List[Dict[str, Any]], airlines: List[st
 @app.get("/api/runs")
 def api_runs_cc3():
     """
-    EWOT: Proxy CC3-style runs endpoint (GET /api/runs?date&airport&airline&shift)
-    so Brain can talk to CC3 without the frontend doing direct cross-origin calls.
+    EWOT: Proxy CC3-style runs endpoint (GET /api/runs?date&airport&airlines&shift)
+    Fetch wide upstream when airlines are selected, then filter locally if needed.
     """
+
+    # --- Required params ---
     date_str = (request.args.get("date") or "").strip()
     airport = (request.args.get("airport") or "").strip().upper()
+
     if not date_str:
         return json_error(
             "Missing required 'date' query parameter.",
@@ -1725,33 +1728,42 @@ def api_runs_cc3():
             code="validation_error",
         )
 
+    # --- Airlines toggle (canonical) ---
+    airlines_raw = request.args.get("airlines", "")
+    airlines_list = [
+        a.strip().upper()
+        for a in airlines_raw.split(",")
+        if a.strip()
+    ]
+
+    # Backward compatibility: airline / operator
     airline, airline_err = _normalize_airline_param(
         request.args.get("airline"),
         request.args.get("operator"),
     )
     if airline_err is not None:
         return airline_err
+
     shift = request.args.get("shift", "ALL")
-    # Upstream: fetch wide if we have airlines_list, then we filter locally in placeholder mode.
-    params = {"date": date_str, "airport": airport, "shift": shift, "airline": airline}
-    if airlines_list:
-        params["airline"] = "ALL"
+
+    # --- Upstream params ---
+    params = {
+        "date": date_str,
+        "airport": airport,
+        "shift": shift,
+        "airline": "ALL" if airlines_list else airline,
+    }
 
     active_base = _active_upstream_base().rstrip("/")
-
-    # Prefer CC3 canonical runs endpoint
     runs_paths = ["/api/runs"]
 
     resp = None
     last_error = None
+
     for path in runs_paths:
         url = f"{active_base}{path}"
         try:
-            candidate = requests.get(
-                url,
-                params=params,
-                timeout=30,
-            )
+            candidate = requests.get(url, params=params, timeout=30)
             if candidate.status_code == 404:
                 continue
             candidate.raise_for_status()
@@ -1763,30 +1775,35 @@ def api_runs_cc3():
 
     try:
         payload = resp.json() if resp is not None else {}
-    except Exception:  # noqa: BLE001
+    except Exception:
         payload = {}
 
-    # ---- Normalize to Brain envelope ----
+    # --- Decide placeholder ---
     runs = payload.get("runs") or []
-    needs_placeholder = not runs
-    if payload.get("count") in (0, "0"):
-        needs_placeholder = True
+    needs_placeholder = not runs or payload.get("count") in (0, "0")
 
     if resp is None or needs_placeholder:
-        staff = _staff_for_shift(_load_staff_seed(), _normalize_shift_param(shift))
+        staff = _staff_for_shift(
+            _load_staff_seed(),
+            _normalize_shift_param(shift),
+        )
+
         flights = _fetch_flights_for_assignment(
             date_str=date_str,
             airport=airport,
             airline="ALL" if airlines_list else airline,
         )
-        # Filter locally for placeholder when airlines_list is provided
-        flights = _filter_flights_by_airlines(flights, airlines_list)
+
+        if airlines_list:
+            flights = _filter_flights_by_airlines(flights, airlines_list)
+
         assignments = _build_assignments_for_flights(flights, staff)
         runs = _build_runs_from_assignments(
             assignments,
             staff,
             shift_requested=_normalize_shift_param(shift),
         )
+
         payload = {
             "ok": True,
             "source": "placeholder",
@@ -1794,26 +1811,25 @@ def api_runs_cc3():
             "count": len(runs),
         }
 
-    selected = airlines_list if airlines_list else [airline]
-
+    # --- Output envelope ---
     out = {
         "ok": bool(payload.get("ok", True)),
         "source": payload.get("source") or ("upstream" if resp is not None else "placeholder"),
         "airport": payload.get("airport") or airport,
         "local_date": payload.get("local_date") or payload.get("date") or date_str,
         "airline": airline,
-        "airlines_selected": selected,
+        "airlines_selected": airlines_list if airlines_list else ["ALL"],
         "count": int(payload.get("count") or len(runs)),
         "shift_requested": _normalize_shift_param(shift),
         "runs": runs,
     }
 
-    # Preserve unassigned flights if present (compat fields)
     if "unassigned_flights" in payload:
         out["unassigned_flights"] = payload.get("unassigned_flights") or []
 
     status_code = resp.status_code if resp is not None else 200
     return jsonify(out), status_code
+
 @app.get("/api/runs/sheet", endpoint="api_runs_sheet_proxy_cc3")
 def api_runs_sheet_cc3():
     """
