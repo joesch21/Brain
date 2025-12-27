@@ -1776,27 +1776,33 @@ def api_runs_cc3():
             "count": len(runs),
         }
 
+        # If airlines=CSV is used, filter flights INSIDE each run, then drop empty runs
     if airlines_list:
-        runs = [
-            run
-            for run in runs
-            if isinstance(run, dict)
-            and (
-                _flight_airline_code(run) in airlines_list
-                or (
-                    isinstance(run.get("flight"), dict)
-                    and _flight_airline_code(run.get("flight")) in airlines_list
-                )
-                or (
-                    isinstance(run.get("flights"), list)
-                    and any(
-                        _flight_airline_code(flight) in airlines_list
-                        for flight in run.get("flights")
-                        if isinstance(flight, dict)
-                    )
-                )
-            )
-        ]
+        filtered_runs = []
+        for run in runs:
+            if not isinstance(run, dict):
+                continue
+
+            # Filter list-of-flights shape
+            if isinstance(run.get("flights"), list):
+                run["flights"] = [
+                    f for f in run["flights"]
+                    if isinstance(f, dict) and _flight_airline_code(f) in airlines_list
+                ]
+
+            # Filter single-flight shape (compat)
+            if isinstance(run.get("flight"), dict):
+                if _flight_airline_code(run["flight"]) not in airlines_list:
+                    run["flight"] = None
+
+            has_flights_list = isinstance(run.get("flights"), list) and len(run["flights"]) > 0
+            has_single_flight = isinstance(run.get("flight"), dict)
+
+            if has_flights_list or has_single_flight:
+                filtered_runs.append(run)
+
+        runs = filtered_runs
+
 
     count = len(runs) if airlines_list else int(payload.get("count") or len(runs))
 
