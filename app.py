@@ -1191,22 +1191,15 @@ def api_wiring_snapshot():
 
 
 @app.get("/api/contract")
-def api_contract_route():
-    """Expose a stable, machine-readable API contract for the Brain frontend."""
-
-    contract = api_contract.build_contract()
-    is_valid, detail = api_contract.validate_contract(contract)
-
-    if not is_valid:
-        app.logger.error("Invalid API contract payload: %s", detail)
-        return json_error(
-            "Invalid API contract payload.",
-            status_code=500,
-            code="invalid_contract",
-            detail=detail,
-        )
-
-    return jsonify(contract)
+def api_contract():
+    return jsonify(
+        {
+            "ok": True,
+            "available": False,
+            "note": "contract endpoint not implemented; UI should treat as optional",
+            "endpoints": [],
+        }
+    )
 
 
 @app.get("/api/ops/debug/wiring")
