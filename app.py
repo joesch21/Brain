@@ -1605,6 +1605,10 @@ def api_assignments_daily():
             code="validation_error",
         )
 
+    # Canonical multi-select (Brain-owned)
+    airlines_csv = (request.args.get("airlines") or "").strip().upper()
+    airlines_list = _parse_airlines_csv(airlines_csv) if (airlines_csv and airlines_csv != "ALL") else []
+
     airline, airline_err = _normalize_airline_param(
         request.args.get("airline"),
         request.args.get("operator"),
