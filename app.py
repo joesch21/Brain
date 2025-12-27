@@ -1551,6 +1551,10 @@ def api_staff():
             code="validation_error",
         )
 
+    # Canonical multi-select (Brain-owned)
+    airlines_csv = (request.args.get("airlines") or "").strip().upper()
+    airlines_list = _parse_airlines_csv(airlines_csv) if (airlines_csv and airlines_csv != "ALL") else []
+
     airline, airline_err = _normalize_airline_param(
         request.args.get("airline"),
         request.args.get("operator"),
@@ -1636,6 +1640,63 @@ def api_assignments_daily():
     return jsonify(payload), 200
 
 
+def _parse_airlines_csv(value: str) -> List[str]:
+    """
+    EWOT: Parse a CSV like 'JQ,QF' into ['JQ','QF'] (uppercased, deduped, order preserved).
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return []
+    parts = []
+    for t in raw.split(","):
+        c = t.strip().upper()
+        if c:
+            parts.append(c)
+    seen = set()
+    out = []
+    for c in parts:
+        if c not in seen:
+            out.append(c)
+            seen.add(c)
+    return out
+
+
+def _flight_airline_code_from_ident(f: Dict[str, Any]) -> Optional[str]:
+    """
+    EWOT: Get airline-ish code from a flight record, falling back to ident prefix.
+    """
+    code = _pick_first(
+        f.get("airline_code"),
+        f.get("airline"),
+        f.get("operator_code"),
+        f.get("operator"),
+    )
+    if code:
+        s = str(code).strip().upper()
+        return s or None
+    ident = str(_pick_first(f.get("ident_iata"), f.get("ident"), f.get("flight_number")) or "").strip().upper()
+    if len(ident) >= 2 and ident[:2].isalpha():
+        return ident[:2]
+    return None
+
+
+def _filter_flights_by_airlines(flights: List[Dict[str, Any]], airlines: List[str]) -> List[Dict[str, Any]]:
+    """
+    EWOT: Filter flights by airline codes list. If airlines empty -> no filtering.
+    """
+    if not airlines:
+        return flights
+    wanted = set([a.strip().upper() for a in airlines if a.strip()])
+    if not wanted:
+        return flights
+    out: List[Dict[str, Any]] = []
+    for f in flights:
+        code = _flight_airline_code_from_ident(f)
+        if code and code in wanted:
+            out.append(f)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Runs daily + auto-assign (core of the Runs page)
 # ---------------------------------------------------------------------------
@@ -1667,12 +1728,10 @@ def api_runs_cc3():
     if airline_err is not None:
         return airline_err
     shift = request.args.get("shift", "ALL")
-    params = {
-        "date": date_str,
-        "airport": airport,
-        "airline": airline,
-        "shift": shift,
-    }
+    # Upstream: fetch wide if we have airlines_list, then we filter locally in placeholder mode.
+    params = {"date": date_str, "airport": airport, "shift": shift, "airline": airline}
+    if airlines_list:
+        params["airline"] = "ALL"
 
     active_base = _active_upstream_base().rstrip("/")
 
@@ -1714,8 +1773,10 @@ def api_runs_cc3():
         flights = _fetch_flights_for_assignment(
             date_str=date_str,
             airport=airport,
-            airline=airline,
+            airline="ALL" if airlines_list else airline,
         )
+        # Filter locally for placeholder when airlines_list is provided
+        flights = _filter_flights_by_airlines(flights, airlines_list)
         assignments = _build_assignments_for_flights(flights, staff)
         runs = _build_runs_from_assignments(
             assignments,
@@ -1729,12 +1790,15 @@ def api_runs_cc3():
             "count": len(runs),
         }
 
+    selected = airlines_list if airlines_list else [airline]
+
     out = {
         "ok": bool(payload.get("ok", True)),
         "source": payload.get("source") or ("upstream" if resp is not None else "placeholder"),
         "airport": payload.get("airport") or airport,
         "local_date": payload.get("local_date") or payload.get("date") or date_str,
         "airline": airline,
+        "airlines_selected": selected,
         "count": int(payload.get("count") or len(runs)),
         "shift_requested": _normalize_shift_param(shift),
         "runs": runs,
@@ -1744,7 +1808,8 @@ def api_runs_cc3():
     if "unassigned_flights" in payload:
         out["unassigned_flights"] = payload.get("unassigned_flights") or []
 
-    return jsonify(out), resp.status_code
+    status_code = resp.status_code if resp is not None else 200
+    return jsonify(out), status_code
 @app.get("/api/runs/sheet", endpoint="api_runs_sheet_proxy_cc3")
 def api_runs_sheet_cc3():
     """
