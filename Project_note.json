@@ -1,0 +1,102 @@
+{
+  "project": "Refueller Brain",
+  "type": "human-safety-and-complexity-guardrails",
+  "status": "active",
+  "last_updated": "2025-12-27",
+  "problem_statement": {
+    "summary": "This application has crossed the complexity threshold where a human cannot reliably remember all required steps, conventions, and safety rules.",
+    "risk": [
+      "Accidental loss of work via git reset --hard",
+      "Running servers against mismatched code",
+      "Schema drift caused by inconsistent terminology",
+      "Silent failures due to missing guard variables",
+      "Human cognitive overload during debugging"
+    ]
+  },
+  "design_principles": {
+    "priority_order": [
+      "Robustness over cleverness",
+      "Explicit steps over assumed knowledge",
+      "Guided workflows over ad-hoc commands",
+      "Fail early and loudly",
+      "Humans forget — the system must not"
+    ],
+    "anti_goals": [
+      "Do not rely on memory",
+      "Do not rely on implicit git state",
+      "Do not require context switching to operate safely",
+      "Do not introduce optional steps without enforcement"
+    ]
+  },
+  "git_rules": {
+    "absolute_rules": [
+      "Never use git reset --hard as a default workflow",
+      "Every Change Work Order (CWO) must be committed",
+      "Every CWO must live on its own branch",
+      "Main branch is pull-only, never edited directly"
+    ],
+    "required_workflow": [
+      "git fetch --prune origin",
+      "git switch main",
+      "git pull --ff-only origin main",
+      "git switch -c cwo/<descriptive-name>",
+      "apply changes",
+      "python -m py_compile app.py",
+      "git add -A",
+      "git commit -m \"CWO: <description>\"",
+      "git push -u origin cwo/<descriptive-name>",
+      "open PR and merge",
+      "git switch main",
+      "git pull --ff-only origin main"
+    ],
+    "human_note": "If you are unsure what branch you are on, STOP and run: git status"
+  },
+  "runtime_rules": {
+    "startup_sequence": [
+      "Ensure virtualenv is active",
+      "python -m py_compile app.py (must pass)",
+      "powershell -ExecutionPolicy Bypass -File .\\up.ps1",
+      "Wait for both Brain backend and UI health checks"
+    ],
+    "forbidden_states": [
+      "Running the server with syntax errors",
+      "Testing endpoints without confirming backend is running",
+      "Assuming old server state survived a code change"
+    ]
+  },
+  "api_consistency_rules": {
+    "terminology": {
+      "canonical_term": "airlines",
+      "deprecated_terms": ["operator", "airline (singular in query)"],
+      "rule": "All external-facing APIs accept airlines=CSV. Internals may map, but responses must be consistent."
+    },
+    "response_contracts": [
+      "If a filter is accepted, it must be echoed back (e.g. airlines_selected)",
+      "Endpoints must never crash if optional filters are omitted",
+      "Placeholder endpoints must behave deterministically"
+    ]
+  },
+  "guardrails_to_add": {
+    "code_level": [
+      "Explicit definition of all request-derived variables",
+      "No use of variables that are conditionally defined",
+      "Default values for all optional query params"
+    ],
+    "tooling_level": [
+      "Scripts must refuse to run if git state is unsafe",
+      "Scripts must print next steps clearly",
+      "Scripts must fail with human-readable errors"
+    ]
+  },
+  "human_state_acknowledgement": {
+    "statement": "This system is being built by a human who may be tired, stressed, or context-switched.",
+    "rule": "The system must guide the human, not test them.",
+    "instruction": "If something feels confusing, assume the system is wrong — not the human."
+  },
+  "next_actions": [
+    "Keep CWOs small and surgical",
+    "Add preflight checks before server start",
+    "Reduce the number of valid ways to do the same task",
+    "Prefer one blessed path over flexibility"
+  ]
+}
