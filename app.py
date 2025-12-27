@@ -85,8 +85,8 @@ def _add_cors_headers(resp):
 
 ALLOWED_QUERY_PARAMS = {
     # Core ops endpoints
-    "api_flights": {"date", "airport", "airline", "operator", "limit"},  # operator accepted as legacy alias
-    "api_runs": {"date", "airport", "airline", "operator", "shift"},     # operator accepted as legacy alias
+    "api_flights": {"date", "airport", "airline", "airlines", "operator", "limit"},  # operator accepted as legacy alias
+    "api_runs": {"date", "airport", "airline", "airlines", "operator", "shift"},     # operator accepted as legacy alias
 
     # Add more routes here as you harden them over time
     # "api_staff": {...},
@@ -1292,22 +1292,23 @@ def api_flights():
     if guard is not None:
         return guard
 
-    if request.args.get("airlines") is not None:
-        return json_error(
-            "Invalid parameter 'airlines'. Use canonical 'airline'.",
-            status_code=400,
-            code="schema_drift",
-        )
-
     if (date_error := _require_date_param()) is not None:
         return date_error
 
-    airline, airline_err = _normalize_airline_param(
-        request.args.get("airline"),
-        request.args.get("operator"),
-    )
-    if airline_err is not None:
-        return airline_err
+    airlines_csv = request.args.get("airlines") or ""
+    airlines_requested = bool(airlines_csv.strip())
+    airlines_list = _parse_airlines_csv(airlines_csv) if airlines_requested else []
+    if airlines_csv.strip().upper() == "ALL":
+        airlines_list = []
+    if airlines_requested:
+        airline = "ALL"
+    else:
+        airline, airline_err = _normalize_airline_param(
+            request.args.get("airline"),
+            request.args.get("operator"),
+        )
+        if airline_err is not None:
+            return airline_err
     airport = (request.args.get("airport") or "").strip().upper()
 
     if not airport:
@@ -1361,7 +1362,9 @@ def api_flights():
     raw_flights = _extract_flights_list(payload)
     ui_flights = [_normalize_flight_for_ui(f) for f in raw_flights]
 
-    if airline and airline != "ALL":
+    if airlines_list:
+        ui_flights = [f for f in ui_flights if (f.get("airline_code") in airlines_list)]
+    elif airline and airline != "ALL":
         ui_flights = [f for f in ui_flights if (f.get("airline_code") == airline)]
 
     source = "upstream"
@@ -1374,6 +1377,7 @@ def api_flights():
             "date": str(request.args.get("date") or "").strip(),
             "airport": airport,
             "airline": airline,
+            "airlines_selected": airlines_list if airlines_list else ["ALL"],
             "source": source,
             "upstream_path": used_path,
             "count": len(ui_flights),
@@ -1685,13 +1689,6 @@ def api_runs_cc3():
     if guard is not None:
         return guard
 
-    if request.args.get("airlines") is not None:
-        return json_error(
-            "Invalid parameter 'airlines'. Use canonical 'airline'.",
-            status_code=400,
-            code="schema_drift",
-        )
-
     date_str = (request.args.get("date") or "").strip()
     airport = (request.args.get("airport") or "").strip().upper()
     if not date_str:
@@ -1707,12 +1704,20 @@ def api_runs_cc3():
             code="validation_error",
         )
 
-    airline, airline_err = _normalize_airline_param(
-        request.args.get("airline"),
-        request.args.get("operator"),
-    )
-    if airline_err is not None:
-        return airline_err
+    airlines_csv = request.args.get("airlines") or ""
+    airlines_requested = bool(airlines_csv.strip())
+    airlines_list = _parse_airlines_csv(airlines_csv) if airlines_requested else []
+    if airlines_csv.strip().upper() == "ALL":
+        airlines_list = []
+    if airlines_requested:
+        airline = "ALL"
+    else:
+        airline, airline_err = _normalize_airline_param(
+            request.args.get("airline"),
+            request.args.get("operator"),
+        )
+        if airline_err is not None:
+            return airline_err
     shift = request.args.get("shift", "ALL")
     params = {"date": date_str, "airport": airport, "shift": shift, "airline": airline}
 
@@ -1771,13 +1776,38 @@ def api_runs_cc3():
             "count": len(runs),
         }
 
+    if airlines_list:
+        runs = [
+            run
+            for run in runs
+            if isinstance(run, dict)
+            and (
+                _flight_airline_code(run) in airlines_list
+                or (
+                    isinstance(run.get("flight"), dict)
+                    and _flight_airline_code(run.get("flight")) in airlines_list
+                )
+                or (
+                    isinstance(run.get("flights"), list)
+                    and any(
+                        _flight_airline_code(flight) in airlines_list
+                        for flight in run.get("flights")
+                        if isinstance(flight, dict)
+                    )
+                )
+            )
+        ]
+
+    count = len(runs) if airlines_list else int(payload.get("count") or len(runs))
+
     out = {
         "ok": bool(payload.get("ok", True)),
         "source": payload.get("source") or ("upstream" if resp is not None else "placeholder"),
         "airport": payload.get("airport") or airport,
         "local_date": payload.get("local_date") or payload.get("date") or date_str,
         "airline": airline,
-        "count": int(payload.get("count") or len(runs)),
+        "airlines_selected": airlines_list if airlines_list else [airline],
+        "count": count,
         "shift_requested": _normalize_shift_param(shift),
         "runs": runs,
     }
