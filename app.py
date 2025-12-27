@@ -1758,11 +1758,33 @@ def api_runs_cc3():
 
     if resp is None or needs_placeholder:
         staff = _staff_for_shift(_load_staff_seed(), _normalize_shift_param(shift))
-        flights = _fetch_flights_for_assignment(
-            date_str=date_str,
-            airport=airport,
-            airline=airline,
-        )
+        flights_paths = [
+            "/api/ops/schedule/flights",
+            "/api/ops/flights",
+            "/api/flights",
+        ]
+        flights_params = {"date": date_str, "airport": airport, "airline": airline}
+        flights = []
+        try:
+            flights_resp, _ = _call_upstream(flights_paths, params=flights_params, timeout=20)
+        except requests.RequestException:
+            flights_resp = None
+
+        if flights_resp is not None and flights_resp.status_code != 404:
+            try:
+                flights_payload = flights_resp.json()
+            except Exception:  # noqa: BLE001
+                flights_payload = {}
+
+            raw_flights = _extract_flights_list(flights_payload)
+            ui_flights = [_normalize_flight_for_ui(f) for f in raw_flights]
+
+            if airlines_list:
+                ui_flights = [f for f in ui_flights if (f.get("airline_code") in airlines_list)]
+            elif airline and airline != "ALL":
+                ui_flights = [f for f in ui_flights if (f.get("airline_code") == airline)]
+
+            flights = ui_flights
         assignments = _build_assignments_for_flights(flights, staff)
         runs = _build_runs_from_assignments(
             assignments,
