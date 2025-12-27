@@ -2,7 +2,8 @@
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
@@ -87,6 +88,7 @@ ALLOWED_QUERY_PARAMS = {
     # Core ops endpoints
     "api_flights": {"date", "airport", "airline", "airlines", "operator", "limit"},  # operator accepted as legacy alias
     "api_runs": {"date", "airport", "airline", "airlines", "operator", "shift"},     # operator accepted as legacy alias
+    "api_metrics_jq_departures": {"date", "airport", "airline", "start_local", "end_local"},
 
     # Add more routes here as you harden them over time
     # "api_staff": {...},
@@ -636,6 +638,76 @@ def _extract_local_hhmm(value: Optional[Any]) -> Optional[str]:
         except ValueError:
             return None
     return None
+
+
+def _parse_iso_datetime(value: Optional[Any]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        iso_value = raw.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(iso_value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _parse_hhmm_with_offset(
+    value: Optional[str],
+    *,
+    label: str,
+    allow_24: bool = False,
+) -> Tuple[Optional[Tuple[int, int, int]], Optional[Tuple[Any, int]]]:
+    text = (value or "").strip()
+    if not text:
+        return None, json_error(
+            f"Missing required '{label}' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+    parts = text.split(":")
+    if len(parts) != 2:
+        return None, json_error(
+            f"Invalid {label} value '{text}'. Expected HH:MM.",
+            status_code=400,
+            code="validation_error",
+        )
+    try:
+        hours = int(parts[0])
+        minutes = int(parts[1])
+    except ValueError:
+        return None, json_error(
+            f"Invalid {label} value '{text}'. Expected HH:MM.",
+            status_code=400,
+            code="validation_error",
+        )
+    if minutes < 0 or minutes > 59:
+        return None, json_error(
+            f"Invalid {label} value '{text}'. Expected HH:MM.",
+            status_code=400,
+            code="validation_error",
+        )
+    if hours == 24 and minutes == 0:
+        if not allow_24:
+            return None, json_error(
+                f"Invalid {label} value '{text}'. Expected HH:MM.",
+                status_code=400,
+                code="validation_error",
+            )
+        return (0, 0, 1), None
+    if hours < 0 or hours > 23:
+        return None, json_error(
+            f"Invalid {label} value '{text}'. Expected HH:MM.",
+            status_code=400,
+            code="validation_error",
+        )
+    return (hours, minutes, 0), None
 
 
 def _time_to_minutes(hhmm: Optional[str]) -> Optional[int]:
@@ -1384,6 +1456,170 @@ def api_flights():
             "flights": ui_flights,
         }
     ), 200
+
+
+@app.get("/api/metrics/jq_departures")
+def api_metrics_jq_departures():
+    """Return count of JQ departures within a Sydney-local time window."""
+    guard = _reject_unknown_query_params(
+        "api_metrics_jq_departures",
+        ALLOWED_QUERY_PARAMS["api_metrics_jq_departures"],
+    )
+    if guard is not None:
+        return guard
+
+    date_str = (request.args.get("date") or "").strip()
+    if not date_str:
+        return json_error(
+            "Missing required 'date' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    airport = (request.args.get("airport") or "").strip().upper()
+    if not airport:
+        return json_error(
+            "Missing required 'airport' query parameter.",
+            status_code=400,
+            code="validation_error",
+        )
+
+    airline = (request.args.get("airline") or "JQ").strip().upper() or "JQ"
+    start_local = (request.args.get("start_local") or "05:00").strip()
+    end_local = (request.args.get("end_local") or "24:00").strip()
+
+    try:
+        local_date = datetime.fromisoformat(date_str).date()
+    except ValueError:
+        return json_error(
+            "date must be in YYYY-MM-DD format",
+            status_code=400,
+            code="validation_error",
+        )
+
+    start_parts, start_err = _parse_hhmm_with_offset(
+        start_local,
+        label="start_local",
+        allow_24=False,
+    )
+    if start_err is not None:
+        return start_err
+
+    end_parts, end_err = _parse_hhmm_with_offset(
+        end_local,
+        label="end_local",
+        allow_24=True,
+    )
+    if end_err is not None:
+        return end_err
+
+    tz = ZoneInfo("Australia/Sydney")
+    start_hour, start_min, start_offset = start_parts or (5, 0, 0)
+    end_hour, end_min, end_offset = end_parts or (0, 0, 1)
+
+    start_dt = datetime(
+        local_date.year,
+        local_date.month,
+        local_date.day,
+        start_hour,
+        start_min,
+        tzinfo=tz,
+    ) + timedelta(days=start_offset)
+    end_dt = datetime(
+        local_date.year,
+        local_date.month,
+        local_date.day,
+        end_hour,
+        end_min,
+        tzinfo=tz,
+    ) + timedelta(days=end_offset)
+
+    flights_paths = [
+        "/api/ops/schedule/flights",
+        "/api/ops/flights",
+        "/api/flights",
+    ]
+    params = {
+        "date": date_str,
+        "airport": airport,
+        "airline": airline,
+    }
+
+    try:
+        resp, used_path = _call_upstream(flights_paths, params=params, timeout=20)
+    except requests.RequestException as exc:
+        app.logger.exception("Failed to call flights endpoint for metrics")
+        return json_error(
+            "Upstream flights endpoint unavailable",
+            status_code=502,
+            code="upstream_error",
+            detail={"detail": str(exc)},
+        )
+
+    if resp is None:
+        return json_error(
+            "Flights endpoint not reachable upstream.",
+            status_code=502,
+            code="upstream_unavailable",
+        )
+
+    if resp.status_code == 404:
+        return _build_ok(
+            {
+                "airport": airport,
+                "local_date": date_str,
+                "timezone": "Australia/Sydney",
+                "airline": airline,
+                "window_local": {"start": start_local, "end": end_local},
+                "count": 0,
+                "flights": [],
+                "upstream_path": used_path,
+                "source": "compatibility",
+            }
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        return json_error(
+            "Invalid JSON from flights backend.",
+            status_code=502,
+            code="invalid_json",
+            detail={"raw": resp.text[:500]},
+        )
+
+    raw_flights = _extract_flights_list(payload)
+    matched: List[Dict[str, Any]] = []
+
+    for flight in raw_flights:
+        if not isinstance(flight, dict):
+            continue
+        if airline and airline != "ALL":
+            flight_airline = _flight_airline_code(flight)
+            if flight_airline != airline:
+                continue
+        off_value = _pick_first(flight.get("estimated_off"), flight.get("scheduled_off"))
+        off_dt = _parse_iso_datetime(off_value)
+        if off_dt is None:
+            continue
+        off_local = off_dt.astimezone(tz)
+        if not (start_dt <= off_local < end_dt):
+            continue
+        summary = _normalize_flight_for_ui(flight)
+        summary["off_local"] = off_local.strftime("%H:%M")
+        matched.append(summary)
+
+    return _build_ok(
+        {
+            "airport": airport,
+            "local_date": date_str,
+            "timezone": "Australia/Sydney",
+            "airline": airline,
+            "window_local": {"start": start_local, "end": end_local},
+            "count": len(matched),
+            "flights": matched,
+        }
+    )
 
 
 @app.post("/api/flights/pull")
