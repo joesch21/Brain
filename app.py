@@ -81,6 +81,38 @@ def _add_cors_headers(resp):
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
     return resp
 
+# --- Contract Guard: prevent schema drift by rejecting unknown query params ---
+
+ALLOWED_QUERY_PARAMS = {
+    # Core ops endpoints
+    "api_flights": {"date", "airport", "airline", "operator", "limit"},  # operator accepted as legacy alias
+    "api_runs": {"date", "airport", "airline", "operator", "shift"},     # operator accepted as legacy alias
+
+    # Add more routes here as you harden them over time
+    # "api_staff": {...},
+    # "api_wiring_status": set(),
+}
+
+
+def _reject_unknown_query_params(route_key: str, allowed: set[str]):
+    """
+    EWOT: Validates request.args against a canonical allowlist to prevent schema drift.
+    Returns a Flask response (json_error) if unknown params exist, else None.
+    """
+    try:
+        provided = {k for k in request.args.keys()}
+    except Exception:
+        provided = set()
+
+    unknown = sorted([k for k in provided if k not in allowed])
+    if unknown:
+        # Loud + explicit: fail fast, do not silently accept drift.
+        msg = f"Unknown query parameter(s): {', '.join(unknown)}. Allowed: {', '.join(sorted(allowed))}"
+        app.logger.warning("schema_drift route=%s unknown=%s", route_key, unknown)
+        return json_error(msg, status_code=400, code="schema_drift")
+
+    return None
+
 # ---------------------------------------------------------------------------
 # Jinja helpers required by templates/_layout.html
 # ---------------------------------------------------------------------------
@@ -1256,6 +1288,9 @@ def api_staff_runs():
 @app.get("/api/flights")
 def api_flights():
     """Proxy GET /api/flights with legacy compatibility fallbacks."""
+    guard = _reject_unknown_query_params("api_flights", ALLOWED_QUERY_PARAMS["api_flights"])
+    if guard is not None:
+        return guard
 
     if request.args.get("airlines") is not None:
         return json_error(
@@ -1646,6 +1681,10 @@ def api_runs_cc3():
     EWOT: Proxy CC3-style runs endpoint (GET /api/runs?date&airport&airline&shift)
     so Brain can talk to CC3 without the frontend doing direct cross-origin calls.
     """
+    guard = _reject_unknown_query_params("api_runs", ALLOWED_QUERY_PARAMS["api_runs"])
+    if guard is not None:
+        return guard
+
     if request.args.get("airlines") is not None:
         return json_error(
             "Invalid parameter 'airlines'. Use canonical 'airline'.",
