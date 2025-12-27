@@ -1,12 +1,41 @@
 // src/lib/apiClient.js
 // EWOT: Centralized API client for Brain frontend that always speaks `airline`,
-// avoids /api/api duplication, and provides safe + strict request modes.
+// supports VITE_API_BASE for production, avoids /api/api duplication,
+// and provides safe + strict request modes.
 
 import { OPS_API_BASE } from "./opsApiBase";
 import { REQUIRED_AIRPORT, normalizeAirline } from "./opsDefaults";
 import { pushBackendDebugEntry } from "./backendDebug";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+
+/* ===========================
+   API base resolution
+   =========================== */
+
+/**
+ * EWOT: Choose the API base URL in a deterministic, deploy-safe order:
+ *  1) VITE_API_BASE (production; e.g. https://brain-backend-026t.onrender.com)
+ *  2) OPS_API_BASE (legacy/config fallback)
+ *  3) "" (same-origin; Vite proxy handles /api/* in dev)
+ *
+ * NOTE: We intentionally DO NOT read process.env here; Vite uses import.meta.env.
+ */
+function getApiBase() {
+  let base = "";
+
+  try {
+    base = (import.meta?.env?.VITE_API_BASE ?? "").toString().trim();
+  } catch {
+    base = "";
+  }
+
+  if (!base) base = (OPS_API_BASE ?? "").toString().trim();
+
+  // normalize
+  base = base.replace(/\/+$/, ""); // trim trailing slashes
+  return base;
+}
 
 /* ===========================
    URL helpers
@@ -21,16 +50,14 @@ const DEFAULT_TIMEOUT_MS = 60_000;
  *  - "http://127.0.0.1:5055/api"
  *
  * path examples:
- *  - "/api/flights?..."
- *  - "api/flights?..."
+ *  - "/api/flights?... "
+ *  - "api/flights?... "
  */
 function buildUrl(path) {
-  const baseRaw = (OPS_API_BASE ?? "").toString().trim();
-
   // Absolute URL passed in
   if (/^https?:\/\//i.test(path)) return path;
 
-  const base = baseRaw.replace(/\/+$/, ""); // trim trailing slashes
+  const base = getApiBase();
   const p = path.startsWith("/") ? path : `/${path}`;
 
   // Same-origin relative (preferred in dev with Vite proxy)
@@ -54,8 +81,7 @@ function buildUrl(path) {
 function parseErrorMessage(body, statusText, networkError) {
   if (body && typeof body === "object") {
     if (typeof body.error === "string") return body.error;
-    if (body.error && typeof body.error === "object" && body.error.message)
-      return body.error.message;
+    if (body.error && typeof body.error === "object" && body.error.message) return body.error.message;
     if (typeof body.message === "string") return body.message;
   }
   if (typeof body === "string" && body.trim()) return body;
@@ -169,6 +195,7 @@ async function brainFetch(path, options = {}, mode = "throw") {
     return { status, data: body };
   } catch (err) {
     const aborted = err?.name === "AbortError";
+
     const debugEntry = pushBackendDebugEntry({
       type: aborted ? "aborted" : "network-error",
       url,
@@ -205,6 +232,7 @@ async function brainFetch(path, options = {}, mode = "throw") {
 function request(path, options = {}) {
   return brainFetch(path, options, "throw");
 }
+
 function safeRequest(path, options = {}) {
   return brainFetch(path, options, "safe");
 }
@@ -256,6 +284,7 @@ export async function fetchFlights(date, airline = "ALL", airport = REQUIRED_AIR
   qs.set("date", date);
   qs.set("airport", resolveAirport(airport));
   qs.set("airline", resolveAirline(options, airline));
+
   return request(`/api/flights?${qs.toString()}`, options);
 }
 
