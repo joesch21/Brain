@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 
 import { API_BASE } from "../api/apiBase";
+import { apiRequest } from "../lib/apiClient";
 
 const WiringTestPanel = () => {
-  const apiBase = API_BASE;
+  const apiBase =
+    (import.meta?.env?.VITE_API_BASE ?? "").toString().trim() || API_BASE;
 
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -15,25 +17,10 @@ const WiringTestPanel = () => {
     setResult(null);
 
     try {
-      const response = await fetch(`${apiBase}/ops/debug/wiring`, {
+      const { data } = await apiRequest("/api/ops/debug/wiring", {
         method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
       });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(
-          `HTTP ${response.status} – ${response.statusText} – ${text.slice(
-            0,
-            200
-          )}`
-        );
-      }
-
-      const json = await response.json();
-      setResult(json);
+      setResult(data);
     } catch (err) {
       setError(err.message || "Unknown error");
     } finally {
