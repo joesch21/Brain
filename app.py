@@ -356,6 +356,11 @@ def _normalize_flight_sample(sample: Any) -> List[str]:
     return [str(sample)]
 
 
+def _sydney_tomorrow_iso() -> str:
+    tz = ZoneInfo("Australia/Sydney")
+    return (datetime.now(tz) + timedelta(days=1)).date().isoformat()
+
+
 def _call_upstream(
     paths: Iterable[str], method: str = "get", **kwargs: Dict[str, Any]
 ) -> Tuple[Optional[requests.Response], Optional[str]]:
@@ -1185,6 +1190,195 @@ def api_cc3_ingest_canary():
                 "label": "PASS" if status_ok else "FAIL",
                 "reasons": reasons,
             },
+        }
+    )
+
+
+@app.post("/api/machine-room/cc3-ingest-canary")
+def api_machine_room_cc3_ingest_canary():
+    """Run a CC3 ingest canary for Machine Room with safe defaults."""
+    payload = request.get_json(silent=True) or {}
+    airport = (payload.get("airport") or "YSSY").strip().upper() or "YSSY"
+    scope = (payload.get("scope") or "both").strip() or "both"
+    store_value = payload.get("store")
+    if isinstance(store_value, bool):
+        store = store_value
+    elif store_value is None:
+        store = False
+    else:
+        store = str(store_value).strip().lower() in {"1", "true", "yes", "y", "on"}
+    timeout_value = payload.get("timeout")
+    try:
+        timeout_sec = int(timeout_value) if timeout_value is not None else 8
+    except (TypeError, ValueError):
+        timeout_sec = 8
+    if timeout_sec <= 0:
+        timeout_sec = 8
+
+    date_override = (payload.get("date") or "").strip()
+    if date_override:
+        try:
+            date_str = datetime.fromisoformat(date_override).date().isoformat()
+        except ValueError:
+            canary_request = {
+                "airport": airport,
+                "date": date_override,
+                "timeout": timeout_sec,
+                "store": store,
+                "scope": scope,
+            }
+            return _build_ok(
+                {
+                    "cc3_canary": {
+                        "ok": False,
+                        "cc3_base_url": None,
+                        "canary_request": canary_request,
+                        "canary_result": None,
+                        "status": "FAIL",
+                        "reasons": ["date must be in YYYY-MM-DD format."],
+                    }
+                }
+            )
+    else:
+        date_str = _sydney_tomorrow_iso()
+
+    canary_request = {
+        "airport": airport,
+        "date": date_str,
+        "timeout": timeout_sec,
+        "store": store,
+        "scope": scope,
+    }
+
+    active_base = _active_upstream_base()
+    cc3_base_url = active_base.rstrip("/") if active_base else None
+    if not cc3_base_url:
+        return _build_ok(
+            {
+                "cc3_canary": {
+                    "ok": False,
+                    "cc3_base_url": None,
+                    "canary_request": canary_request,
+                    "canary_result": None,
+                    "status": "FAIL",
+                    "reasons": ["No upstream base URL configured."],
+                }
+            }
+        )
+
+    try:
+        resp = requests.post(
+            f"{cc3_base_url}/api/flights/ingest/aeroapi",
+            json=canary_request,
+            timeout=timeout_sec,
+        )
+    except requests.RequestException as exc:
+        return _build_ok(
+            {
+                "cc3_canary": {
+                    "ok": False,
+                    "cc3_base_url": cc3_base_url,
+                    "canary_request": canary_request,
+                    "canary_result": None,
+                    "status": "FAIL",
+                    "reasons": [f"Upstream request failed: {exc}"],
+                }
+            }
+        )
+
+    try:
+        upstream_payload = resp.json()
+    except Exception:  # noqa: BLE001
+        upstream_payload = None
+
+    if not resp.ok:
+        reason = f"Upstream returned HTTP {resp.status_code}."
+        if isinstance(upstream_payload, dict):
+            message = upstream_payload.get("error") or upstream_payload.get("message")
+            if message:
+                reason = f"{reason} {message}"
+        return _build_ok(
+            {
+                "cc3_canary": {
+                    "ok": False,
+                    "cc3_base_url": cc3_base_url,
+                    "canary_request": canary_request,
+                    "canary_result": None,
+                    "status": "FAIL",
+                    "reasons": [reason],
+                }
+            }
+        )
+
+    if not isinstance(upstream_payload, dict):
+        return _build_ok(
+            {
+                "cc3_canary": {
+                    "ok": False,
+                    "cc3_base_url": cc3_base_url,
+                    "canary_request": canary_request,
+                    "canary_result": None,
+                    "status": "FAIL",
+                    "reasons": ["Upstream returned invalid JSON."],
+                }
+            }
+        )
+
+    result_source = upstream_payload.get("canary_result")
+    if not isinstance(result_source, dict):
+        result_source = upstream_payload
+
+    count_value = result_source.get("count") if isinstance(result_source, dict) else None
+    sample_value = (
+        result_source.get("flight_numbers_sample")
+        or result_source.get("flight_numbers")
+        if isinstance(result_source, dict)
+        else None
+    )
+    normalized_sample = _normalize_flight_sample(sample_value)
+    non_empty_sample = [
+        value.strip() for value in normalized_sample if value and value.strip()
+    ]
+
+    reasons: List[str] = []
+    count_int: Optional[int] = None
+    if count_value is None:
+        reasons.append("No count returned.")
+    else:
+        try:
+            count_int = int(count_value)
+            if count_int <= 15:
+                reasons.append("Count is 15 or less.")
+        except (TypeError, ValueError):
+            reasons.append("Count is not numeric.")
+
+    if not non_empty_sample:
+        reasons.append("No non-empty flight numbers sample.")
+    elif len(non_empty_sample) < 3:
+        reasons.append("Fewer than 3 non-empty flight numbers.")
+
+    upstream_ok = upstream_payload.get("ok")
+    if upstream_ok is not True:
+        message = upstream_payload.get("error") or upstream_payload.get("message")
+        reasons.append(message or "Upstream response ok!=true.")
+
+    status = "PASS" if len(reasons) == 0 else "FAIL"
+    canary_result = {
+        "ok": upstream_ok is True,
+        "count": count_int if count_int is not None else count_value,
+        "flight_numbers_sample": non_empty_sample,
+    }
+
+    return _build_ok(
+        {
+            "cc3_canary": {
+                "ok": status == "PASS",
+                "cc3_base_url": cc3_base_url,
+                "canary_request": canary_request,
+                "canary_result": canary_result,
+                "status": status,
+                "reasons": reasons,
+            }
         }
     )
 

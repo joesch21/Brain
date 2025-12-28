@@ -393,6 +393,20 @@
   margin-bottom: 0.5rem;
 }
 
+.canary-panel__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.canary-panel__field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+
 .canary-panel__subtitle {
   display: block;
   font-size: 0.8rem;

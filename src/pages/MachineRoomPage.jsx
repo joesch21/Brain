@@ -121,6 +121,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [cc3CanaryLoading, setCc3CanaryLoading] = useState(false);
   const [cc3CanaryError, setCc3CanaryError] = useState("");
   const [cc3CanaryResult, setCc3CanaryResult] = useState(null);
+  const [cc3CanaryDateOverride, setCc3CanaryDateOverride] = useState("");
 
   const [testingApis, setTestingApis] = useState(false);
   const [apiTests, setApiTests] = useState([]);
@@ -442,20 +443,26 @@ const SystemStatusCard = ({ selectedAirline }) => {
   };
 
   const runCc3IngestCanary = async () => {
-    const dateStr = date || todayISO();
-    const params = new URLSearchParams({
-      date: dateStr,
+    const payload = {
       airport: DEFAULT_AIRPORT,
-    });
+      scope: "both",
+      store: false,
+      timeout: 8,
+    };
+    if (cc3CanaryDateOverride) {
+      payload.date = cc3CanaryDateOverride;
+    }
 
     setCc3CanaryLoading(true);
     setCc3CanaryError("");
     setCc3CanaryResult(null);
 
     try {
-      const resp = await fetch(`/api/cc3/ingest_canary?${params.toString()}`, {
-        method: "GET",
+      const resp = await fetch("/api/machine-room/cc3-ingest-canary", {
+        method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok || body?.ok === false) {
@@ -466,7 +473,11 @@ const SystemStatusCard = ({ selectedAirline }) => {
         setCc3CanaryError(message);
         return;
       }
-      setCc3CanaryResult(body);
+      if (!body?.cc3_canary) {
+        setCc3CanaryError("CC3 ingest canary response missing.");
+        return;
+      }
+      setCc3CanaryResult(body.cc3_canary);
     } catch (err) {
       setCc3CanaryError(
         err?.message || "Network error running CC3 ingest canary."
@@ -679,34 +690,52 @@ const SystemStatusCard = ({ selectedAirline }) => {
   };
 
   const renderCc3CanaryPanel = () => {
-    const dateStr = date || todayISO();
     const canaryRequest = cc3CanaryResult?.canary_request || {};
     const canaryResult = cc3CanaryResult?.canary_result || {};
-    const canaryStatus = cc3CanaryResult?.status || {};
-    const reasons = Array.isArray(canaryStatus.reasons)
-      ? canaryStatus.reasons
+    const reasons = Array.isArray(cc3CanaryResult?.reasons)
+      ? cc3CanaryResult.reasons
       : [];
     const statusLabel =
-      canaryStatus.label || (canaryStatus.ok ? "PASS" : "FAIL");
+      cc3CanaryResult?.status || (cc3CanaryResult?.ok ? "PASS" : "FAIL");
+    const isPass = statusLabel === "PASS";
+    const flightSample = Array.isArray(canaryResult.flight_numbers_sample)
+      ? canaryResult.flight_numbers_sample
+      : [];
+    const maxSamples = 20;
+    const flightSamplePreview = flightSample.slice(0, maxSamples);
+    const flightSampleSuffix =
+      flightSample.length > maxSamples
+        ? ` … (+${flightSample.length - maxSamples} more)`
+        : "";
 
     return (
       <section className="canary-panel">
         <div className="canary-panel__header">
           <div>
-            <h4 style={{ margin: 0 }}>CC3 ingest canary</h4>
+            <h4 style={{ margin: 0 }}>CC3 Ingest Canary</h4>
             <span className="canary-panel__subtitle">
-              Quick ingest validation for {dateStr} ({DEFAULT_AIRPORT})
+              Defaults to Sydney tomorrow ({DEFAULT_AIRPORT}) unless overridden.
             </span>
           </div>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={runCc3IngestCanary}
-            disabled={cc3CanaryLoading}
-            style={{ padding: "0.35rem 0.6rem" }}
-          >
-            {cc3CanaryLoading ? "Running…" : "Run CC3 Ingest Canary"}
-          </button>
+          <div className="canary-panel__controls">
+            <label className="canary-panel__field">
+              Date (optional)
+              <input
+                type="date"
+                value={cc3CanaryDateOverride}
+                onChange={(e) => setCc3CanaryDateOverride(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={runCc3IngestCanary}
+              disabled={cc3CanaryLoading}
+              style={{ padding: "0.35rem 0.6rem" }}
+            >
+              {cc3CanaryLoading ? "Running…" : "Run CC3 Ingest Canary"}
+            </button>
+          </div>
         </div>
 
         {cc3CanaryError && (
@@ -724,7 +753,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
             <div className="canary-panel__row">
               <span className="canary-panel__label">Request</span>
               <span className="canary-panel__value">
-                {canaryRequest.date || dateStr} /{" "}
+                {canaryRequest.date || "Sydney tomorrow"} /{" "}
                 {canaryRequest.airport || DEFAULT_AIRPORT}
               </span>
             </div>
@@ -737,9 +766,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
             <div className="canary-panel__row">
               <span className="canary-panel__label">Flight numbers</span>
               <span className="canary-panel__value">
-                {Array.isArray(canaryResult.flight_numbers_sample) &&
-                canaryResult.flight_numbers_sample.length > 0
-                  ? canaryResult.flight_numbers_sample.join(", ")
+                {flightSamplePreview.length > 0
+                  ? `${flightSamplePreview.join(", ")}${flightSampleSuffix}`
                   : "—"}
               </span>
             </div>
@@ -747,7 +775,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
               <span className="canary-panel__label">Status</span>
               <span
                 className={`canary-status ${
-                  canaryStatus.ok ? "canary-status--ok" : "canary-status--fail"
+                  isPass ? "canary-status--ok" : "canary-status--fail"
                 }`}
               >
                 {statusLabel}
