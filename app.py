@@ -206,7 +206,7 @@ class UpstreamSelector:
         self._probe_inflight = False
 
         # tuneable probe timeout (keep it short)
-        self._probe_timeout_sec = float(os.getenv("UPSTREAM_PROBE_TIMEOUT_SEC", "2.0"))
+        self._probe_timeout_sec = float(os.getenv("UPSTREAM_PROBE_TIMEOUT_SEC", "6.0"))
 
     def _needs_refresh(self) -> bool:
         if self._last_probe_at is None:
@@ -233,6 +233,7 @@ class UpstreamSelector:
             ok = False
             payload: Dict[str, Any] = {}
 
+            start_attempt = time.monotonic()
             try:
                 resp = requests.get(
                     probe_url,
@@ -262,6 +263,8 @@ class UpstreamSelector:
                 attempt["error"] = str(exc)
             except Exception as exc:  # noqa: BLE001
                 attempt["error"] = str(exc)
+            finally:
+                attempt["elapsed_seconds"] = round(time.monotonic() - start_attempt, 4)
 
             attempt["ok"] = ok
             attempts.append(attempt)
@@ -276,6 +279,7 @@ class UpstreamSelector:
             "ok": found_working,
             "selected_base_url": chosen_base,
             "attempts": attempts,
+            "canary_timeout_seconds": self._probe_timeout_sec,
             "at": datetime.now(timezone.utc).isoformat(),
         }
 
