@@ -1303,20 +1303,9 @@ def api_machine_room_cc3_ingest_canary():
         {
             "status": status,
             "cc3_base_url": cc3_base_url,
-            "canary_request": {"airport": airport, "date": date_str},
-            "canary_result": {
-                "count": canary_result["count"],
-                "flight_numbers_sample": canary_result["flight_numbers_sample"],
-            },
+            "canary_request": canary_request,
+            "canary_result": canary_result,
             "reasons": reasons,
-            "cc3_canary": {
-                "ok": status == "PASS",
-                "cc3_base_url": cc3_base_url,
-                "canary_request": canary_request,
-                "canary_result": canary_result,
-                "status": status,
-                "reasons": reasons,
-            },
         }
     )
 
