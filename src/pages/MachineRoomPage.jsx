@@ -4,6 +4,7 @@ import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 import ImportStatusCard from "../components/ImportStatusCard";
 import DbInventoryCard from "../components/DbInventoryCard";
 import { pushBackendDebugEntry } from "../lib/backendDebug";
+import { safeRequest } from "../lib/apiClient";
 import {
   autoAssignStaff as autoAssignStaffApi,
   autoAssignFlights as autoAssignFlightsApi,
@@ -360,21 +361,15 @@ const SystemStatusCard = ({ selectedAirline }) => {
       };
 
       try {
-        const resp = await fetch(url, {
+        const resp = await safeRequest(url, {
           method: test.method,
           credentials: "include",
         });
         const httpStatus = resp.status;
         result.httpStatus = httpStatus;
 
-        let body = null;
-        try {
-          body = await resp.json();
-        } catch (jsonErr) {
-          console.debug("Wiring test non-JSON body", jsonErr);
-        }
-
-        const baseOk = resp.ok;
+        const body = resp.data;
+        const baseOk = httpStatus != null && httpStatus >= 200 && httpStatus < 300;
         const logicalOk = test.expectsOkField ? body?.ok !== false : true;
         const validation = test.validate ? test.validate(body) : { ok: true };
         const validationOk =
@@ -407,7 +402,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
           result.message = body?.error || body?.message || "ok=false in body";
         } else {
           result.status = "error";
-          result.message = body?.error || body?.message || `HTTP ${httpStatus}`;
+          result.message =
+            body?.error || body?.message || resp.error || `HTTP ${httpStatus}`;
         }
 
         pushBackendDebugEntry({
@@ -459,17 +455,23 @@ const SystemStatusCard = ({ selectedAirline }) => {
     setCc3CanaryResult(null);
 
     try {
-      const resp = await fetch("/api/machine-room/cc3-ingest-canary", {
+      const resp = await safeRequest("/api/machine-room/cc3-ingest-canary", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = await resp.json().catch(() => ({}));
-      if (!resp.ok || body?.ok === false) {
+      const body = resp.data || {};
+      const ok =
+        resp.status != null &&
+        resp.status >= 200 &&
+        resp.status < 300 &&
+        body?.ok !== false;
+      if (!ok) {
         const message =
           body?.error?.message ||
           body?.error ||
+          resp.error ||
           "CC3 ingest canary failed.";
         setCc3CanaryError(message);
         return;

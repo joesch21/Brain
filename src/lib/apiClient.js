@@ -395,3 +395,4 @@ export async function autoAssignRuns(date, airline = "ALL", options = {}) {
 
 // Backward compatible export if anything imports apiRequest
 export { request as apiRequest };
+export { safeRequest };
