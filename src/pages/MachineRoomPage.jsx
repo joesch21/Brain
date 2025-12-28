@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchApiStatus, formatApiError } from "../utils/apiStatus";
 import ImportStatusCard from "../components/ImportStatusCard";
+import DbInventoryCard from "../components/DbInventoryCard";
 import { pushBackendDebugEntry } from "../lib/backendDebug";
 import {
   autoAssignStaff as autoAssignStaffApi,
@@ -1297,6 +1298,8 @@ const MachineRoomPage = () => {
           </div>
         )}
       </div>
+
+      <DbInventoryCard />
 
       {/* NEW: live system status, flight/run counts, API tests, and seeding */}
       <SystemStatusCard selectedAirline={airline} />
