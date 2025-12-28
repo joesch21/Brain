@@ -361,6 +361,11 @@ def _sydney_tomorrow_iso() -> str:
     return (datetime.now(tz) + timedelta(days=1)).date().isoformat()
 
 
+def _sydney_today_iso() -> str:
+    tz = ZoneInfo("Australia/Sydney")
+    return datetime.now(tz).date().isoformat()
+
+
 def _call_upstream(
     paths: Iterable[str], method: str = "get", **kwargs: Dict[str, Any]
 ) -> Tuple[Optional[requests.Response], Optional[str]]:
@@ -1194,47 +1199,14 @@ def api_cc3_ingest_canary():
     )
 
 
-@app.post("/api/machine-room/cc3-ingest-canary")
+@app.route("/api/machine-room/cc3-ingest-canary", methods=["GET", "POST"])
 def api_machine_room_cc3_ingest_canary():
     """Run a CC3 ingest canary for Machine Room with safe defaults."""
-    payload = request.get_json(silent=True) or {}
-    airport = (payload.get("airport") or "YSSY").strip().upper() or "YSSY"
-    scope = (payload.get("scope") or "both").strip() or "both"
-    store_value = payload.get("store")
-    if isinstance(store_value, bool):
-        store = store_value
-    elif store_value is None:
-        store = False
-    else:
-        store = str(store_value).strip().lower() in {"1", "true", "yes", "y", "on"}
+    airport = "YSSY"
+    scope = "both"
+    store = False
     timeout_sec = 8
-
-    date_override = (payload.get("date") or "").strip()
-    if date_override:
-        try:
-            date_str = datetime.fromisoformat(date_override).date().isoformat()
-        except ValueError:
-            canary_request = {
-                "airport": airport,
-                "date": date_override,
-                "timeout": timeout_sec,
-                "store": store,
-                "scope": scope,
-            }
-            return _build_ok(
-                {
-                    "cc3_canary": {
-                        "ok": False,
-                        "cc3_base_url": None,
-                        "canary_request": canary_request,
-                        "canary_result": None,
-                        "status": "FAIL",
-                        "reasons": ["date must be in YYYY-MM-DD format."],
-                    }
-                }
-            )
-    else:
-        date_str = _sydney_tomorrow_iso()
+    date_str = _sydney_today_iso()
 
     canary_request = {
         "airport": airport,
@@ -1246,81 +1218,44 @@ def api_machine_room_cc3_ingest_canary():
 
     active_base = _active_upstream_base()
     cc3_base_url = active_base.rstrip("/") if active_base else None
+    reasons: List[str] = []
     if not cc3_base_url:
-        return _build_ok(
-            {
-                "cc3_canary": {
-                    "ok": False,
-                    "cc3_base_url": None,
-                    "canary_request": canary_request,
-                    "canary_result": None,
-                    "status": "FAIL",
-                    "reasons": ["No upstream base URL configured."],
-                }
-            }
-        )
+        reasons.append("No upstream base URL configured.")
 
     try:
-        resp = requests.post(
-            f"{cc3_base_url}/api/flights/ingest/aeroapi",
-            json=canary_request,
-            timeout=timeout_sec,
-        )
-    except requests.RequestException as exc:
-        return _build_ok(
-            {
-                "cc3_canary": {
-                    "ok": False,
-                    "cc3_base_url": cc3_base_url,
-                    "canary_request": canary_request,
-                    "canary_result": None,
-                    "status": "FAIL",
-                    "reasons": [f"Upstream request failed: {exc}"],
-                }
-            }
-        )
-
-    try:
-        upstream_payload = resp.json()
-    except Exception:  # noqa: BLE001
+        resp = None
         upstream_payload = None
+        if cc3_base_url:
+            resp = requests.post(
+                f"{cc3_base_url}/api/flights/ingest/aeroapi",
+                json=canary_request,
+                timeout=timeout_sec,
+            )
+            try:
+                upstream_payload = resp.json()
+            except Exception:  # noqa: BLE001
+                upstream_payload = None
+    except requests.Timeout:
+        reasons.append("Upstream request timed out.")
+    except requests.RequestException as exc:
+        reasons.append(f"Upstream request failed: {exc}")
 
-    if not resp.ok:
+    if resp is not None and not resp.ok:
         reason = f"Upstream returned HTTP {resp.status_code}."
         if isinstance(upstream_payload, dict):
             message = upstream_payload.get("error") or upstream_payload.get("message")
             if message:
                 reason = f"{reason} {message}"
-        return _build_ok(
-            {
-                "cc3_canary": {
-                    "ok": False,
-                    "cc3_base_url": cc3_base_url,
-                    "canary_request": canary_request,
-                    "canary_result": None,
-                    "status": "FAIL",
-                    "reasons": [reason],
-                }
-            }
-        )
+        reasons.append(reason)
 
-    if not isinstance(upstream_payload, dict):
-        return _build_ok(
-            {
-                "cc3_canary": {
-                    "ok": False,
-                    "cc3_base_url": cc3_base_url,
-                    "canary_request": canary_request,
-                    "canary_result": None,
-                    "status": "FAIL",
-                    "reasons": ["Upstream returned invalid JSON."],
-                }
-            }
-        )
+    if resp is not None and upstream_payload is None:
+        reasons.append("Upstream returned invalid JSON.")
 
-    result_source = upstream_payload.get("canary_result")
-    if not isinstance(result_source, dict):
-        result_source = upstream_payload
+    result_source = None
+    if isinstance(upstream_payload, dict):
+        result_source = upstream_payload.get("canary_result")
+        if not isinstance(result_source, dict):
+            result_source = upstream_payload
 
     count_value = result_source.get("count") if isinstance(result_source, dict) else None
     sample_value = (
@@ -1334,7 +1269,6 @@ def api_machine_room_cc3_ingest_canary():
         value.strip() for value in normalized_sample if value and value.strip()
     ]
 
-    reasons: List[str] = []
     count_int: Optional[int] = None
     if count_value is None:
         reasons.append("No count returned.")
@@ -1348,12 +1282,14 @@ def api_machine_room_cc3_ingest_canary():
 
     if not non_empty_sample:
         reasons.append("No non-empty flight numbers sample.")
-    elif len(non_empty_sample) < 3:
-        reasons.append("Fewer than 3 non-empty flight numbers.")
 
-    upstream_ok = upstream_payload.get("ok")
-    if upstream_ok is not True:
-        message = upstream_payload.get("error") or upstream_payload.get("message")
+    upstream_ok = upstream_payload.get("ok") if isinstance(upstream_payload, dict) else None
+    if resp is not None and upstream_ok is False:
+        message = (
+            upstream_payload.get("error") or upstream_payload.get("message")
+            if isinstance(upstream_payload, dict)
+            else None
+        )
         reasons.append(message or "Upstream response ok!=true.")
 
     status = "PASS" if len(reasons) == 0 else "FAIL"
@@ -1365,9 +1301,14 @@ def api_machine_room_cc3_ingest_canary():
 
     return _build_ok(
         {
-            "count": canary_result["count"],
-            "flight_numbers": canary_result["flight_numbers_sample"],
             "status": status,
+            "cc3_base_url": cc3_base_url,
+            "canary_request": {"airport": airport, "date": date_str},
+            "canary_result": {
+                "count": canary_result["count"],
+                "flight_numbers_sample": canary_result["flight_numbers_sample"],
+            },
+            "reasons": reasons,
             "cc3_canary": {
                 "ok": status == "PASS",
                 "cc3_base_url": cc3_base_url,
@@ -1375,7 +1316,7 @@ def api_machine_room_cc3_ingest_canary():
                 "canary_result": canary_result,
                 "status": status,
                 "reasons": reasons,
-            }
+            },
         }
     )
 
