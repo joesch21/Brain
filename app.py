@@ -1207,13 +1207,7 @@ def api_machine_room_cc3_ingest_canary():
         store = False
     else:
         store = str(store_value).strip().lower() in {"1", "true", "yes", "y", "on"}
-    timeout_value = payload.get("timeout")
-    try:
-        timeout_sec = int(timeout_value) if timeout_value is not None else 8
-    except (TypeError, ValueError):
-        timeout_sec = 8
-    if timeout_sec <= 0:
-        timeout_sec = 8
+    timeout_sec = 8
 
     date_override = (payload.get("date") or "").strip()
     if date_override:
@@ -1371,6 +1365,9 @@ def api_machine_room_cc3_ingest_canary():
 
     return _build_ok(
         {
+            "count": canary_result["count"],
+            "flight_numbers": canary_result["flight_numbers_sample"],
+            "status": status,
             "cc3_canary": {
                 "ok": status == "PASS",
                 "cc3_base_url": cc3_base_url,
