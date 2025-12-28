@@ -465,3 +465,49 @@
   background: rgba(239, 68, 68, 0.15);
   color: #991b1b;
 }
+
+.machine-room-inventory-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.machine-room-inventory-controls label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+.machine-room-inventory-input {
+  margin-top: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  min-width: 90px;
+}
+
+.machine-room-inventory-table-wrapper {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+}
+
+.machine-room-inventory-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.machine-room-inventory-table th,
+.machine-room-inventory-table td {
+  padding: 0.45rem 0.4rem;
+  text-align: left;
+  border-top: 1px solid #e5e7eb;
+  font-size: 0.9rem;
+}
+
+.machine-room-inventory-table th {
+  background: #f9fafb;
+  color: #374151;
+  font-weight: 600;
+}

@@ -2,11 +2,13 @@
 import os
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
+from sqlalchemy import bindparam, create_engine, inspect, text
+from sqlalchemy.engine import Engine
 from flask import (
     Flask,
     g,
@@ -120,6 +122,28 @@ def inject_current_role():
 
 def _env_flag(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).lower() in {"1", "true", "yes", "on"}
+
+_DB_ENGINE: Optional[Engine] = None
+
+
+def _normalize_database_url(uri: str) -> str:
+    if uri.startswith("postgres://"):
+        return uri.replace("postgres://", "postgresql://", 1)
+    return uri
+
+
+def _get_db_engine() -> Optional[Engine]:
+    global _DB_ENGINE
+
+    if _DB_ENGINE is not None:
+        return _DB_ENGINE
+
+    uri = os.getenv("DATABASE_URL")
+    if not uri:
+        return None
+
+    _DB_ENGINE = create_engine(_normalize_database_url(uri), future=True)
+    return _DB_ENGINE
 
 
 ### BEGIN CWO_BRAIN_006 upstream selection
@@ -364,6 +388,18 @@ def _sydney_tomorrow_iso() -> str:
 def _sydney_today_iso() -> str:
     tz = ZoneInfo("Australia/Sydney")
     return datetime.now(tz).date().isoformat()
+
+
+def _normalize_db_date(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        return value[:10]
+    return str(value)
 
 
 def _call_upstream(
@@ -1308,6 +1344,141 @@ def api_machine_room_cc3_ingest_canary():
             "reasons": reasons,
         }
     )
+
+
+@app.get("/api/machine-room/db-flight-inventory")
+def api_machine_room_db_flight_inventory():
+    """Return counts of flights stored in the Brain DB for a date range."""
+    airport = (request.args.get("airport") or "").strip().upper()
+    if not airport:
+        return jsonify({"ok": False, "error": "airport is required"}), 400
+
+    start_raw = (request.args.get("start") or "").strip()
+    if start_raw:
+        try:
+            start_date = datetime.strptime(start_raw, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"ok": False, "error": "start must be in YYYY-MM-DD format"}), 400
+    else:
+        start_raw = _sydney_today_iso()
+        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date()
+
+    days_raw = request.args.get("days")
+    try:
+        days = int(days_raw) if days_raw is not None else 4
+    except (TypeError, ValueError):
+        days = 4
+    days = max(1, min(days, 14))
+
+    airlines_raw = (
+        request.args.get("airlines")
+        or request.args.get("airline")
+        or request.args.get("operator")
+        or ""
+    ).strip()
+    if not airlines_raw:
+        airlines_raw = "ALL"
+
+    airlines_list: List[str] = []
+    if airlines_raw.upper() not in {"ALL", "*"}:
+        airlines_list = _parse_airlines_csv(airlines_raw)
+    airlines_selected = airlines_list if airlines_list else ["ALL"]
+
+    engine = _get_db_engine()
+    if engine is None:
+        return jsonify({"ok": False, "error": "DATABASE_URL is not set"}), 500
+
+    try:
+        inspector = inspect(engine)
+        if "flights" not in inspector.get_table_names():
+            return jsonify({"ok": False, "error": "flights table not found"}), 500
+
+        columns = {col["name"] for col in inspector.get_columns("flights")}
+        if "airport" not in columns:
+            return jsonify({"ok": False, "error": "flights table missing airport column"}), 500
+
+        airline_column_available = "airline" in columns
+        if airlines_list and not airline_column_available:
+            return (
+                jsonify({"ok": False, "error": "airline filter unavailable (airline column missing)"}),
+                500,
+            )
+
+        end_date = start_date + timedelta(days=days - 1)
+        base_sql = (
+            "FROM flights WHERE date BETWEEN :start AND :end AND airport = :airport"
+        )
+        params: Dict[str, Any] = {
+            "start": start_date,
+            "end": end_date,
+            "airport": airport,
+        }
+        if airlines_list:
+            base_sql += " AND airline IN :airlines"
+            params["airlines"] = airlines_list
+
+        total_sql = text(f"SELECT date, COUNT(*) AS count {base_sql} GROUP BY date")
+        by_airline_sql = None
+        if airline_column_available:
+            by_airline_sql = text(
+                f"SELECT date, airline, COUNT(*) AS count {base_sql} GROUP BY date, airline"
+            )
+
+        if airlines_list:
+            total_sql = total_sql.bindparams(bindparam("airlines", expanding=True))
+            if by_airline_sql is not None:
+                by_airline_sql = by_airline_sql.bindparams(
+                    bindparam("airlines", expanding=True)
+                )
+
+        totals: Dict[str, int] = {}
+        by_airline_map: Dict[str, Dict[str, int]] = {}
+
+        with engine.begin() as conn:
+            for row in conn.execute(total_sql, params).mappings():
+                date_key = _normalize_db_date(row.get("date"))
+                if not date_key:
+                    continue
+                totals[date_key] = int(row.get("count") or 0)
+
+            if by_airline_sql is not None:
+                for row in conn.execute(by_airline_sql, params).mappings():
+                    date_key = _normalize_db_date(row.get("date"))
+                    airline_code = (row.get("airline") or "").strip().upper()
+                    if not date_key or not airline_code:
+                        continue
+                    by_airline_map.setdefault(date_key, {})[airline_code] = int(
+                        row.get("count") or 0
+                    )
+
+        days_payload = []
+        for offset in range(days):
+            day = start_date + timedelta(days=offset)
+            date_str = day.isoformat()
+            days_payload.append(
+                {
+                    "date": date_str,
+                    "count": totals.get(date_str, 0),
+                    "by_airline": by_airline_map.get(date_str, {})
+                    if airline_column_available
+                    else {},
+                }
+            )
+
+        return jsonify(
+            {
+                "ok": True,
+                "source": "db",
+                "airport": airport,
+                "airlines_selected": airlines_selected,
+                "range": {"start": start_raw, "days": days},
+                "days": days_payload,
+                "note": "DB snapshot only (no upstream calls).",
+            }
+        ), 200
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Failed to load DB flight inventory")
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.get("/api/status")
