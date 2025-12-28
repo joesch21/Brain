@@ -143,6 +143,15 @@ FALLBACK_BASE_URLS = [
     "https://codecrafter2.onrender.com",        # legacy alias
 ]
 
+CC3_INGEST_BASE_URL = (
+    os.getenv("CC3_INGEST_BASE_URL")
+    or os.getenv("OPS_API_BASE")
+    or DEFAULT_CC3_UPSTREAM_BASE
+).strip()
+CC3_INGEST_CANARY_TIMEOUT_SEC = float(
+    os.getenv("CC3_INGEST_CANARY_TIMEOUT_SEC", "8")
+)
+
 def upstream_candidates():
     # de-dupe while preserving order
     out = []
@@ -333,6 +342,18 @@ def _upstream_meta() -> Dict[str, Any]:
         "upstream_base_url_active": _active_upstream_base(),
         "last_upstream_canary": upstream_selector.last_canary_result,
     }
+
+
+def _cc3_ingest_base() -> str:
+    return (CC3_INGEST_BASE_URL or DEFAULT_CC3_UPSTREAM_BASE).rstrip("/")
+
+
+def _normalize_flight_sample(sample: Any) -> List[str]:
+    if isinstance(sample, list):
+        return [str(item) for item in sample if item is not None]
+    if sample is None:
+        return []
+    return [str(sample)]
 
 
 def _call_upstream(
@@ -1077,6 +1098,95 @@ def api_upstream_status():
     }
 
     return _build_ok(payload)
+
+
+@app.get("/api/cc3/ingest_canary")
+def api_cc3_ingest_canary():
+    """Trigger a CC3 ingest canary run with a short timeout."""
+    date_str = request.args.get("date") or datetime.now(timezone.utc).date().isoformat()
+    airport = request.args.get("airport") or os.getenv("DEFAULT_AIRPORT", "YSSY")
+    base_url = _cc3_ingest_base()
+
+    if not base_url:
+        return json_error(
+            "No CC3 ingest base URL configured.",
+            status_code=500,
+            code="cc3_base_missing",
+        )
+
+    canary_url = f"{base_url}/api/ingest/canary"
+    try:
+        resp = requests.get(
+            canary_url,
+            params={"date": date_str, "airport": airport},
+            timeout=CC3_INGEST_CANARY_TIMEOUT_SEC,
+        )
+    except requests.RequestException as exc:
+        return json_error(
+            "CC3 ingest canary request failed.",
+            status_code=502,
+            code="cc3_canary_unreachable",
+            detail={"message": str(exc), "cc3_base_url": base_url},
+        )
+
+    try:
+        payload = resp.json()
+    except Exception:  # noqa: BLE001
+        payload = {}
+
+    if not resp.ok or not isinstance(payload, dict):
+        detail = {"status": resp.status_code, "cc3_base_url": base_url}
+        if isinstance(payload, dict) and payload:
+            detail["response"] = payload
+        return json_error(
+            "CC3 ingest canary returned an invalid response.",
+            status_code=502,
+            code="cc3_canary_invalid",
+            detail=detail,
+        )
+
+    result_source = payload.get("canary_result")
+    if not isinstance(result_source, dict):
+        result_source = payload
+
+    count_value = result_source.get("count")
+    sample_value = _normalize_flight_sample(
+        result_source.get("flight_numbers_sample")
+        or result_source.get("flight_numbers")
+    )
+
+    reasons: List[str] = []
+    count_int: Optional[int] = None
+    if count_value is None:
+        reasons.append("No count returned.")
+    else:
+        try:
+            count_int = int(count_value)
+            if count_int <= 15:
+                reasons.append("Count is 15 or less.")
+        except (TypeError, ValueError):
+            reasons.append("Count is not numeric.")
+
+    if len(sample_value) == 0:
+        reasons.append("No flight numbers sample.")
+
+    status_ok = len(reasons) == 0
+
+    return _build_ok(
+        {
+            "cc3_base_url": base_url,
+            "canary_request": {"date": date_str, "airport": airport},
+            "canary_result": {
+                "count": count_int if count_int is not None else count_value,
+                "flight_numbers_sample": sample_value,
+            },
+            "status": {
+                "ok": status_ok,
+                "label": "PASS" if status_ok else "FAIL",
+                "reasons": reasons,
+            },
+        }
+    )
 
 
 @app.get("/api/status")
