@@ -375,3 +375,79 @@
   flex: 1;
   opacity: 0.8;
 }
+
+.canary-panel {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  border: 1px solid rgba(15, 118, 110, 0.15);
+  background: rgba(15, 118, 110, 0.04);
+}
+
+.canary-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.canary-panel__subtitle {
+  display: block;
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.canary-panel__error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin-bottom: 0.4rem;
+}
+
+.canary-panel__body {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.canary-panel__row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.canary-panel__label {
+  font-weight: 600;
+  min-width: 140px;
+}
+
+.canary-panel__value {
+  color: #1f2937;
+}
+
+.canary-panel__reasons {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+  color: #b45309;
+}
+
+.canary-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.canary-status--ok {
+  background: rgba(34, 197, 94, 0.15);
+  color: #166534;
+}
+
+.canary-status--fail {
+  background: rgba(239, 68, 68, 0.15);
+  color: #991b1b;
+}
