@@ -215,11 +215,10 @@ class UpstreamSelector:
 
     def _probe_candidates(self) -> str:
         """
-        EWOT: Probe upstream base URLs quickly and select the first that returns ok=True
-        for /api/runs (using airline=ALL, airport=DEFAULT_AIRPORT).
+        EWOT: Probe upstream base URLs quickly and select the first that returns a 200
+        from /api/health (lightweight liveness check).
         """
         self._last_probe_at = time.monotonic()
-        today = datetime.now(timezone.utc).date().isoformat()
 
         attempts: List[Dict[str, Any]] = []
         chosen_base = self._active_base or self.configured_base or (self.candidates[0] if self.candidates else "")
@@ -227,7 +226,7 @@ class UpstreamSelector:
 
         for base_url in self.candidates:
             base_url = (base_url or "").rstrip("/")
-            probe_url = f"{base_url}/api/runs"
+            probe_url = f"{base_url}/api/health"
 
             attempt: Dict[str, Any] = {"base_url": base_url}
             ok = False
@@ -237,12 +236,6 @@ class UpstreamSelector:
             try:
                 resp = requests.get(
                     probe_url,
-                    params={
-                        "date": today,
-                        "airline": "ALL",
-                        "airport": os.getenv("DEFAULT_AIRPORT", "YSSY"),
-                        "shift": "ALL",
-                    },
                     timeout=self._probe_timeout_sec,
                 )
                 attempt["status"] = resp.status_code
@@ -253,11 +246,7 @@ class UpstreamSelector:
                     payload = {}
 
                 attempt["response_ok"] = isinstance(payload, dict)
-                ok = (
-                    resp.status_code == 200
-                    and isinstance(payload, dict)
-                    and payload.get("ok") is True
-                )
+                ok = resp.status_code == 200
 
             except requests.RequestException as exc:
                 attempt["error"] = str(exc)
