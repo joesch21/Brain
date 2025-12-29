@@ -40,8 +40,8 @@ export default defineConfig({
     },
   },
 
-  // Build output (keep as-is)
+  // Build output (Render static site publishes dist/)
   build: {
-    outDir: "frontend_dist",
+    outDir: "dist",
   },
 });
