@@ -2107,6 +2107,162 @@ def api_flights_pull():
     return jsonify(out), resp.status_code
 
 
+@app.post("/api/ops/complete_day")
+def api_ops_complete_day():
+    """Trigger CC3 SYD airport ingest for a full ops day (store=true)."""
+
+    data = request.get_json(silent=True)
+    if data is None:
+        if request.data:
+            return json_error(
+                "Invalid JSON body.",
+                status_code=400,
+                code="invalid_json",
+            )
+        data = {}
+
+    if not isinstance(data, dict):
+        return json_error(
+            "Request body must be a JSON object.",
+            status_code=400,
+            code="bad_request",
+        )
+
+    airport, airport_err = _require_airport_field(data)
+    if airport_err is not None:
+        return airport_err
+
+    date_str = str(data.get("date") or "").strip()
+    if not date_str:
+        return json_error(
+            "date is required",
+            status_code=400,
+            code="validation_error",
+        )
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return json_error(
+            "date must be in YYYY-MM-DD format",
+            status_code=400,
+            code="validation_error",
+        )
+
+    airlines_value = data.get("airlines")
+    if airlines_value is None or str(airlines_value).strip() == "":
+        airlines_value = data.get("airline") or data.get("operator") or "ALL"
+
+    airlines_selected: List[str]
+    if isinstance(airlines_value, list):
+        airlines_selected = [
+            str(item).strip().upper()
+            for item in airlines_value
+            if str(item).strip()
+        ]
+    else:
+        airlines_text = str(airlines_value or "").strip().upper()
+        if not airlines_text or airlines_text == "ALL":
+            airlines_selected = []
+        else:
+            airlines_selected = _parse_airlines_csv(airlines_text)
+
+    raw_timeout = data.get("timeout_seconds", 6)
+    try:
+        request_timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        return json_error(
+            "timeout_seconds must be an integer >= 1",
+            status_code=400,
+            code="validation_error",
+        )
+    if request_timeout < 1:
+        return json_error(
+            "timeout_seconds must be an integer >= 1",
+            status_code=400,
+            code="validation_error",
+        )
+
+    cc3_payload: Dict[str, Any] = {
+        "airport": airport,
+        "date": date_str,
+        "scope": "both",
+        "store": True,
+        "airlines": airlines_selected,
+        "timeout": 15,
+    }
+    cc3_url = f"{_cc3_ingest_base()}/api/flights/ingest/sydairport"
+
+    try:
+        resp = requests.post(cc3_url, json=cc3_payload, timeout=request_timeout)
+    except requests.RequestException as exc:
+        return jsonify(
+            {
+                "ok": False,
+                "airport": airport,
+                "local_date": date_str,
+                "airlines_selected": airlines_selected,
+                "cc3": {
+                    "ok": False,
+                    "status_code": None,
+                    "error": str(exc),
+                    "stored_rows": None,
+                    "count": None,
+                    "source": None,
+                    "warnings": [],
+                },
+            }
+        ), 200
+
+    status_code = resp.status_code
+    payload: Optional[Dict[str, Any]]
+    try:
+        raw_payload = resp.json()
+        payload = raw_payload if isinstance(raw_payload, dict) else None
+    except Exception:  # noqa: BLE001
+        payload = None
+
+    def _extract_cc3_error(body: Optional[Dict[str, Any]]) -> Optional[str]:
+        if not body:
+            return None
+        err = body.get("error")
+        if isinstance(err, dict):
+            message = err.get("message") or err.get("detail")
+            if message:
+                return str(message)
+            return json.dumps(err)
+        if err:
+            return str(err)
+        message = body.get("message") or body.get("detail")
+        if message:
+            return str(message)
+        return None
+
+    cc3_ok = bool(payload.get("ok")) if payload else resp.ok
+    cc3_error = _extract_cc3_error(payload)
+    if not cc3_ok and not cc3_error:
+        cc3_error = resp.text[:500] if resp.text else "CC3 ingest failed."
+
+    cc3_block = {
+        "ok": cc3_ok,
+        "status_code": status_code,
+        "error": None if cc3_ok else cc3_error,
+        "stored_rows": payload.get("stored_rows") if payload else None,
+        "count": payload.get("count") if payload else None,
+        "source": payload.get("source") if payload else None,
+        "warnings": payload.get("warnings") if payload and isinstance(payload.get("warnings"), list) else [],
+    }
+
+    return jsonify(
+        {
+            "ok": cc3_ok,
+            "airport": airport,
+            "local_date": date_str,
+            "airlines_selected": airlines_selected,
+            "cc3": cc3_block,
+        }
+    ), 200
+
+
 @app.get("/api/employee_assignments/daily")
 def api_employee_assignments_daily():
     """
