@@ -25,7 +25,7 @@ export interface MergedFlightAssignment extends Flight {
   assigned_staff_code: string | null;
 }
 
-import { API_BASE } from "./apiBase";
+import { joinApi } from "../config/apiBase";
 import {
   DEFAULT_AIRLINE,
   DEFAULT_SHIFT,
@@ -60,8 +60,11 @@ async function handleJson<T>(res: Response): Promise<T> {
 // Wiring / backend health
 // ---------------------------------------------------------------------------
 
+const baseOrigin =
+  typeof window !== "undefined" ? window.location.origin : "http://localhost";
+
 export async function fetchBackendStatus(date?: string) {
-  const url = new URL(`${API_BASE}/status`);
+  const url = new URL(joinApi("/api/status"), baseOrigin);
   if (date) {
     url.searchParams.set("date", date);
   }
@@ -70,12 +73,12 @@ export async function fetchBackendStatus(date?: string) {
 }
 
 export async function runWiringStatus() {
-  const res = await fetch(`${API_BASE}/wiring-status`);
+  const res = await fetch(joinApi("/api/wiring-status"));
   return handleJson<any>(res);
 }
 
 export async function fetchOpsDebugWiring() {
-  const res = await fetch(`${API_BASE}/ops/debug/wiring`);
+  const res = await fetch(joinApi("/api/ops/debug/wiring"));
   return handleJson<any>(res);
 }
 
@@ -124,7 +127,7 @@ export async function fetchFlightsForDate(
   airline: string = DEFAULT_AIRLINE,
   airport: string = REQUIRED_AIRPORT,
 ): Promise<Flight[]> {
-  const url = new URL(`${API_BASE}/flights`);
+  const url = new URL(joinApi("/api/flights"), baseOrigin);
   url.searchParams.set("date", date);
   url.searchParams.set("airport", String(airport).toUpperCase());
   // Default behaviour remains: airline=ALL or airline=JQ.
@@ -167,7 +170,7 @@ export async function fetchEmployeeAssignmentsForDate(
     const shift =
       typeof opts === "object" && opts?.shift ? opts.shift : DEFAULT_SHIFT;
 
-    const url = new URL(`${API_BASE}/assignments`);
+    const url = new URL(joinApi("/api/assignments"), baseOrigin);
     url.searchParams.set("date", date);
     url.searchParams.set("airport", String(airport).toUpperCase());
     url.searchParams.set("airline", normalizeAirline(airline));
@@ -202,7 +205,7 @@ export async function fetchEmployeeAssignmentsForDate(
  * EWOT: seed demo flights for a given date + airline in the Ops backend.
  */
 export async function seedDemoFlights(date: string, airline: string) {
-  const url = new URL(`${API_BASE}/imports/seed_demo_flights`);
+  const url = new URL(joinApi("/api/imports/seed_demo_flights"), baseOrigin);
   url.searchParams.set("date", date);
   url.searchParams.set("airline", airline);
 
@@ -214,7 +217,7 @@ export async function seedDemoFlights(date: string, airline: string) {
  * EWOT: ask the Ops backend to auto-assign refueller runs to flights.
  */
 export async function autoAssignFlights(date: string, airline: string) {
-  const res = await fetch(`${API_BASE}/runs/auto_assign_flights`, {
+  const res = await fetch(joinApi("/api/runs/auto_assign_flights"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ date, airline }),
@@ -227,7 +230,7 @@ export async function autoAssignFlights(date: string, airline: string) {
  * This is what MachineRoomPage imports as `autoAssignStaff`.
  */
 export async function autoAssignStaff(date: string, airline: string) {
-  const res = await fetch(`${API_BASE}/runs/auto_assign_employees`, {
+  const res = await fetch(joinApi("/api/runs/auto_assign_employees"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ date, airline }),
@@ -239,7 +242,7 @@ export async function autoAssignStaff(date: string, airline: string) {
  * EWOT: end-to-end prep for the ops day (flights + runs + staff) in one call.
  */
 export async function prepareOpsDay(date: string, airline: string) {
-  const res = await fetch(`${API_BASE}/runs/prepare_ops_day`, {
+  const res = await fetch(joinApi("/api/runs/prepare_ops_day"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ date, airline }),

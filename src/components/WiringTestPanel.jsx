@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 
-import { API_BASE } from "../api/apiBase";
 import { apiRequest } from "../lib/apiClient";
+import { getApiBase } from "../config/apiBase";
 
 const WiringTestPanel = () => {
-  const apiBase =
-    (import.meta?.env?.VITE_API_BASE ?? "").toString().trim() || API_BASE;
+  const envBase = getApiBase();
 
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -33,7 +32,7 @@ const WiringTestPanel = () => {
       <h2>Wiring Test (Brain → CodeCrafter2)</h2>
 
       <p>
-        <strong>Backend URL (VITE_API_BASE_URL):</strong> {apiBase}
+        <strong>Backend URL (VITE_BRAIN_API_BASE):</strong> {envBase}
       </p>
 
       <button onClick={handleTest} disabled={loading}>

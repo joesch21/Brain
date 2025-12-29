@@ -20,6 +20,7 @@ import {
 import { FlightsAssignmentsTable } from "../components/FlightsAssignmentsTable";
 import { JetstarFlightsAssignmentsCard } from "../components/JetstarFlightsAssignmentsCard";
 import "../styles/machineRoom.css";
+import { joinApi } from "../config/apiBase";
 
 function todayISO() {
   const d = new Date();
@@ -325,7 +326,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
     setRosterSeedLoading(true);
     setRosterSeedStatus(null);
     try {
-      const resp = await fetch("/api/roster/seed_dec24", { method: "POST" });
+      const resp = await fetch(joinApi("/api/roster/seed_dec24"), { method: "POST" });
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok || body.ok === false) {
         setRosterSeedStatus({
@@ -559,7 +560,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
       const url = date
         ? `/api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`
         : "/api/dev/seed_dec24_schedule";
-      const resp = await fetch(url, {
+      const resp = await fetch(joinApi(url), {
         method: "POST",
       });
 
@@ -590,7 +591,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
     });
 
     try {
-      const resp = await fetch(`/api/ops/prepare_day?${params.toString()}`, {
+      const resp = await fetch(joinApi(`/api/ops/prepare_day?${params.toString()}`), {
         method: "POST",
       });
       const body = await resp.json().catch(() => ({}));
@@ -1266,7 +1267,7 @@ const MachineRoomPage = () => {
 
     try {
       const resp = await fetch(
-        `/api/import/live?airline=${encodeURIComponent(airline)}`,
+        joinApi(`/api/import/live?airline=${encodeURIComponent(airline)}`),
         { method: "POST" }
       );
       const body = await resp.json();
