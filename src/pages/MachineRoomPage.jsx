@@ -125,6 +125,9 @@ const SystemStatusCard = ({ selectedAirline }) => {
   const [cc3CanaryResult, setCc3CanaryResult] = useState(null);
   const [cc3CanaryDateOverride, setCc3CanaryDateOverride] = useState("");
 
+  const [completeDayLoading, setCompleteDayLoading] = useState(false);
+  const [completeDayStatus, setCompleteDayStatus] = useState(null);
+
   const [testingApis, setTestingApis] = useState(false);
   const [apiTests, setApiTests] = useState([]);
 
@@ -198,13 +201,21 @@ const SystemStatusCard = ({ selectedAirline }) => {
     }
   }
 
-  async function loadFlightsAndAssignments(targetDate) {
+  async function loadFlightsAndAssignments(targetDate, airlineOverride) {
     setFlightsAssignmentsLoading(true);
     setFlightsAssignmentsError("");
+    const airlineParam =
+      airlineOverride ??
+      (selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
+        ? selectedAirline
+        : "ALL");
     try {
       const [flightsForDay, assignments] = await Promise.all([
-        fetchFlightsForDate(targetDate),
-        fetchEmployeeAssignmentsForDate(targetDate),
+        fetchFlightsForDate(targetDate, airlineParam, DEFAULT_AIRPORT),
+        fetchEmployeeAssignmentsForDate(targetDate, {
+          airline: airlineParam,
+          airport: DEFAULT_AIRPORT,
+        }),
       ]);
       setAssignedFlights(
         mergeFlightsWithAssignments(flightsForDay, assignments)
@@ -225,8 +236,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
   }, [date, selectedAirline]);
 
   useEffect(() => {
-    loadFlightsAndAssignments(date);
-  }, [date]);
+    loadFlightsAndAssignments(date, selectedAirline);
+  }, [date, selectedAirline]);
 
   useEffect(() => {
     const placeholderRoster = getPlaceholderRoster(date, DEFAULT_AIRPORT);
@@ -489,6 +500,55 @@ const SystemStatusCard = ({ selectedAirline }) => {
       setCc3CanaryLoading(false);
     }
   };
+
+  async function handleCompleteOpsDay() {
+    setCompleteDayLoading(true);
+    setCompleteDayStatus(null);
+
+    const airlinesPayload =
+      selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
+        ? selectedAirline
+        : "ALL";
+
+    try {
+      const resp = await safeRequest("/api/ops/complete_day", {
+        method: "POST",
+        body: JSON.stringify({
+          date,
+          airport: DEFAULT_AIRPORT,
+          airlines: airlinesPayload,
+        }),
+      });
+
+      if (resp.ok) {
+        const cc3 = resp.data?.cc3 || {};
+        const storedRows =
+          cc3.stored_rows != null ? cc3.stored_rows : "—";
+        const count = cc3.count != null ? cc3.count : "—";
+        setCompleteDayStatus({
+          ok: true,
+          message: `Complete day OK (stored_rows=${storedRows}, count=${count})`,
+        });
+        await Promise.all([
+          loadStatus(date),
+          loadFlightsAndAssignments(date, selectedAirline),
+        ]);
+      } else {
+        const errorMessage =
+          resp.data?.cc3?.error ||
+          resp.error ||
+          "Complete day failed. Please try again.";
+        setCompleteDayStatus({ ok: false, message: errorMessage });
+      }
+    } catch (err) {
+      setCompleteDayStatus({
+        ok: false,
+        message: err?.message || "Network error completing the day.",
+      });
+    } finally {
+      setCompleteDayLoading(false);
+    }
+  }
 
   async function seedDemoFlights() {
     try {
@@ -842,6 +902,14 @@ const SystemStatusCard = ({ selectedAirline }) => {
         <button
           type="button"
           className="pill-button"
+          onClick={handleCompleteOpsDay}
+          disabled={completeDayLoading}
+        >
+          {completeDayLoading ? "Completing day…" : "Complete the day"}
+        </button>
+        <button
+          type="button"
+          className="pill-button"
           onClick={seedDemoFlights}
           disabled={seeding || testingApis}
         >
@@ -880,6 +948,18 @@ const SystemStatusCard = ({ selectedAirline }) => {
           {rosterSeedLoading ? "Loading DEC24 roster…" : "Load DEC24 roster"}
         </button>
       </div>
+      {completeDayStatus && (
+        <div
+          className={
+            "complete-day-banner " +
+            (completeDayStatus.ok
+              ? "complete-day-banner--ok"
+              : "complete-day-banner--error")
+          }
+        >
+          {completeDayStatus.message}
+        </div>
+      )}
       {autoAssignStatus && (
         <div
           className={
