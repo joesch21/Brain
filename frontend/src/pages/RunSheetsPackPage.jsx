@@ -64,7 +64,7 @@ const RunSheetsPackPage = () => {
         airline: airline || DEFAULT_OPERATOR,
         shift: shift || DEFAULT_SHIFT,
       });
-      const res = await fetchJson(apiUrl(`/api/runs?${query.toString()}`));
+      const res = await fetchJson(apiUrl(`api/runs?${query.toString()}`));
 
       if (!res?.ok) {
         setError(

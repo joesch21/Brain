@@ -197,18 +197,18 @@ export async function fetchStatus(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
-  return request(apiUrl(`/api/status${suffix}`), options);
+  return request(apiUrl(`api/status${suffix}`), options);
 }
 
 export async function fetchWiringStatus(options = {}) {
-  return safeRequest(apiUrl("/api/wiring-status"), { method: "GET", ...options });
+  return safeRequest(apiUrl("api/wiring-status"), { method: "GET", ...options });
 }
 
 export async function fetchRunsStatus(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
-  return request(apiUrl(`/api/runs_status${suffix}`), options);
+  return request(apiUrl(`api/runs_status${suffix}`), options);
 }
 
 /** Flights */
@@ -220,7 +220,7 @@ export async function fetchFlights(date, airline = "ALL", airport = REQUIRED_AIR
   qs.set("airport", resolveAirport(airport));
   qs.set("airline", resolveAirline(options, airline));
 
-  return request(apiUrl(`/api/flights?${qs.toString()}`), options);
+  return request(apiUrl(`api/flights?${qs.toString()}`), options);
 }
 
 // Friendly alias used by some components
@@ -242,7 +242,7 @@ export async function pullFlights(date, airline = "ALL", options = {}) {
     scope: "both",
   };
 
-  return request(apiUrl("/api/flights/pull"), {
+  return request(apiUrl("api/flights/pull"), {
     method: "POST",
     body: JSON.stringify(body),
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -264,7 +264,7 @@ export async function fetchRuns(date, airline = "ALL", options = {}) {
   if (options.shift) qs.set("shift", String(options.shift).toUpperCase());
 
   // Runs should not crash pages; return safe result
-  return safeRequest(apiUrl(`/api/runs?${qs.toString()}`), { method: "GET", ...options });
+  return safeRequest(apiUrl(`api/runs?${qs.toString()}`), { method: "GET", ...options });
 }
 
 /** Back-compat: older pages import fetchDailyRuns */
@@ -283,7 +283,7 @@ export async function fetchStaff(options = {}) {
   const airline = resolveAirline(options, "ALL");
   if (airline) qs.set("airline", airline);
 
-  return safeRequest(apiUrl(`/api/staff?${qs.toString()}`), { method: "GET", ...options });
+  return safeRequest(apiUrl(`api/staff?${qs.toString()}`), { method: "GET", ...options });
 }
 
 /** Assignments overlay (optional) */
@@ -299,7 +299,7 @@ export async function fetchAssignments(date, options = {}) {
 
   if (options.shift) qs.set("shift", String(options.shift).toUpperCase());
 
-  return safeRequest(apiUrl(`/api/assignments?${qs.toString()}`), { method: "GET", ...options });
+  return safeRequest(apiUrl(`api/assignments?${qs.toString()}`), { method: "GET", ...options });
 }
 
 // Back-compat alias (some components still call this)
@@ -311,7 +311,7 @@ export async function seedDemoDay(date, options = {}) {
   const qs = new URLSearchParams();
   if (date) qs.set("date", date);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
-  return request(apiUrl(`/api/dev/seed_demo_day${suffix}`), { method: "POST", ...options });
+  return request(apiUrl(`api/dev/seed_demo_day${suffix}`), { method: "POST", ...options });
 }
 
 /** Runs auto-assign (optional) */
@@ -321,7 +321,7 @@ export async function autoAssignRuns(date, airline = "ALL", options = {}) {
     airline: resolveAirline(options, airline),
   };
 
-  return safeRequest(apiUrl("/api/runs/auto_assign"), {
+  return safeRequest(apiUrl("api/runs/auto_assign"), {
     method: "POST",
     body: JSON.stringify(payload),
     ...options,

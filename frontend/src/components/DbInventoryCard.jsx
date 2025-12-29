@@ -33,7 +33,7 @@ function DbInventoryCard() {
       params.set("airlines", airlines.trim() || "ALL");
 
       const resp = await fetch(
-        apiUrl(`/api/machine-room/db-flight-inventory?${params.toString()}`)
+        apiUrl(`api/machine-room/db-flight-inventory?${params.toString()}`)
       );
       const payload = await resp.json();
 

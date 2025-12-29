@@ -106,7 +106,7 @@ const RunSheetsPage = () => {
           airline: op || DEFAULT_OPERATOR,
           shift: sh || DEFAULT_SHIFT,
         });
-        const res = await fetchJson(apiUrl(`/api/runs?${params.toString()}`));
+        const res = await fetchJson(apiUrl(`api/runs?${params.toString()}`));
 
         if (!res?.ok) {
           setError(

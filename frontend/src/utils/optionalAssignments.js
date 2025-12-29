@@ -81,7 +81,7 @@ async function fetchAssignments({
 
   try {
     const res = await fetchJson(
-      apiUrl(`/api/employee_assignments/daily?${params.toString()}`),
+      apiUrl(`api/employee_assignments/daily?${params.toString()}`),
       { signal: timeoutSignal },
     );
 

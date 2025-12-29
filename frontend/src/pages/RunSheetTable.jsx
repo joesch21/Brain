@@ -76,7 +76,7 @@ export default function RunSheetTable() {
     const timeout = setTimeout(() => controller.abort(), 25000);
 
     try {
-      const url = apiUrl(`/api/runs/sheet?run_id=${encodeURIComponent(
+      const url = apiUrl(`api/runs/sheet?run_id=${encodeURIComponent(
         rid
       )}&date=${encodeURIComponent(d)}`);
       const res = await fetch(url, {

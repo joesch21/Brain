@@ -9,35 +9,35 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const TESTS = [
   {
     key: "wiring-status",
-    label: `GET ${apiUrl("/api/wiring-status")}`,
+    label: `GET ${apiUrl("api/wiring-status")}`,
     method: "GET",
-    buildUrl: () => apiUrl("/api/wiring-status"),
+    buildUrl: () => apiUrl("api/wiring-status"),
   },
   {
     key: "staff",
-    label: `GET ${apiUrl("/api/staff")}`,
+    label: `GET ${apiUrl("api/staff")}`,
     method: "GET",
-    buildUrl: () => apiUrl("/api/staff"),
+    buildUrl: () => apiUrl("api/staff"),
   },
   {
     key: "flights",
-    label: `GET ${apiUrl("/api/flights")}?date=YYYY-MM-DD`,
+    label: `GET ${apiUrl("api/flights")}?date=YYYY-MM-DD`,
     method: "GET",
     buildUrl: (date) =>
-      apiUrl(`/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
+      apiUrl(`api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
   },
   {
     key: "runs",
-    label: `GET ${apiUrl("/api/runs")}`,
+    label: `GET ${apiUrl("api/runs")}`,
     method: "GET",
     buildUrl: (date) =>
-      apiUrl(`/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
+      apiUrl(`api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
   },
   {
     key: "auto-assign",
-    label: `POST ${apiUrl("/api/runs/auto_assign")}`,
+    label: `POST ${apiUrl("api/runs/auto_assign")}`,
     method: "POST",
-    buildUrl: () => apiUrl("/api/runs/auto_assign"),
+    buildUrl: () => apiUrl("api/runs/auto_assign"),
     body: (date) => ({ date, airline: "ALL" }),
   },
 ];

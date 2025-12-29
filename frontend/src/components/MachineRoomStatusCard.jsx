@@ -44,7 +44,7 @@ const MachineRoomStatusCard = () => {
       setLoading(true);
       setError("");
       const resp = await fetch(
-        apiUrl(`/api/status?date=${encodeURIComponent(targetDate)}`)
+        apiUrl(`api/status?date=${encodeURIComponent(targetDate)}`)
       );
       if (!resp.ok) {
         const text = await resp.text();
@@ -71,15 +71,15 @@ const MachineRoomStatusCard = () => {
     const tests = [
       {
         name: "Flights (today)",
-        url: apiUrl(`/api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
+        url: apiUrl(`api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
       },
       {
         name: "Runs (today)",
-        url: apiUrl(`/api/runs?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
+        url: apiUrl(`api/runs?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
       },
       {
         name: "Service profiles",
-        url: apiUrl("/api/service_profiles"),
+        url: apiUrl("api/service_profiles"),
       },
     ];
 
@@ -140,8 +140,8 @@ const MachineRoomStatusCard = () => {
       setError("");
 
       const url = date
-        ? apiUrl(`/api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`)
-        : apiUrl("/api/dev/seed_dec24_schedule");
+        ? apiUrl(`api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`)
+        : apiUrl("api/dev/seed_dec24_schedule");
       const resp = await fetch(url, {
         method: "POST",
       });

@@ -16,7 +16,7 @@ const WiringTestPanel = () => {
     setResult(null);
 
     try {
-      const { data } = await apiRequest(apiUrl("/api/ops/debug/wiring"), {
+      const { data } = await apiRequest(apiUrl("api/ops/debug/wiring"), {
         method: "GET",
       });
       setResult(data);

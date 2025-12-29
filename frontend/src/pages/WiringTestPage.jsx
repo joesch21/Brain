@@ -7,24 +7,24 @@ const PROBES = [
   {
     key: "contract",
     name: "API Contract",
-    buildPath: () => apiUrl("/api/contract"),
+    buildPath: () => apiUrl("api/contract"),
   },
   {
     key: "wiring-status",
     name: "Wiring Status",
-    buildPath: () => apiUrl("/api/wiring-status"),
+    buildPath: () => apiUrl("api/wiring-status"),
   },
   {
     key: "flights",
     name: "Flights (today)",
     buildPath: (date) =>
-      apiUrl(`/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
+      apiUrl(`api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
   },
   {
     key: "runs",
     name: "Runs (today)",
     buildPath: (date) =>
-      apiUrl(`/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
+      apiUrl(`api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
   },
 ];
 
