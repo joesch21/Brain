@@ -18,6 +18,7 @@ import {
   buildStaffRunsFromAssignments,
   getPlaceholderRoster,
 } from "../lib/staffMvp";
+import { joinApi } from "../config/apiBase";
 
 const DEFAULT_AIRPORT = REQUIRED_AIRPORT;
 
@@ -1667,7 +1668,7 @@ const PlannerPage = () => {
 
   async function updateFlightRun(flightRunId, patch) {
     try {
-      const resp = await fetch(`/api/flight_runs/${flightRunId}`, {
+      const resp = await fetch(joinApi(`/api/flight_runs/${flightRunId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -1715,7 +1716,7 @@ const PlannerPage = () => {
     });
 
     try {
-      const resp = await fetch("/api/runs/update_layout", {
+      const resp = await fetch(joinApi("/api/runs/update_layout"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runs: runsPayload }),
@@ -1745,7 +1746,7 @@ const PlannerPage = () => {
     setAutoAssignError("");
     setAutoAssignSuccess(false);
     try {
-      const resp = await fetch("/api/runs/auto_assign", {
+      const resp = await fetch(joinApi("/api/runs/auto_assign"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date }),
@@ -2042,7 +2043,7 @@ const PlannerPage = () => {
     if (flightId == null) return;
 
     try {
-      const resp = await fetch("/api/flight_runs/assign", {
+      const resp = await fetch(joinApi("/api/flight_runs/assign"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run_id: targetRunId, flight_id: flightId }),
@@ -2087,7 +2088,7 @@ const PlannerPage = () => {
     if (flightRunId == null) return;
 
     try {
-      const resp = await fetch("/api/flight_runs/unassign", {
+      const resp = await fetch(joinApi("/api/flight_runs/unassign"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ flight_run_id: flightRunId }),

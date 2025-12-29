@@ -1,6 +1,7 @@
 import React from "react";
 
-import { API_BASE, API_HOST } from "../api/apiBase";
+import { API_BASE } from "../api/apiBase";
+import { getApiBase } from "../config/apiBase";
 
 const badgeStyle: React.CSSProperties = {
   position: "fixed",
@@ -17,11 +18,12 @@ const badgeStyle: React.CSSProperties = {
 };
 
 const ApiBadge: React.FC = () => {
-  const host = API_HOST || API_BASE;
+  const displayBase = API_BASE;
+  const titleBase = getApiBase();
 
   return (
-    <div style={badgeStyle} title={`API base: ${API_BASE}`}>
-      API: <strong style={{ color: "#9ad6ff" }}>{host}</strong>
+    <div style={badgeStyle} title={`API base: ${titleBase}`}>
+      API: <strong style={{ color: "#9ad6ff" }}>{displayBase}</strong>
     </div>
   );
 };

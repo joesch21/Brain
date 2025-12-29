@@ -3,76 +3,12 @@
 // supports VITE_API_BASE for production, avoids /api/api duplication,
 // and provides safe + strict request modes.
 
-import { OPS_API_BASE } from "./opsApiBase";
 import { REQUIRED_AIRPORT, normalizeAirline } from "./opsDefaults";
 import { pushBackendDebugEntry } from "./backendDebug";
+import { joinApi } from "../config/apiBase";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
-/* ===========================
-   API base resolution
-   =========================== */
-
-/**
- * EWOT: Choose the API base URL in a deterministic, deploy-safe order:
- *  1) VITE_API_BASE (production; e.g. https://brain-backend-026t.onrender.com)
- *  2) OPS_API_BASE (legacy/config fallback)
- *  3) "" (same-origin; Vite proxy handles /api/* in dev)
- *
- * NOTE: We intentionally DO NOT read process.env here; Vite uses import.meta.env.
- */
-function getApiBase() {
-  let base = "";
-
-  try {
-    base = (import.meta?.env?.VITE_API_BASE ?? "").toString().trim();
-  } catch {
-    base = "";
-  }
-
-  if (!base) base = (OPS_API_BASE ?? "").toString().trim();
-
-  // normalize
-  base = base.replace(/\/+$/, ""); // trim trailing slashes
-  return base;
-}
-
-/* ===========================
-   URL helpers
-   =========================== */
-
-/**
- * EWOT: Join a base URL and a path without generating "/api/api/...".
- *
- * base examples:
- *  - "" (same-origin; Vite proxy handles /api/*)
- *  - "http://127.0.0.1:5055"
- *  - "http://127.0.0.1:5055/api"
- *
- * path examples:
- *  - "/api/flights?... "
- *  - "api/flights?... "
- */
-function buildUrl(path) {
-  // Absolute URL passed in
-  if (/^https?:\/\//i.test(path)) return path;
-
-  const base = getApiBase();
-  const p = path.startsWith("/") ? path : `/${path}`;
-
-  // Same-origin relative (preferred in dev with Vite proxy)
-  if (!base) return p;
-
-  const baseEndsWithApi = /\/api$/i.test(base);
-  const pathStartsWithApi = /^\/api(\/|$)/i.test(p);
-
-  // base ".../api" + path "/api/..." => drop one "/api"
-  if (baseEndsWithApi && pathStartsWithApi) {
-    return `${base}${p.replace(/^\/api/i, "")}`;
-  }
-
-  return `${base}${p}`;
-}
 
 /* ===========================
    Fetch helpers
@@ -119,7 +55,7 @@ async function readBody(response) {
  *  - "safe" : never throws; always returns normalized result
  */
 async function brainFetch(path, options = {}, mode = "throw") {
-  const url = buildUrl(path);
+  const url = joinApi(path);
   const method = String(options.method || "GET").toUpperCase();
 
   const headers = {

@@ -1,5 +1,6 @@
 // src/pages/RunSheetTable.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { joinApi } from "../config/apiBase";
 import "../index.css";
 
 function getQueryParam(name) {
@@ -75,9 +76,9 @@ export default function RunSheetTable() {
     const timeout = setTimeout(() => controller.abort(), 25000);
 
     try {
-      const url = `/api/runs/sheet?run_id=${encodeURIComponent(
+      const url = joinApi(`/api/runs/sheet?run_id=${encodeURIComponent(
         rid
-      )}&date=${encodeURIComponent(d)}`;
+      )}&date=${encodeURIComponent(d)}`);
       const res = await fetch(url, {
         method: "GET",
         headers: { Accept: "application/json" },

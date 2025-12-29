@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import BackendDebugConsole from "../components/BackendDebugConsole";
-import { OPS_API_BASE } from "../lib/opsApiBase";
 import { pushBackendDebugEntry } from "../lib/backendDebug";
+import { joinApi } from "../config/apiBase";
 import "../styles/wiringDebug.css";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -42,10 +42,7 @@ const TESTS = [
 ];
 
 function buildUrl(path) {
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  const normalizedBase = OPS_API_BASE?.replace(/\/$/, "") || "";
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${normalizedBase}${normalizedPath}`;
+  return joinApi(path);
 }
 
 const ResponseBlock = ({ result }) => {
@@ -82,8 +79,15 @@ const WiringDebugPage = () => {
   const [loadingKey, setLoadingKey] = useState(null);
   const [recentEntries, setRecentEntries] = useState([]);
 
-  const resolvedBase = useMemo(() => OPS_API_BASE || window.location.origin, []);
-  const rawEnvBase = useMemo(() => import.meta?.env?.VITE_OPS_API_BASE || "", []);
+  const resolvedBase = useMemo(() => joinApi("/api"), []);
+  const rawEnvBase = useMemo(
+    () =>
+      import.meta?.env?.VITE_BRAIN_API_BASE ||
+      import.meta?.env?.VITE_API_BASE ||
+      import.meta?.env?.VITE_API_BASE_URL ||
+      "",
+    []
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -178,7 +182,7 @@ const WiringDebugPage = () => {
               <code>{resolvedBase}</code>
             </div>
             <div className="wiring-debug__pill">
-              <span className="wiring-debug__pill-label">VITE_OPS_API_BASE</span>
+              <span className="wiring-debug__pill-label">VITE_BRAIN_API_BASE</span>
               <code>{rawEnvBase || "(empty)"}</code>
             </div>
             <div className="wiring-debug__pill">
