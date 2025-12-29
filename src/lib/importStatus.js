@@ -1,4 +1,6 @@
-export const IMPORT_STATUS_ENDPOINT = "/api/ops/import_status";
+import { apiUrl } from "./apiBase";
+
+export const IMPORT_STATUS_ENDPOINT = apiUrl("/api/ops/import_status");
 
 /**
  * Fetches the import status from the backend.

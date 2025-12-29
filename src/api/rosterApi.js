@@ -5,7 +5,7 @@ import {
   normalizeAirline,
   normalizeShift,
 } from "../lib/opsDefaults";
-import { joinApi } from "../config/apiBase";
+import { apiUrl } from "../lib/apiBase";
 
 // EWOT: Fetches the roster for a date and returns the unique operator codes on duty that day.
 
@@ -18,12 +18,15 @@ export async function fetchRosterOperators(date) {
   });
 
   // Adjust this path if the roster endpoint differs.
-  const res = await fetch(joinApi(`/api/employee_assignments/daily?${params.toString()}`), {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-  });
+  const res = await fetch(
+    apiUrl(`/api/employee_assignments/daily?${params.toString()}`),
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    }
+  );
 
   if (!res.ok) {
     return [];

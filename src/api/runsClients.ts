@@ -1,7 +1,7 @@
 // src/api/runsClients.ts
 // EWOT: Runs API client that strictly obeys the API contract and never sends [object Object] into query params.
 
-import { joinApi } from "../config/apiBase";
+import { apiUrl } from "../lib/apiBase";
 import { getEndpoint } from "./opsContractClient";
 
 async function handleJson<T>(res: Response): Promise<T> {
@@ -85,9 +85,7 @@ export async function fetchRunsForDate(
 ) {
   const ep = await getEndpoint("runs");
 
-  const baseOrigin =
-    typeof window !== "undefined" ? window.location.origin : "http://localhost";
-  const url = new URL(joinApi(ep.path), baseOrigin);
+  const url = new URL(apiUrl(ep.path));
 
   const norm = normalizeAirlineSelection(airlineSelection);
 
@@ -119,7 +117,7 @@ export async function autoAssignRuns(date: string, airlineSelection: any) {
   // If multi-select was given, we send airline="ALL" to avoid breaking.
   const airline = norm.airline || "ALL";
 
-  const res = await fetch(joinApi(ep.path), {
+  const res = await fetch(apiUrl(ep.path), {
     method: ep.method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ date, airline })

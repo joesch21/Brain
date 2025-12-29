@@ -1,4 +1,5 @@
 import { fetchJson } from "./api";
+import { apiUrl } from "../lib/apiBase";
 
 const ASSIGNMENTS_CACHE = new Map();
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -80,7 +81,7 @@ async function fetchAssignments({
 
   try {
     const res = await fetchJson(
-      `/api/employee_assignments/daily?${params.toString()}`,
+      apiUrl(`/api/employee_assignments/daily?${params.toString()}`),
       { signal: timeoutSignal },
     );
 

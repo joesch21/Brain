@@ -1,5 +1,3 @@
-import { joinApi } from "../config/apiBase";
-
 /**
  * Shared JSON fetch helper for The Brain.
  *
@@ -9,8 +7,7 @@ import { joinApi } from "../config/apiBase";
 
 export async function fetchJson(url, options = {}) {
   try {
-    const resolvedUrl = joinApi(url);
-    const resp = await fetch(resolvedUrl, options);
+    const resp = await fetch(url, options);
     const text = await resp.text();
 
     let data = null;

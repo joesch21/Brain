@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import BackendDebugConsole from "../components/BackendDebugConsole";
 import { pushBackendDebugEntry } from "../lib/backendDebug";
-import { joinApi } from "../config/apiBase";
+import { apiUrl, getApiBase } from "../lib/apiBase";
 import "../styles/wiringDebug.css";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -9,41 +9,38 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const TESTS = [
   {
     key: "wiring-status",
-    label: "GET /api/wiring-status",
+    label: `GET ${apiUrl("/api/wiring-status")}`,
     method: "GET",
-    buildPath: () => "/api/wiring-status",
+    buildUrl: () => apiUrl("/api/wiring-status"),
   },
   {
     key: "staff",
-    label: "GET /api/staff",
+    label: `GET ${apiUrl("/api/staff")}`,
     method: "GET",
-    buildPath: () => "/api/staff",
+    buildUrl: () => apiUrl("/api/staff"),
   },
   {
     key: "flights",
-    label: "GET /api/flights?date=YYYY-MM-DD",
+    label: `GET ${apiUrl("/api/flights")}?date=YYYY-MM-DD`,
     method: "GET",
-    buildPath: (date) => `/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`,
+    buildUrl: (date) =>
+      apiUrl(`/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
   },
   {
     key: "runs",
-    label: "GET /api/runs",
+    label: `GET ${apiUrl("/api/runs")}`,
     method: "GET",
-    buildPath: (date) =>
-      `/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`,
+    buildUrl: (date) =>
+      apiUrl(`/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
   },
   {
     key: "auto-assign",
-    label: "POST /api/runs/auto_assign",
+    label: `POST ${apiUrl("/api/runs/auto_assign")}`,
     method: "POST",
-    buildPath: () => "/api/runs/auto_assign",
+    buildUrl: () => apiUrl("/api/runs/auto_assign"),
     body: (date) => ({ date, airline: "ALL" }),
   },
 ];
-
-function buildUrl(path) {
-  return joinApi(path);
-}
 
 const ResponseBlock = ({ result }) => {
   if (!result) return <p className="wiring-debug__muted">No call yet.</p>;
@@ -79,13 +76,9 @@ const WiringDebugPage = () => {
   const [loadingKey, setLoadingKey] = useState(null);
   const [recentEntries, setRecentEntries] = useState([]);
 
-  const resolvedBase = useMemo(() => joinApi("/api"), []);
+  const resolvedBase = useMemo(() => getApiBase(), []);
   const rawEnvBase = useMemo(
-    () =>
-      import.meta?.env?.VITE_BRAIN_API_BASE ||
-      import.meta?.env?.VITE_API_BASE ||
-      import.meta?.env?.VITE_API_BASE_URL ||
-      "",
+    () => import.meta?.env?.VITE_API_BASE || "",
     []
   );
 
@@ -98,8 +91,7 @@ const WiringDebugPage = () => {
   }, []);
 
   async function runTest(test) {
-    const path = test.buildPath(date);
-    const url = buildUrl(path);
+    const url = test.buildUrl(date);
     const method = test.method || "GET";
     const body = test.body ? test.body(date) : undefined;
 
@@ -182,7 +174,7 @@ const WiringDebugPage = () => {
               <code>{resolvedBase}</code>
             </div>
             <div className="wiring-debug__pill">
-              <span className="wiring-debug__pill-label">VITE_BRAIN_API_BASE</span>
+              <span className="wiring-debug__pill-label">VITE_API_BASE</span>
               <code>{rawEnvBase || "(empty)"}</code>
             </div>
             <div className="wiring-debug__pill">

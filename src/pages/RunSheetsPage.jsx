@@ -4,6 +4,7 @@ import SystemHealthBar from "../components/SystemHealthBar";
 import RunSheetSection, { getRunId } from "../components/RunSheetSection";
 import { getAssignmentsOptional } from "../utils/optionalAssignments";
 import { fetchJson } from "../utils/api";
+import { apiUrl } from "../lib/apiBase";
 import "../index.css";
 import "../styles/runSheetsPage.css";
 
@@ -105,7 +106,7 @@ const RunSheetsPage = () => {
           airline: op || DEFAULT_OPERATOR,
           shift: sh || DEFAULT_SHIFT,
         });
-        const res = await fetchJson(`/api/runs?${params.toString()}`);
+        const res = await fetchJson(apiUrl(`/api/runs?${params.toString()}`));
 
         if (!res?.ok) {
           setError(

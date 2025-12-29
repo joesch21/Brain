@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { apiUrl } from "../lib/apiBase";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -6,22 +7,24 @@ const PROBES = [
   {
     key: "contract",
     name: "API Contract",
-    buildPath: () => "/api/contract",
+    buildPath: () => apiUrl("/api/contract"),
   },
   {
     key: "wiring-status",
     name: "Wiring Status",
-    buildPath: () => "/api/wiring-status",
+    buildPath: () => apiUrl("/api/wiring-status"),
   },
   {
     key: "flights",
     name: "Flights (today)",
-    buildPath: (date) => `/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`,
+    buildPath: (date) =>
+      apiUrl(`/api/flights?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
   },
   {
     key: "runs",
     name: "Runs (today)",
-    buildPath: (date) => `/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`,
+    buildPath: (date) =>
+      apiUrl(`/api/runs?date=${encodeURIComponent(date)}&airport=YSSY&airline=ALL`),
   },
 ];
 

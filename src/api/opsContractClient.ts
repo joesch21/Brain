@@ -1,7 +1,7 @@
 // src/api/opsContractClient.ts
 // EWOT: Fetches and caches the API contract so the UI never guesses endpoints.
 
-import { joinApi } from "../config/apiBase";
+import { apiUrl } from "../lib/apiBase";
 
 export type ApiEndpoint = {
   name: string;
@@ -17,7 +17,7 @@ export type ApiContract = {
   endpoints: ApiEndpoint[];
 };
 
-const CONTRACT_PATH = "/api/contract";
+const CONTRACT_PATH = apiUrl("/api/contract");
 
 let cachedContract: ApiContract | null = null;
 
@@ -42,7 +42,7 @@ export async function loadApiContract(): Promise<ApiContract> {
   if (cachedContract) return cachedContract;
 
   try {
-    const contract = await fetchContract(joinApi(CONTRACT_PATH));
+    const contract = await fetchContract(CONTRACT_PATH);
     cachedContract = contract;
     return contract;
   } catch (primaryError) {

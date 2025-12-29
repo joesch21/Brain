@@ -1,8 +1,6 @@
-import { joinApi } from "../config/apiBase";
-
 export async function fetchApiStatus(url, options = {}) {
   try {
-    const response = await fetch(joinApi(url), options);
+    const response = await fetch(url, options);
     const status = response.status;
 
     const contentType = response.headers?.get("content-type") || "";

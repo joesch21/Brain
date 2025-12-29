@@ -5,6 +5,7 @@ import RunSheetSection, {
   getRunId,
 } from "../components/RunSheetSection";
 import { fetchJson } from "../utils/api";
+import { apiUrl } from "../lib/apiBase";
 import { getAssignmentsOptional } from "../utils/optionalAssignments";
 import "../styles/runSheetsPage.css";
 
@@ -63,7 +64,7 @@ const RunSheetsPackPage = () => {
         airline: airline || DEFAULT_OPERATOR,
         shift: shift || DEFAULT_SHIFT,
       });
-      const res = await fetchJson(`/api/runs?${query.toString()}`);
+      const res = await fetchJson(apiUrl(`/api/runs?${query.toString()}`));
 
       if (!res?.ok) {
         setError(
