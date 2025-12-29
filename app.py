@@ -24,6 +24,40 @@ from dotenv import load_dotenv
 from services import api_contract
 from services.query_params import normalize_airline_query
 
+
+def _csv_to_list(raw_value):
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, list):
+        return [str(item).strip().upper() for item in raw_value if str(item).strip()]
+    text = str(raw_value).strip()
+    if not text:
+        return []
+    return [part.strip().upper() for part in text.split(",") if part.strip()]
+
+
+def normalize_airlines(args_or_json):
+    """EWOT: Normalizes airline/operator/airlines inputs into a canonical airlines_selected list."""
+    if not args_or_json:
+        return ["ALL"]
+
+    airlines_value = None
+    for key in ("airlines", "airline", "operator"):
+        if key in args_or_json and args_or_json.get(key) is not None:
+            airlines_value = args_or_json.get(key)
+            break
+
+    items = _csv_to_list(airlines_value)
+    return items if items else ["ALL"]
+
+
+def normalize_shift(args_or_json):
+    if not args_or_json:
+        return "ALL"
+    value = args_or_json.get("shift") if hasattr(args_or_json, "get") else None
+    value = (value or "ALL").strip().upper()
+    return value if value in ("AM", "PM", "ALL") else "ALL"
+
 # SCHEMA RULE:
 # - 'airline' is canonical
 # - new query param names require a CWO
@@ -1537,6 +1571,60 @@ def api_wiring_status():
     return jsonify(payload), 200
 
 
+@app.get("/api/ops/import_status")
+def api_ops_import_status():
+    """Deterministic placeholder for UI polling."""
+    airlines_selected = normalize_airlines(request.args)
+    airport = (request.args.get("airport") or "").strip() or None
+    date_str = (request.args.get("date") or "").strip() or None
+    return jsonify(
+        {
+            "ok": True,
+            "available": False,
+            "reason": "not_implemented_yet",
+            "airlines_selected": airlines_selected,
+            "airport": airport,
+            "date": date_str,
+            "metrics": {"duration_seconds": 0.0},
+        }
+    )
+
+
+@app.get("/api/service_profiles")
+def api_service_profiles():
+    """Deterministic placeholder for UI fetches."""
+    airlines_selected = normalize_airlines(request.args)
+    return jsonify(
+        {
+            "ok": True,
+            "available": False,
+            "reason": "not_implemented_yet",
+            "airlines_selected": airlines_selected,
+            "profiles": [],
+        }
+    )
+
+
+@app.get("/api/runs_status")
+def api_runs_status():
+    """Deterministic placeholder for UI polling."""
+    airlines_selected = normalize_airlines(request.args)
+    shift_requested = normalize_shift(request.args)
+    airport = (request.args.get("airport") or "").strip() or None
+    date_str = (request.args.get("date") or "").strip() or None
+    return jsonify(
+        {
+            "ok": True,
+            "available": False,
+            "reason": "not_implemented_yet",
+            "airlines_selected": airlines_selected,
+            "shift_requested": shift_requested,
+            "airport": airport,
+            "date": date_str,
+        }
+    )
+
+
 @app.get("/api/wiring")
 def api_wiring_snapshot():
     """Augmented wiring snapshot with route checks and config flags."""
@@ -1991,6 +2079,7 @@ def api_flights_pull():
     Brain stays read-only by default. This endpoint is the explicit "pull now"
     button that forwards to CC3 ingestion and (optionally) stores into DB.
     """
+    start_ts = time.monotonic()
 
     data = request.get_json(silent=True)
     if data is None:
@@ -2013,10 +2102,10 @@ def api_flights_pull():
     if airport_err is not None:
         return airport_err
 
-    date_str = str(data.get("date") or "").strip()
+    date_str = str(data.get("local_date") or data.get("date") or "").strip()
     if not date_str:
         return json_error(
-            "date is required",
+            "local_date is required",
             status_code=400,
             code="validation_error",
         )
@@ -2029,12 +2118,7 @@ def api_flights_pull():
             code="validation_error",
         )
 
-    airline, airline_err = _normalize_airline_param(
-        data.get("airline"),
-        data.get("operator"),
-    )
-    if airline_err is not None:
-        return airline_err
+    airlines_selected = normalize_airlines(data)
     raw_timeout = data.get("timeout", 30)
     try:
         timeout = int(raw_timeout)
@@ -2050,8 +2134,8 @@ def api_flights_pull():
     # - ALL => no airline filter
     # - otherwise => airlines=[operator]
     airlines = None
-    if airline != "ALL":
-        airlines = [airline]
+    if airlines_selected != ["ALL"]:
+        airlines = airlines_selected
 
     upstream_path = "/api/flights/ingest/aeroapi"
     upstream_body: Dict[str, Any] = {
@@ -2072,21 +2156,37 @@ def api_flights_pull():
         )
     except requests.RequestException as exc:
         app.logger.exception("Failed to call upstream flights ingest")
-        return json_error(
-            "Upstream flights ingest endpoint unavailable",
-            status_code=502,
-            code="upstream_error",
-            detail={"detail": str(exc), "upstream_path": upstream_path},
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "airport": airport,
+                    "local_date": date_str,
+                    "airlines_selected": airlines_selected,
+                    "error": "upstream_unavailable",
+                    "upstream_error": str(exc)[:500],
+                    "metrics": {"duration_seconds": round(time.monotonic() - start_ts, 4)},
+                }
+            ),
+            200,
         )
 
     try:
         payload = resp.json()
     except Exception:  # noqa: BLE001
-        return json_error(
-            "Invalid JSON from upstream flights ingest endpoint.",
-            status_code=502,
-            code="invalid_json",
-            detail={"raw": resp.text[:500], "upstream_path": upstream_path},
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "airport": airport,
+                    "local_date": date_str,
+                    "airlines_selected": airlines_selected,
+                    "error": "invalid_upstream_json",
+                    "upstream_error": resp.text[:500],
+                    "metrics": {"duration_seconds": round(time.monotonic() - start_ts, 4)},
+                }
+            ),
+            200,
         )
 
     # Normalize response so UI/PS can depend on stable keys.
@@ -2094,7 +2194,7 @@ def api_flights_pull():
         "ok": bool(payload.get("ok")) if isinstance(payload, dict) else False,
         "airport": airport,
         "local_date": date_str,
-        "airline": airline,
+        "airlines_selected": airlines_selected,
         "source": "upstream",
         "upstream": {
             "base_url": _active_upstream_base(),
@@ -2102,9 +2202,10 @@ def api_flights_pull():
             "status_code": resp.status_code,
         },
         "payload": payload,
+        "metrics": {"duration_seconds": round(time.monotonic() - start_ts, 4)},
     }
 
-    return jsonify(out), resp.status_code
+    return jsonify(out), 200
 
 
 @app.post("/api/ops/complete_day")
