@@ -1,13 +1,14 @@
 // /src/hooks/useBackendHealth.js
 import { useEffect } from "react";
 import { opsGet } from "../lib/opsApi";
+import { apiUrl } from "../lib/apiBase";
 import { pushBackendDebugEntry } from "../lib/backendDebug";
 
 export default function useBackendHealth() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const res = await opsGet(`/api/status`);
+        const res = await opsGet(apiUrl("/api/status"));
         if (!res.ok) {
           pushBackendDebugEntry({
             type: "status-error",

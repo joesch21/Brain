@@ -1,5 +1,6 @@
 // Machine Room status card with backend health, API checks, and demo flight seeding
 import React, { useEffect, useState } from "react";
+import { apiUrl } from "../lib/apiBase";
 
 function todayISO() {
   const d = new Date();
@@ -43,7 +44,7 @@ const MachineRoomStatusCard = () => {
       setLoading(true);
       setError("");
       const resp = await fetch(
-        `/api/status?date=${encodeURIComponent(targetDate)}`
+        apiUrl(`/api/status?date=${encodeURIComponent(targetDate)}`)
       );
       if (!resp.ok) {
         const text = await resp.text();
@@ -70,15 +71,15 @@ const MachineRoomStatusCard = () => {
     const tests = [
       {
         name: "Flights (today)",
-        url: `/api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`,
+        url: apiUrl(`/api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
       },
       {
         name: "Runs (today)",
-        url: `/api/runs?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`,
+        url: apiUrl(`/api/runs?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
       },
       {
         name: "Service profiles",
-        url: `/api/service_profiles`,
+        url: apiUrl("/api/service_profiles"),
       },
     ];
 
@@ -139,8 +140,8 @@ const MachineRoomStatusCard = () => {
       setError("");
 
       const url = date
-        ? `/api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`
-        : "/api/dev/seed_dec24_schedule";
+        ? apiUrl(`/api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`)
+        : apiUrl("/api/dev/seed_dec24_schedule");
       const resp = await fetch(url, {
         method: "POST",
       });

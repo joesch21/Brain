@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { apiUrl } from "../lib/apiBase";
 
 const DEFAULT_DAYS = 4;
 const DEFAULT_AIRPORT = "YSSY";
@@ -32,7 +33,7 @@ function DbInventoryCard() {
       params.set("airlines", airlines.trim() || "ALL");
 
       const resp = await fetch(
-        `/api/machine-room/db-flight-inventory?${params.toString()}`
+        apiUrl(`/api/machine-room/db-flight-inventory?${params.toString()}`)
       );
       const payload = await resp.json();
 

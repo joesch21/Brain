@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "powershell -ExecutionPolicy Bypass -File scripts/verify-no-relative-api.ps1",
     "build": "vite build",
     "preview": "vite preview",
     "validate:contract": "node scripts/validate-contract-fetch.mjs"

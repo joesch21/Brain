@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 
 import { apiRequest } from "../lib/apiClient";
-import { getApiBase } from "../config/apiBase";
+import { apiUrl, getApiBase } from "../lib/apiBase";
 
 const WiringTestPanel = () => {
   const envBase = getApiBase();
@@ -16,7 +16,7 @@ const WiringTestPanel = () => {
     setResult(null);
 
     try {
-      const { data } = await apiRequest("/api/ops/debug/wiring", {
+      const { data } = await apiRequest(apiUrl("/api/ops/debug/wiring"), {
         method: "GET",
       });
       setResult(data);
@@ -32,7 +32,7 @@ const WiringTestPanel = () => {
       <h2>Wiring Test (Brain → CodeCrafter2)</h2>
 
       <p>
-        <strong>Backend URL (VITE_BRAIN_API_BASE):</strong> {envBase}
+        <strong>Backend URL (VITE_API_BASE):</strong> {envBase}
       </p>
 
       <button onClick={handleTest} disabled={loading}>

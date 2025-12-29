@@ -1,12 +1,8 @@
-import { joinApi } from "../config/apiBase";
-
-export async function opsGet(path) {
-  const url = joinApi(path);
+export async function opsGet(url) {
   return fetch(url, { credentials: "include" });
 }
 
-export async function opsPost(path, body) {
-  const url = joinApi(path);
+export async function opsPost(url, body) {
   return fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
