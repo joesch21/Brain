@@ -19,7 +19,7 @@ export async function fetchRosterOperators(date) {
 
   // Adjust this path if the roster endpoint differs.
   const res = await fetch(
-    apiUrl(`/api/employee_assignments/daily?${params.toString()}`),
+    apiUrl(`api/employee_assignments/daily?${params.toString()}`),
     {
       method: "GET",
       headers: {

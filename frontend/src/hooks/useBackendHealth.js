@@ -8,7 +8,7 @@ export default function useBackendHealth() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const res = await opsGet(apiUrl("/api/status"));
+        const res = await opsGet(apiUrl("api/status"));
         if (!res.ok) {
           pushBackendDebugEntry({
             type: "status-error",

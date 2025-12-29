@@ -53,7 +53,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
       airport: REQUIRED_AIRPORT,
       airline: normalizeAirline(DEFAULT_AIRLINE),
     });
-    const { data } = await apiRequest(apiUrl(`/api/flights?${params.toString()}`));
+    const { data } = await apiRequest(apiUrl(`api/flights?${params.toString()}`));
     return data?.flights ?? [];
   }
 
@@ -68,7 +68,7 @@ export const JetstarFlightsAssignmentsCard: React.FC<Props> = ({ dateIso }) => {
     });
     try {
       const { data } = await apiRequest(
-        apiUrl(`/api/employee_assignments/daily?${params.toString()}`),
+        apiUrl(`api/employee_assignments/daily?${params.toString()}`),
       );
 
       if (data?.available === false) {

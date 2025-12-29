@@ -17,7 +17,7 @@ export type ApiContract = {
   endpoints: ApiEndpoint[];
 };
 
-const CONTRACT_PATH = apiUrl("/api/contract");
+const CONTRACT_PATH = apiUrl("api/contract");
 
 let cachedContract: ApiContract | null = null;
 

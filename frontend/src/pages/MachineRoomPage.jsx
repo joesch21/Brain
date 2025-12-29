@@ -60,7 +60,7 @@ const WIRING_TESTS = [
     key: "status",
     label: "System status",
     method: "GET",
-    buildUrl: () => apiUrl("/api/status"),
+    buildUrl: () => apiUrl("api/status"),
     expectsOkField: false,
   },
   {
@@ -68,7 +68,7 @@ const WIRING_TESTS = [
     label: "Flights for date",
     method: "GET",
     buildUrl: (date) =>
-      apiUrl(`/api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
+      apiUrl(`api/flights?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
     expectsOkField: true,
   },
   {
@@ -76,7 +76,7 @@ const WIRING_TESTS = [
     label: "Employee assignments for date",
     method: "GET",
     buildUrl: (date) =>
-      apiUrl(`/api/employee_assignments/daily?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
+      apiUrl(`api/employee_assignments/daily?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
     expectsOkField: true,
   },
   {
@@ -84,7 +84,7 @@ const WIRING_TESTS = [
     label: "Runs for date",
     method: "GET",
     buildUrl: (date) =>
-      apiUrl(`/api/runs?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
+      apiUrl(`api/runs?date=${encodeURIComponent(date)}&airport=${DEFAULT_AIRPORT}&airline=ALL`),
     expectsOkField: true,
   },
 ];
@@ -158,7 +158,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
           ? `&airline=${encodeURIComponent(selectedAirline)}`
           : "";
       const resp = await fetchApiStatus(
-        apiUrl(`/api/status?date=${encodeURIComponent(targetDate)}${airlineSuffix}`)
+        apiUrl(`api/status?date=${encodeURIComponent(targetDate)}${airlineSuffix}`)
       );
 
       if (!resp.ok) {
@@ -182,7 +182,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
       setStaffRuns({ runs: [], unassigned: [] });
 
       const runsStatusResp = await fetchApiStatus(
-        apiUrl(`/api/runs_status?date=${encodeURIComponent(targetDate)}`)
+        apiUrl(`api/runs_status?date=${encodeURIComponent(targetDate)}`)
       );
       if (runsStatusResp.ok) {
         setRunsStatus(runsStatusResp.data || null);
@@ -266,19 +266,19 @@ const SystemStatusCard = ({ selectedAirline }) => {
     const tests = [
       {
         name: "Flights (date)",
-        url: apiUrl(`/api/flights?date=${encodeURIComponent(date)}${airportSuffix}${airlineSuffix}`),
+        url: apiUrl(`api/flights?date=${encodeURIComponent(date)}${airportSuffix}${airlineSuffix}`),
       },
       {
         name: "Runs (date)",
-        url: apiUrl(`/api/runs?date=${encodeURIComponent(date)}${airportSuffix}${airlineSuffix}`),
+        url: apiUrl(`api/runs?date=${encodeURIComponent(date)}${airportSuffix}${airlineSuffix}`),
       },
       {
         name: "Runs status (date)",
-        url: apiUrl(`/api/runs_status?date=${encodeURIComponent(date)}`),
+        url: apiUrl(`api/runs_status?date=${encodeURIComponent(date)}`),
       },
       {
         name: "Service profiles (optional)",
-        url: apiUrl("/api/service_profiles"),
+        url: apiUrl("api/service_profiles"),
         optional: true,
         optionalMessage:
           "Optional: CC2 may not expose service profiles yet, so skip this wiring check if missing.",
@@ -326,7 +326,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
     setRosterSeedLoading(true);
     setRosterSeedStatus(null);
     try {
-      const resp = await fetch(apiUrl("/api/roster/seed_dec24"), { method: "POST" });
+      const resp = await fetch(apiUrl("api/roster/seed_dec24"), { method: "POST" });
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok || body.ok === false) {
         setRosterSeedStatus({
@@ -467,7 +467,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
     setCc3CanaryResult(null);
 
     try {
-      const resp = await safeRequest(apiUrl("/api/machine-room/cc3-ingest-canary"), {
+      const resp = await safeRequest(apiUrl("api/machine-room/cc3-ingest-canary"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -512,7 +512,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
         : "ALL";
 
     try {
-      const resp = await safeRequest(apiUrl("/api/ops/complete_day"), {
+      const resp = await safeRequest(apiUrl("api/ops/complete_day"), {
         method: "POST",
         body: JSON.stringify({
           date,
@@ -558,8 +558,8 @@ const SystemStatusCard = ({ selectedAirline }) => {
       setAssignmentMessage("");
 
       const url = date
-        ? apiUrl(`/api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`)
-        : apiUrl("/api/dev/seed_dec24_schedule");
+        ? apiUrl(`api/dev/seed_dec24_schedule?date=${encodeURIComponent(date)}`)
+        : apiUrl("api/dev/seed_dec24_schedule");
       const resp = await fetch(url, {
         method: "POST",
       });
@@ -591,7 +591,7 @@ const SystemStatusCard = ({ selectedAirline }) => {
     });
 
     try {
-      const resp = await fetch(apiUrl(`/api/ops/prepare_day?${params.toString()}`), {
+      const resp = await fetch(apiUrl(`api/ops/prepare_day?${params.toString()}`), {
         method: "POST",
       });
       const body = await resp.json().catch(() => ({}));
@@ -1267,7 +1267,7 @@ const MachineRoomPage = () => {
 
     try {
       const resp = await fetch(
-        apiUrl(`/api/import/live?airline=${encodeURIComponent(airline)}`),
+        apiUrl(`api/import/live?airline=${encodeURIComponent(airline)}`),
         { method: "POST" }
       );
       const body = await resp.json();

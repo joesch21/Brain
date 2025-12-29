@@ -1585,7 +1585,7 @@ const PlannerPage = () => {
           setRunsError("");
         } else {
           const statusLabel = runsResp?.status ?? "network";
-          const endpoint = runsResp?.raw?.url || apiUrl("/api/runs");
+          const endpoint = runsResp?.raw?.url || apiUrl("api/runs");
           const message = runsResp?.error || "Request failed";
           setRunsWithConflicts([]);
           setUnassigned([]);
@@ -1668,7 +1668,7 @@ const PlannerPage = () => {
 
   async function updateFlightRun(flightRunId, patch) {
     try {
-      const resp = await fetch(apiUrl(`/api/flight_runs/${flightRunId}`), {
+      const resp = await fetch(apiUrl(`api/flight_runs/${flightRunId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -1716,7 +1716,7 @@ const PlannerPage = () => {
     });
 
     try {
-      const resp = await fetch(apiUrl("/api/runs/update_layout"), {
+      const resp = await fetch(apiUrl("api/runs/update_layout"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runs: runsPayload }),
@@ -1746,7 +1746,7 @@ const PlannerPage = () => {
     setAutoAssignError("");
     setAutoAssignSuccess(false);
     try {
-      const resp = await fetch(apiUrl("/api/runs/auto_assign"), {
+      const resp = await fetch(apiUrl("api/runs/auto_assign"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date }),
@@ -2043,7 +2043,7 @@ const PlannerPage = () => {
     if (flightId == null) return;
 
     try {
-      const resp = await fetch(apiUrl("/api/flight_runs/assign"), {
+      const resp = await fetch(apiUrl("api/flight_runs/assign"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run_id: targetRunId, flight_id: flightId }),
@@ -2088,7 +2088,7 @@ const PlannerPage = () => {
     if (flightRunId == null) return;
 
     try {
-      const resp = await fetch(apiUrl("/api/flight_runs/unassign"), {
+      const resp = await fetch(apiUrl("api/flight_runs/unassign"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ flight_run_id: flightRunId }),
