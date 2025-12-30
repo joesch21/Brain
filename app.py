@@ -51,6 +51,22 @@ def normalize_airlines(args_or_json):
     return items if items else ["ALL"]
 
 
+def normalize_operator_selected(payload, fallback_args=None):
+    """Normalize operator/airlines inputs into operator_selected list (payload first)."""
+    operator_value = None
+    for source in (payload, fallback_args):
+        if not source:
+            continue
+        for key in ("operator", "airlines", "airline"):
+            if key in source and source.get(key) is not None:
+                operator_value = source.get(key)
+                break
+        if operator_value is not None:
+            break
+
+    return _csv_to_list(operator_value)
+
+
 def normalize_shift(args_or_json):
     if not args_or_json:
         return "ALL"
@@ -2222,7 +2238,8 @@ def _complete_day_impl(payload_or_args, fallback_args=None):
     airport = (_get_value("airport") or "").strip()
     date_str = (_get_value("date") or _get_value("local_date") or "").strip()
 
-    airlines_selected = normalize_airlines(payload or fallback_args)
+    operator_selected = normalize_operator_selected(payload, fallback_args)
+    airlines_selected = operator_selected or normalize_airlines(payload or fallback_args)
     shift_requested = normalize_shift(payload or fallback_args)
 
     if not airport:
@@ -2233,6 +2250,7 @@ def _complete_day_impl(payload_or_args, fallback_args=None):
                 "airport": airport,
                 "date": date_str,
                 "airlines_selected": airlines_selected,
+                "operator_selected": operator_selected,
                 "shift_requested": shift_requested,
                 "metrics": {"duration_seconds": round(time.time() - start_ts, 4)},
             }
@@ -2245,6 +2263,21 @@ def _complete_day_impl(payload_or_args, fallback_args=None):
                 "airport": airport,
                 "date": date_str,
                 "airlines_selected": airlines_selected,
+                "operator_selected": operator_selected,
+                "shift_requested": shift_requested,
+                "metrics": {"duration_seconds": round(time.time() - start_ts, 4)},
+            }
+        ), 400
+    if not operator_selected:
+        return jsonify(
+            {
+                "ok": False,
+                "error": {"code": "validation_error", "message": "operator is required"},
+                "validation_error": "operator_missing",
+                "airport": airport,
+                "date": date_str,
+                "airlines_selected": airlines_selected,
+                "operator_selected": operator_selected,
                 "shift_requested": shift_requested,
                 "metrics": {"duration_seconds": round(time.time() - start_ts, 4)},
             }
@@ -2259,6 +2292,7 @@ def _complete_day_impl(payload_or_args, fallback_args=None):
                 "airport": airport,
                 "date": date_str,
                 "airlines_selected": airlines_selected,
+                "operator_selected": operator_selected,
                 "shift_requested": shift_requested,
                 "metrics": {"duration_seconds": round(time.time() - start_ts, 4)},
             }
@@ -2269,6 +2303,7 @@ def _complete_day_impl(payload_or_args, fallback_args=None):
         "airport": airport,
         "date": date_str,
         "airlines": ",".join(airlines_selected),
+        "operator": ",".join(operator_selected),
         "shift": shift_requested,
     }
 
@@ -2286,6 +2321,7 @@ def _complete_day_impl(payload_or_args, fallback_args=None):
                     "airport": airport,
                     "date": date_str,
                     "airlines_selected": airlines_selected,
+                    "operator_selected": operator_selected,
                     "shift_requested": shift_requested,
                     "upstream": {
                         "url": url,
@@ -2304,6 +2340,7 @@ def _complete_day_impl(payload_or_args, fallback_args=None):
                 "airport": airport,
                 "date": date_str,
                 "airlines_selected": airlines_selected,
+                "operator_selected": operator_selected,
                 "shift_requested": shift_requested,
                 "upstream": {
                     "url": url,
@@ -2321,6 +2358,7 @@ def _complete_day_impl(payload_or_args, fallback_args=None):
                 "airport": airport,
                 "date": date_str,
                 "airlines_selected": airlines_selected,
+                "operator_selected": operator_selected,
                 "shift_requested": shift_requested,
                 "error": "upstream_request_failed",
                 "upstream_error": str(exc)[:500],
