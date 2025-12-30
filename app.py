@@ -2208,44 +2208,33 @@ def api_flights_pull():
     return jsonify(out), 200
 
 
-@app.post("/api/ops/complete_day")
-def api_ops_complete_day():
-    """EWOT: Triggers CC3 prepare_day ingestion for date/airport/airlines and returns upstream outcome."""
+def _complete_day_impl(payload_or_args, fallback_args=None):
+    """EWOT: Shared CC3 prepare_day ingestion implementation with stable JSON response."""
     start_ts = time.time()
-    payload = request.get_json(silent=True)
-    if payload is None:
-        if request.data:
-            return json_error(
-                "Invalid JSON body.",
-                status_code=400,
-                code="invalid_json",
-            )
-        payload = {}
+    payload = payload_or_args or {}
 
-    if not isinstance(payload, dict):
-        return json_error(
-            "Request body must be a JSON object.",
-            status_code=400,
-            code="bad_request",
-        )
+    def _get_value(key):
+        value = payload.get(key) if hasattr(payload, "get") else None
+        if not value and fallback_args is not None:
+            value = fallback_args.get(key)
+        return value
 
-    airport = (payload.get("airport") or request.args.get("airport") or "").strip()
-    date_str = (
-        payload.get("date")
-        or payload.get("local_date")
-        or request.args.get("date")
-        or ""
-    ).strip()
+    airport = (_get_value("airport") or "").strip()
+    date_str = (_get_value("date") or _get_value("local_date") or "").strip()
 
-    airlines_selected = normalize_airlines(payload or request.args)
-    shift_requested = normalize_shift(payload or request.args)
+    airlines_selected = normalize_airlines(payload or fallback_args)
+    shift_requested = normalize_shift(payload or fallback_args)
 
     if not airport:
         return jsonify(
             {
                 "ok": False,
                 "error": "airport is required",
+                "airport": airport,
+                "date": date_str,
                 "airlines_selected": airlines_selected,
+                "shift_requested": shift_requested,
+                "metrics": {"duration_seconds": round(time.time() - start_ts, 4)},
             }
         ), 400
     if not date_str:
@@ -2254,7 +2243,10 @@ def api_ops_complete_day():
                 "ok": False,
                 "error": "date is required",
                 "airport": airport,
+                "date": date_str,
                 "airlines_selected": airlines_selected,
+                "shift_requested": shift_requested,
+                "metrics": {"duration_seconds": round(time.time() - start_ts, 4)},
             }
         ), 400
 
@@ -2288,7 +2280,8 @@ def api_ops_complete_day():
             upstream_json = resp.json()
             return jsonify(
                 {
-                    "ok": status in range(200, 300) and bool(upstream_json.get("ok", True)),
+                    "ok": status in range(200, 300)
+                    and bool(upstream_json.get("ok", True)),
                     "triggered": status in range(200, 300),
                     "airport": airport,
                     "date": date_str,
@@ -2320,7 +2313,7 @@ def api_ops_complete_day():
                 "metrics": {"duration_seconds": round(time.time() - start_ts, 4)},
             }
         ), 200
-    except requests.RequestException as exc:
+    except Exception as exc:
         return jsonify(
             {
                 "ok": False,
@@ -2335,6 +2328,35 @@ def api_ops_complete_day():
                 "metrics": {"duration_seconds": round(time.time() - start_ts, 4)},
             }
         ), 200
+
+
+@app.post("/api/ops/complete_day")
+def api_ops_complete_day():
+    """EWOT: Triggers CC3 prepare_day ingestion for date/airport/airlines and returns upstream outcome."""
+    payload = request.get_json(silent=True)
+    if payload is None:
+        if request.data:
+            return json_error(
+                "Invalid JSON body.",
+                status_code=400,
+                code="invalid_json",
+            )
+        payload = {}
+
+    if not isinstance(payload, dict):
+        return json_error(
+            "Request body must be a JSON object.",
+            status_code=400,
+            code="bad_request",
+        )
+
+    return _complete_day_impl(payload, fallback_args=request.args)
+
+
+@app.get("/api/ops/complete_day/trigger")
+def api_ops_complete_day_trigger():
+    """EWOT: Browser-friendly GET trigger for CC3 prepare_day ingestion."""
+    return _complete_day_impl(request.args)
 
 
 @app.get("/api/employee_assignments/daily")
