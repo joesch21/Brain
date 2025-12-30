@@ -230,8 +230,29 @@ export async function getFlights({ date, airport, airline = "ALL", signal, ...re
 
 /** Pull flights (POST) */
 export async function pullFlights(date, airline = "ALL", options = {}) {
-  if (!date) throw new Error("pullFlights: date is required");
-  if (!options.airport) throw new Error("pullFlights: airport is required");
+  const url = apiUrl("api/flights/pull");
+  const method = "POST";
+
+  if (!date) {
+    return normalizeResult({
+      ok: false,
+      status: null,
+      statusText: null,
+      url,
+      method,
+      body: { error: "pullFlights: date is required" },
+    });
+  }
+  if (!options.airport) {
+    return normalizeResult({
+      ok: false,
+      status: null,
+      statusText: null,
+      url,
+      method,
+      body: { error: "pullFlights: airport is required" },
+    });
+  }
 
   const body = {
     date,
@@ -242,7 +263,7 @@ export async function pullFlights(date, airline = "ALL", options = {}) {
     scope: "both",
   };
 
-  return request(apiUrl("api/flights/pull"), {
+  return safeRequest(url, {
     method: "POST",
     body: JSON.stringify(body),
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,

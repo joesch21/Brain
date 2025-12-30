@@ -32,6 +32,18 @@ function formatRequestError(label, err) {
   return `${label} ${statusLabel} @ ${endpoint} – ${message}`;
 }
 
+function formatSafeRequestError(label, response) {
+  if (!response) return `${label} request failed.`;
+  const statusLabel = response.status ?? "network";
+  const endpoint = response.raw?.url || "unknown endpoint";
+  const message =
+    response.error ||
+    response.data?.error ||
+    response.data?.message ||
+    "Request failed";
+  return `${label} ${statusLabel} @ ${endpoint} – ${message}`;
+}
+
 function initialsFromName(name) {
   if (!name) return "";
   const parts = name
@@ -234,41 +246,42 @@ const SchedulePage = () => {
   }
 
   async function handlePullFlights() {
-    if (!canPullFlights) return;
+    if (!canPullFlights || pullLoading) return;
     setPullLoading(true);
     setPullStatus(null);
-    try {
     const op = airline ? airline : "ALL";
-      const resp = await pullFlights(date, op, {
-        airport: DEFAULT_AIRPORT,
-        timeoutMs: 60000,
-      });
-      const upstreamStatus = resp?.data?.status ?? resp?.status;
+    const resp = await pullFlights(date, op, {
+      airport: DEFAULT_AIRPORT,
+      timeoutMs: 60000,
+    });
+    const upstreamStatus = resp?.data?.status ?? resp?.status;
 
-      try {
-        const refreshed = await refreshFlightsOnly();
-        const refreshedCount = refreshed?.count ?? 0;
-        setPullStatus({
-          ok: true,
-          message: `Pulled ${refreshedCount} flight${refreshedCount === 1 ? "" : "s"} for ${date} (${op})${
-            upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
-          }.`,
-        });
-      } catch (refreshErr) {
-        setPullStatus({
-          ok: false,
-          message: `Pull completed for ${date} (${op})${
-            upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
-          }. ${formatRequestError("Refresh flights", refreshErr)}`,
-        });
-      }
-    } catch (err) {
-      const upstreamStatus = err?.data?.status ?? err?.data?.upstream_status ?? err?.status;
+    if (!resp.ok) {
       setPullStatus({
         ok: false,
-        message: `${formatRequestError("Pull flights", err)}${
+        message: `${formatSafeRequestError("Pull flights", resp)}${
           upstreamStatus != null ? ` (status ${upstreamStatus})` : ""
         }`,
+      });
+      setPullLoading(false);
+      return;
+    }
+
+    try {
+      const refreshed = await refreshFlightsOnly();
+      const refreshedCount = refreshed?.count ?? 0;
+      setPullStatus({
+        ok: true,
+        message: `Pulled ${refreshedCount} flight${refreshedCount === 1 ? "" : "s"} for ${date} (${op})${
+          upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
+        }.`,
+      });
+    } catch (refreshErr) {
+      setPullStatus({
+        ok: false,
+        message: `Pull completed for ${date} (${op})${
+          upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
+        }. ${formatRequestError("Refresh flights", refreshErr)}`,
       });
     } finally {
       setPullLoading(false);

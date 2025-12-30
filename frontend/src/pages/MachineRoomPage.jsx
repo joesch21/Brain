@@ -19,6 +19,7 @@ import {
 } from "../lib/staffMvp";
 import { FlightsAssignmentsTable } from "../components/FlightsAssignmentsTable";
 import { JetstarFlightsAssignmentsCard } from "../components/JetstarFlightsAssignmentsCard";
+import PullFlightsPanel from "../components/PullFlightsPanel";
 import "../styles/machineRoom.css";
 import { apiUrl } from "../lib/apiBase";
 
@@ -949,6 +950,17 @@ const SystemStatusCard = ({ selectedAirline }) => {
           {rosterSeedLoading ? "Loading DEC24 roster…" : "Load DEC24 roster"}
         </button>
       </div>
+
+      <PullFlightsPanel
+        airport={DEFAULT_AIRPORT}
+        date={date}
+        airline={
+          selectedAirline && selectedAirline !== ALL_AIRLINE_OPTION
+            ? selectedAirline
+            : "ALL"
+        }
+      />
+
       {completeDayStatus && (
         <div
           className={

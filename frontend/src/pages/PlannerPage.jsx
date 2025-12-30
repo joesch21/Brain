@@ -1794,40 +1794,39 @@ const PlannerPage = () => {
   }
 
   async function handlePullFlights() {
-    if (!canPullFlights) return;
+    if (!canPullFlights || pullLoading) return;
     setPullLoading(true);
     setPullMessage("");
-    try {
-      const op = operator || "ALL";
-      const resp = await pullFlights(date, op, {
-        airport: DEFAULT_AIRPORT,
-        timeoutMs: 60000,
-      });
-      const upstreamStatus = resp?.data?.status ?? resp?.status;
-      try {
-        const refreshed = await refreshFlightsOnly();
-        const refreshedCount = refreshed?.count ?? 0;
-        setPullMessage(
-          `Pulled ${refreshedCount} flight${refreshedCount === 1 ? "" : "s"} for ${date} (${op})${
-            upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
-          }.`
-        );
-      } catch (refreshErr) {
-        setPullMessage(
-          `Pull completed for ${date} (${op})${
-            upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
-          }. ${formatRequestError("Refresh flights", refreshErr)}`
-        );
-      }
-    } catch (err) {
-      const statusLabel = err?.status ?? "network";
-      const endpoint = err?.url || "unknown endpoint";
-      const upstreamStatus =
-        err?.data?.status ?? err?.data?.upstream_status ?? err?.status;
+
+    const op = operator || "ALL";
+    const resp = await pullFlights(date, op, {
+      airport: DEFAULT_AIRPORT,
+      timeoutMs: 60000,
+    });
+    const upstreamStatus = resp?.data?.status ?? resp?.status;
+
+    if (!resp.ok) {
+      const baseMessage = formatSafeRequestError("Pull flights", resp);
       setPullMessage(
-        `Pull flights ${statusLabel} @ ${endpoint} – ${err?.message || "failed"}${
-          upstreamStatus != null ? ` (status ${upstreamStatus})` : ""
-        }`
+        `${baseMessage}${upstreamStatus != null ? ` (status ${upstreamStatus})` : ""}`
+      );
+      setPullLoading(false);
+      return;
+    }
+
+    try {
+      const refreshed = await refreshFlightsOnly();
+      const refreshedCount = refreshed?.count ?? 0;
+      setPullMessage(
+        `Pulled ${refreshedCount} flight${refreshedCount === 1 ? "" : "s"} for ${date} (${op})${
+          upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
+        }.`
+      );
+    } catch (refreshErr) {
+      setPullMessage(
+        `Pull completed for ${date} (${op})${
+          upstreamStatus != null ? ` – status ${upstreamStatus}` : ""
+        }. ${formatRequestError("Refresh flights", refreshErr)}`
       );
     } finally {
       setPullLoading(false);
@@ -1873,34 +1872,13 @@ const PlannerPage = () => {
       });
 
       if (nextFlightsCount === 0) {
+        const msg =
+          "No flights returned. Use the Pull flights button to ingest flights for this date.";
+        warnings.push(msg);
         updatePrepareStep("pull", {
-          status: "running",
-          message: "Pulling flights from Brain…",
+          status: "warn",
+          message: msg,
         });
-        try {
-          await pullFlights(date, "ALL", {
-            airport: DEFAULT_AIRPORT,
-            timeoutMs: 30000,
-          });
-          const refreshedResp = await fetchFlights(date, "ALL", DEFAULT_AIRPORT);
-          const refreshedData = refreshedResp.data || {};
-          nextFlights = toSortedNormalizedFlights(refreshedData);
-          nextFlightsCount = nextFlights.length;
-          setFlights(nextFlights);
-          setFlightsCount(nextFlightsCount);
-          setFlightsOk(true);
-          updatePrepareStep("pull", {
-            status: "success",
-            message: `Pulled flights (${nextFlightsCount} total).`,
-          });
-        } catch (err) {
-          const msg = formatRequestError("Pull flights", err);
-          warnings.push(msg);
-          updatePrepareStep("pull", {
-            status: "warn",
-            message: msg,
-          });
-        }
       } else {
         updatePrepareStep("pull", {
           status: "skipped",
@@ -2261,7 +2239,7 @@ const PlannerPage = () => {
           <div>
             <h3>Prepare Day</h3>
             <p className="planner-prepare-subtext">
-              One click to check flights, pull if needed, and fetch runs for{" "}
+              One click to check flights and fetch runs for{" "}
               {DEFAULT_AIRPORT}.
             </p>
           </div>
@@ -2278,7 +2256,7 @@ const PlannerPage = () => {
         <div className="planner-prepare-steps">
           {[
             { key: "flights", label: "Check flights" },
-            { key: "pull", label: "Pull flights (if needed)" },
+            { key: "pull", label: "Pull flights (manual)" },
             { key: "runs", label: "Fetch runs" },
             { key: "assignments", label: "Assignments (optional)" },
           ].map((step) => (
