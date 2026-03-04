@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brain.local/schemas/capability.schema.json",
+  "title": "Brain Capability",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "description",
+    "owner",
+    "inputs_schema",
+    "outputs_schema",
+    "effects",
+    "idempotency",
+    "timeouts",
+    "policy"
+  ],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$" },
+    "version": { "type": "string" },
+    "description": { "type": "string" },
+    "owner": { "type": "string" },
+    "inputs_schema": { "type": "object" },
+    "outputs_schema": { "type": "object" },
+    "effects": { "type": "string", "enum": ["none", "read", "write", "external"] },
+    "idempotency": {
+      "type": "object",
+      "required": ["enabled", "idempotency_key_fields"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "idempotency_key_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "required": ["seconds", "retry_policy"],
+      "properties": {
+        "seconds": { "type": "integer", "minimum": 1 },
+        "retry_policy": {
+          "type": "object",
+          "required": ["retries", "backoff_seconds"],
+          "properties": {
+            "retries": { "type": "integer", "minimum": 0 },
+            "backoff_seconds": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "required": ["approval_required", "logging_requirements", "data_constraints"],
+      "properties": {
+        "approval_required": { "type": "boolean" },
+        "logging_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "data_constraints": {
+          "type": "array",
+          "items": { "type": ["string", "object"] }
+        }
+      }
+    }
+  }
+}

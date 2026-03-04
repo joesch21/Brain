@@ -1,0 +1,32 @@
+{
+  "name": "brain.follow_run",
+  "version": "0.1.0",
+  "description": "Follow a run_id and fetch status + report summary pointers (report_url/manifest).",
+  "owner": "Brain",
+  "inputs_schema": {
+    "type": "object",
+    "required": ["run_id"],
+    "properties": {
+      "run_id": { "type": "string" }
+    }
+  },
+  "outputs_schema": {
+    "type": "object",
+    "required": ["ok", "run_id", "status"],
+    "properties": {
+      "ok": { "type": "boolean" },
+      "run_id": { "type": "string" },
+      "status": { "type": "string" },
+      "report": { "type": ["object", "null"] },
+      "error": { "type": ["object", "null"] }
+    }
+  },
+  "effects": "read",
+  "idempotency": { "enabled": true, "idempotency_key_fields": ["run_id"] },
+  "timeouts": { "seconds": 10, "retry_policy": { "retries": 0, "backoff_seconds": 0 } },
+  "policy": {
+    "approval_required": false,
+    "logging_requirements": ["run_id", "status"],
+    "data_constraints": []
+  }
+}

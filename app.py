@@ -1,4 +1,4 @@
-﻿import json
+import json
 import os
 import threading
 import time
@@ -24,6 +24,10 @@ from dotenv import load_dotenv
 from services import api_contract
 from services.brain_control import BrainControlService, VALID_MODES
 from services.query_params import normalize_airline_query
+
+from routes.api_capabilities import create_capabilities_blueprint
+from services.capability_registry import CapabilityRegistry
+from services.planner import Planner
 
 
 def _csv_to_list(raw_value):
@@ -365,6 +369,9 @@ upstream_selector = UpstreamSelector(
 
 brain_control = BrainControlService(upstream_base_getter=lambda: _active_upstream_base())
 
+capability_registry = CapabilityRegistry()
+planner = Planner(capability_registry)
+
 
 def json_error(
     message: str,
@@ -389,6 +396,8 @@ def json_error(
 def _build_ok(payload: Dict[str, Any], status_code: int = 200):
     payload.setdefault("ok", True)
     return jsonify(payload), status_code
+
+app.register_blueprint(create_capabilities_blueprint(capability_registry, planner))
 
 
 @app.route("/api/dispatch", methods=["POST"])
