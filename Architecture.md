@@ -32,3 +32,71 @@ The separation is intentional: Brain displays and gathers inputs, CodeCrafter2 t
 - Richer planning/optimisation loops where Brain asks CodeCrafter2 to propose operational changes, with operators reviewing and approving write-backs via the Ops API to Postgres.
 - Additional sensors or UIs can join the ecosystem without moving cognition or memory: new frontends still call the Ops API for truth and CodeCrafter2 for reasoning, leaving Postgres as the consistent source of record.
 - This separation allows scaling cognition and UI independently while keeping operational data centralized in the Office/Postgres memory.
+
+## Brain Control Plane Contract (Dispatch + Follow)
+
+Brain now exposes a minimal control-plane surface for orchestrating CodeCrafter runs while keeping execution logic inside CodeCrafter.
+
+### Separation of concerns
+- Brain decides **what** to request and **what to do next**.
+- CodeCrafter executes runs and owns artifacts/reports.
+- Brain **never infers filesystem paths** and **only consumes run metadata URLs returned by CodeCrafter**.
+
+### Brain -> CodeCrafter request envelope
+```json
+{
+  "mode": "build|fix|know",
+  "payload": {
+    "prompt": "...",
+    "hints": {}
+  },
+  "caller": "brain:<correlation-id>"
+}
+```
+
+### CodeCrafter -> Brain run envelope (authoritative metadata)
+```json
+{
+  "run_id": "string",
+  "open_url": "string",
+  "preview_url": "string|null",
+  "report_url": "string",
+  "latest_url": "string",
+  "status": "running|complete|failed|queued"
+}
+```
+
+### Brain API endpoints
+- `POST /api/dispatch`
+  - Validates `mode` (`build|fix|know`), accepts optional `payload` object and `caller`.
+  - Returns:
+  ```json
+  {
+    "ok": true,
+    "run": {
+      "run_id": "...",
+      "open_url": "...",
+      "preview_url": null,
+      "report_url": "...",
+      "latest_url": "...",
+      "status": "running|complete|failed|queued"
+    }
+  }
+  ```
+- `GET /api/follow/<run_id>`
+  - Returns stable follow contract even for unknown runs:
+  ```json
+  {
+    "ok": false,
+    "run_id": "missing",
+    "status": "not_found",
+    "report": null,
+    "error": {"code": "not_found", "message": "..."}
+  }
+  ```
+
+### Environment variables
+- `CC_BASE_URL` (optional): primary CodeCrafter base URL (for example `http://127.0.0.1:6060`).
+- `CC_DISPATCH_PATH` (optional): CodeCrafter dispatch path (defaults to `/api/run`).
+
+If upstream is unavailable or not configured, Brain fails soft by returning a deterministic placeholder run envelope and a structured report error; it does not 500 for known validation/upstream-down scenarios.
