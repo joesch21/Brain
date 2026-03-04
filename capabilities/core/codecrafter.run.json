@@ -1,0 +1,36 @@
+{
+  "name": "codecrafter.run",
+  "version": "0.1.0",
+  "description": "Dispatch a CodeCrafter job (build/fix/know) using the stable run contract and return run-scoped URLs.",
+  "owner": "CodeCrafter",
+  "inputs_schema": {
+    "type": "object",
+    "required": ["mode", "payload", "caller"],
+    "properties": {
+      "mode": { "type": "string", "enum": ["build", "fix", "know"] },
+      "payload": { "type": "object" },
+      "caller": { "type": "string" },
+      "request_id": { "type": "string" }
+    }
+  },
+  "outputs_schema": {
+    "type": "object",
+    "required": ["run_id", "open_url", "report_url", "latest_url", "status"],
+    "properties": {
+      "run_id": { "type": "string" },
+      "open_url": { "type": "string" },
+      "preview_url": { "type": ["string", "null"] },
+      "report_url": { "type": "string" },
+      "latest_url": { "type": "string" },
+      "status": { "type": "string", "enum": ["queued", "running", "complete", "failed"] }
+    }
+  },
+  "effects": "external",
+  "idempotency": { "enabled": true, "idempotency_key_fields": ["request_id"] },
+  "timeouts": { "seconds": 30, "retry_policy": { "retries": 1, "backoff_seconds": 1 } },
+  "policy": {
+    "approval_required": false,
+    "logging_requirements": ["request_id", "run_id", "mode", "caller"],
+    "data_constraints": []
+  }
+}

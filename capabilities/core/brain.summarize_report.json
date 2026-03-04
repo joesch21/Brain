@@ -1,0 +1,31 @@
+{
+  "name": "brain.summarize_report",
+  "version": "0.1.0",
+  "description": "Summarize a run report into a user-facing outcome + recommended next action (deterministic template-based).",
+  "owner": "Brain",
+  "inputs_schema": {
+    "type": "object",
+    "required": ["run_id", "report"],
+    "properties": {
+      "run_id": { "type": "string" },
+      "report": { "type": "object" }
+    }
+  },
+  "outputs_schema": {
+    "type": "object",
+    "required": ["run_id", "summary", "next_action"],
+    "properties": {
+      "run_id": { "type": "string" },
+      "summary": { "type": "string" },
+      "next_action": { "type": "string", "enum": ["present_outputs", "ask_clarification", "trigger_fix"] }
+    }
+  },
+  "effects": "none",
+  "idempotency": { "enabled": true, "idempotency_key_fields": ["run_id"] },
+  "timeouts": { "seconds": 5, "retry_policy": { "retries": 0, "backoff_seconds": 0 } },
+  "policy": {
+    "approval_required": false,
+    "logging_requirements": ["run_id", "next_action"],
+    "data_constraints": []
+  }
+}
