@@ -22,6 +22,7 @@ from flask import (
 from dotenv import load_dotenv
 
 from services import api_contract
+from services.brain_control import BrainControlService, VALID_MODES
 from services.query_params import normalize_airline_query
 
 
@@ -362,6 +363,8 @@ upstream_selector = UpstreamSelector(
     ttl_minutes=int(os.getenv("UPSTREAM_SELECTION_CACHE_MINUTES", "10")),
 )
 
+brain_control = BrainControlService(upstream_base_getter=lambda: _active_upstream_base())
+
 
 def json_error(
     message: str,
@@ -386,6 +389,37 @@ def json_error(
 def _build_ok(payload: Dict[str, Any], status_code: int = 200):
     payload.setdefault("ok", True)
     return jsonify(payload), status_code
+
+
+@app.route("/api/dispatch", methods=["POST"])
+def api_dispatch():
+    body = request.get_json(silent=True) or {}
+    mode = (body.get("mode") or "").strip().lower()
+    if mode not in VALID_MODES:
+        return json_error(
+            "Field 'mode' is required and must be one of: build, fix, know",
+            status_code=400,
+            code="validation_error",
+        )
+
+    payload = body.get("payload")
+    if payload is None:
+        payload = {}
+    if not isinstance(payload, dict):
+        return json_error(
+            "Field 'payload' must be an object when provided",
+            status_code=400,
+            code="validation_error",
+        )
+
+    run = brain_control.dispatch_job(mode=mode, payload=payload, caller=body.get("caller"))
+    return _build_ok({"run": run})
+
+
+@app.route("/api/follow/<run_id>", methods=["GET"])
+def api_follow(run_id: str):
+    result = brain_control.follow_run(run_id)
+    return jsonify(result), 200
 
 
 def _active_upstream_base() -> str:
